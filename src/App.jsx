@@ -33,13 +33,46 @@ const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
 
+function getImageFilename(imageUrl) {
+  const pathname = imageUrl.split("?")[0].split("#")[0];
+  const filename = pathname.split("/").pop() ?? "";
+
+  try {
+    return decodeURIComponent(filename);
+  } catch {
+    return filename;
+  }
+}
+
+function stripViteHash(filename) {
+  const extensionIndex = filename.lastIndexOf(".");
+
+  if (extensionIndex === -1) {
+    return filename;
+  }
+
+  const stem = filename.slice(0, extensionIndex);
+  const extension = filename.slice(extensionIndex);
+  const hashSeparatorIndex = stem.lastIndexOf("-");
+
+  if (hashSeparatorIndex === -1) {
+    return filename;
+  }
+
+  return `${stem.slice(0, hashSeparatorIndex)}${extension}`;
+}
+
 function resolveImageUrl(imageUrl) {
-  if (!imageUrl?.startsWith("/images/")) {
+  if (!imageUrl || imageUrl.startsWith("data:") || /^https?:\/\//.test(imageUrl)) {
     return imageUrl;
   }
 
-  const filename = imageUrl.split("/").pop();
-  return imageUrlByFilename[filename] ?? imageUrl;
+  if (!imageUrl.startsWith("/images/") && !imageUrl.startsWith("/assets/")) {
+    return imageUrl;
+  }
+
+  const filename = getImageFilename(imageUrl);
+  return imageUrlByFilename[filename] ?? imageUrlByFilename[stripViteHash(filename)] ?? imageUrl;
 }
 
 const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
@@ -597,7 +630,7 @@ export default function App() {
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [wardrobeWorthVisible, setWardrobeWorthVisible] = useState(true);
-  const [controlsOpen, setControlsOpen] = useState(true);
+  const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
@@ -1026,30 +1059,43 @@ export default function App() {
       return;
     }
 
+    const images = [...stage.querySelectorAll(".outfit-slot img, .accessory-slot.has-item img")];
+
+    if (!images.length) {
+      window.alert("There is no outfit image to export.");
+      return;
+    }
+
+    await Promise.all(
+      images.map((image) => (image.complete ? Promise.resolve() : image.decode?.() ?? Promise.resolve()))
+    );
+
     const stageRect = stage.getBoundingClientRect();
+    const imageRects = images.map((image) => image.getBoundingClientRect());
+    const margin = 24;
+    const cropLeft = Math.max(Math.min(...imageRects.map((rect) => rect.left)) - margin, stageRect.left);
+    const cropTop = Math.max(Math.min(...imageRects.map((rect) => rect.top)) - margin, stageRect.top);
+    const cropRight = Math.min(Math.max(...imageRects.map((rect) => rect.right)) + margin, stageRect.right);
+    const cropBottom = Math.min(Math.max(...imageRects.map((rect) => rect.bottom)) + margin, stageRect.bottom);
+    const cropWidth = Math.max(cropRight - cropLeft, 1);
+    const cropHeight = Math.max(cropBottom - cropTop, 1);
     const scale = 2;
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
 
-    canvas.width = Math.round(stageRect.width * scale);
-    canvas.height = Math.round(stageRect.height * scale);
+    canvas.width = Math.round(cropWidth * scale);
+    canvas.height = Math.round(cropHeight * scale);
     context.scale(scale, scale);
     context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f7f7";
-    context.fillRect(0, 0, stageRect.width, stageRect.height);
-
-    const images = [...stage.querySelectorAll(".outfit-slot img, .accessory-slot.has-item img")];
+    context.fillRect(0, 0, cropWidth, cropHeight);
 
     try {
-      await Promise.all(
-        images.map((image) => (image.complete ? Promise.resolve() : image.decode?.() ?? Promise.resolve()))
-      );
-
       images.forEach((image) => {
         const imageRect = image.getBoundingClientRect();
         context.drawImage(
           image,
-          imageRect.left - stageRect.left,
-          imageRect.top - stageRect.top,
+          imageRect.left - cropLeft,
+          imageRect.top - cropTop,
           imageRect.width,
           imageRect.height
         );
@@ -2020,6 +2066,9 @@ export default function App() {
         ) : null}
 
         <div className="workspace-tabs" aria-label="Workspace sections">
+          <button type="button" className="workspace-tab" onClick={handleGenerate}>
+            Generate
+          </button>
           <button
             type="button"
             className={`workspace-tab ${controlsOpen && !activePanel ? "is-active" : ""}`}
@@ -2027,15 +2076,6 @@ export default function App() {
             aria-pressed={controlsOpen && !activePanel}
           >
             CONTROLS
-          </button>
-          <button type="button" className="workspace-tab" onClick={handleGenerate}>
-            Generate
-          </button>
-          <button type="button" className="workspace-tab" onClick={saveCurrentOutfit}>
-            Save
-          </button>
-          <button type="button" className="workspace-tab" onClick={handleExportOutfitImage}>
-            Export image
           </button>
           {[
             ["saved", "Saved outfits"],
@@ -2074,6 +2114,12 @@ export default function App() {
             </button>
             <button type="button" className="secondary-button" onClick={toggleAccessories}>
               Accessories: {accessoriesEnabled ? "On" : "Off"}
+            </button>
+            <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
+              Save
+            </button>
+            <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
+              Export image
             </button>
             <button type="button" className="ghost-button" onClick={handleExportBackup}>
               Export backup

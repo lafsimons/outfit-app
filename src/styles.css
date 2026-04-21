@@ -1408,10 +1408,10 @@ button:disabled {
   }
 
   .active-panel-overlay {
-    top: 14px;
-    bottom: calc(86px + env(safe-area-inset-bottom));
-    width: calc(100vw - 20px);
-    padding: 14px;
+    top: 8px;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    width: calc(100vw - 8px);
+    padding: 8px;
     border-radius: var(--radius-panel);
   }
 
@@ -1474,9 +1474,11 @@ button:disabled {
   .outfit-stage {
     width: 620px;
     min-height: 680px;
-    transform: scale(0.68);
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%) scale(0.66);
     transform-origin: top center;
-    margin: 0 auto -218px;
+    margin: 0 0 -232px;
   }
 
   .outfit-grid {
@@ -1492,8 +1494,44 @@ button:disabled {
 
   .accessory-slot {
     position: absolute;
-    transform: scale(0.72);
+    transform: scale(0.54);
     transform-origin: center;
+  }
+
+  .accessory-slot:not(.has-item) {
+    width: 72px;
+    min-height: 72px;
+    padding: 6px;
+  }
+
+  .accessory-slot-glasses {
+    top: 6px;
+    left: 252px;
+  }
+
+  .accessory-slot-neck {
+    top: 138px;
+    left: 220px;
+  }
+
+  .accessory-slot-lefthand {
+    top: 316px;
+    left: 68px;
+  }
+
+  .accessory-slot-righthand {
+    top: 316px;
+    right: 68px;
+  }
+
+  .accessory-slot-bag {
+    top: 428px;
+    right: 42px;
+  }
+
+  .accessory-slot-belt {
+    top: 444px;
+    left: 252px;
   }
 
   .top-layer-row .outfit-slot {
@@ -1544,22 +1582,23 @@ button:disabled {
   }
 
   .wardrobe-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 8px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+    padding-right: 0;
   }
 
   .wardrobe-card {
-    padding: 7px;
-    gap: 6px;
+    padding: 5px;
+    gap: 5px;
   }
 
   .wardrobe-preview {
-    min-height: 92px;
-    padding: 8px;
+    min-height: 74px;
+    padding: 5px;
   }
 
   .wardrobe-preview img {
-    max-height: 104px;
+    max-height: 86px;
   }
 
   .wardrobe-description {
@@ -1569,6 +1608,38 @@ button:disabled {
   .card-actions .ghost-button {
     padding: 4px 5px;
     font-size: 0.62rem;
+  }
+
+  .saved-outfits-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    max-height: calc(100vh - 142px - env(safe-area-inset-bottom));
+  }
+
+  .saved-outfit-card {
+    padding: 6px;
+    gap: 5px;
+  }
+
+  .saved-preview {
+    min-height: 86px;
+    padding: 4px 0 2px;
+  }
+
+  .saved-preview-topinner img,
+  .saved-preview-topouter img {
+    max-width: 58px;
+    max-height: 34px;
+  }
+
+  .saved-preview-bottom img {
+    max-width: 40px;
+    max-height: 38px;
+  }
+
+  .saved-preview-footwear img {
+    max-width: 34px;
+    max-height: 22px;
   }
 
   .slot-picker-list {
