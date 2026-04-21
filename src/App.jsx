@@ -640,6 +640,16 @@ async function dataUrlToBlob(dataUrl) {
   return response.blob();
 }
 
+function getRemoveBackgroundExport(module) {
+  const removeBackground = module.removeBackground ?? module.default;
+
+  if (typeof removeBackground !== "function") {
+    throw new Error("Background removal module did not load correctly.");
+  }
+
+  return removeBackground;
+}
+
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1519,7 +1529,8 @@ export default function App() {
       setImageProcessing(true);
       setImageUploadError("");
       const inputBlob = await dataUrlToBlob(originalImageUrl);
-      const { default: removeBackground } = await import("@imgly/background-removal");
+      const backgroundRemovalModule = await import("@imgly/background-removal");
+      const removeBackground = getRemoveBackgroundExport(backgroundRemovalModule);
       const transparentBlob = await removeBackground(inputBlob, {
         model: "small",
         output: {
