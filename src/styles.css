@@ -1409,10 +1409,19 @@ button:disabled {
 
   .active-panel-overlay {
     top: 8px;
-    bottom: calc(78px + env(safe-area-inset-bottom));
+    bottom: calc(58px + env(safe-area-inset-bottom));
     width: calc(100vw - 8px);
     padding: 8px;
     border-radius: var(--radius-panel);
+  }
+
+  .active-panel-overlay.is-wardrobe-panel {
+    left: 0;
+    right: 0;
+    bottom: calc(54px + env(safe-area-inset-bottom));
+    width: 100vw;
+    padding: 4px;
+    transform: none;
   }
 
   .picker-overlay {
@@ -1502,16 +1511,19 @@ button:disabled {
     width: 72px;
     min-height: 72px;
     padding: 6px;
+    border-color: rgba(0, 0, 0, 0.28);
+    background: rgba(255, 255, 255, 0.32);
+    opacity: 0.68;
   }
 
   .accessory-slot-glasses {
-    top: 6px;
-    left: 252px;
+    top: 28px;
+    left: 392px;
   }
 
   .accessory-slot-neck {
-    top: 138px;
-    left: 220px;
+    top: 142px;
+    left: 78px;
   }
 
   .accessory-slot-lefthand {
@@ -1530,8 +1542,8 @@ button:disabled {
   }
 
   .accessory-slot-belt {
-    top: 444px;
-    left: 252px;
+    top: 448px;
+    left: 96px;
   }
 
   .top-layer-row .outfit-slot {
@@ -1583,13 +1595,13 @@ button:disabled {
 
   .wardrobe-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 5px;
+    gap: 4px;
     padding-right: 0;
   }
 
   .wardrobe-card {
-    padding: 5px;
-    gap: 5px;
+    padding: 4px;
+    gap: 4px;
   }
 
   .wardrobe-preview {
