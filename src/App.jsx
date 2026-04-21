@@ -1521,6 +1521,7 @@ export default function App() {
       const inputBlob = await dataUrlToBlob(originalImageUrl);
       const { default: removeBackground } = await import("@imgly/background-removal");
       const transparentBlob = await removeBackground(inputBlob, {
+        model: "small",
         output: {
           format: "image/png",
           quality: 0.9
