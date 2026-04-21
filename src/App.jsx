@@ -592,6 +592,45 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Image could not be loaded."));
+    image.src = dataUrl;
+  });
+}
+
+function canvasToDataUrl(canvas, type, quality) {
+  const dataUrl = canvas.toDataURL(type, quality);
+  return dataUrl.startsWith(`data:${type}`) ? dataUrl : "";
+}
+
+async function compressImageFile(file, maxDimension = 1400, quality = 0.86) {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("Selected file is not an image.");
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Image could not be processed.");
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  context.clearRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  return canvasToDataUrl(canvas, "image/webp", quality) || canvas.toDataURL("image/png");
+}
+
 function readFileAsText(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -641,6 +680,7 @@ export default function App() {
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(emptyForm);
+  const [imageUploadError, setImageUploadError] = useState("");
   const [wardrobeFilters, setWardrobeFilters] = useState({
     brand: "",
     type: "",
@@ -1249,12 +1289,14 @@ export default function App() {
 
   function startCreate() {
     setWardrobeFiltersOpen(false);
+    setImageUploadError("");
     setEditingId("new");
     setDraft(emptyForm);
   }
 
   function startEdit(item) {
     setWardrobeFiltersOpen(false);
+    setImageUploadError("");
     setEditingId(item.id);
     setDraft(normalizeItem(item));
   }
@@ -1262,6 +1304,7 @@ export default function App() {
   function cancelEdit() {
     setEditingId(null);
     setDraft(emptyForm);
+    setImageUploadError("");
   }
 
   function toggleExcluded(itemId) {
@@ -1341,8 +1384,11 @@ export default function App() {
     const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
 
     if (!trimmedImageUrl) {
+      setImageUploadError("Choose an image or enter an image URL before saving.");
       return;
     }
+
+    setImageUploadError("");
 
     if (
       editingId === "new" &&
@@ -1423,6 +1469,29 @@ export default function App() {
     }
 
     cancelEdit();
+  }
+
+  async function handleItemImageUpload(event) {
+    const [file] = event.target.files;
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      setImageUploadError("");
+      const imageUrl = await compressImageFile(file);
+      setDraft((current) => ({ ...current, imageUrl }));
+    } catch (error) {
+      setImageUploadError(error?.message || "This image could not be processed.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeDraftImage() {
+    setDraft((current) => ({ ...current, imageUrl: "" }));
+    setImageUploadError("");
   }
 
   async function handleDelete(itemId) {
@@ -1823,6 +1892,31 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
+      <div className="item-image-upload">
+        <div className="item-image-preview">
+          {draft.imageUrl.trim() ? (
+            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" />
+          ) : (
+            <span>No image selected</span>
+          )}
+        </div>
+        <div className="item-image-actions">
+          <label className="upload-button">
+            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
+            <input type="file" accept="image/*" onChange={handleItemImageUpload} />
+          </label>
+          {draft.imageUrl.trim() ? (
+            <button type="button" className="ghost-button" onClick={removeDraftImage}>
+              Remove image
+            </button>
+          ) : null}
+        </div>
+        <p className="item-image-note">
+          Images are saved in this browser and included in backup JSON. Large uploads are compressed.
+        </p>
+        {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
+      </div>
+
       <label>
         Name
         <input
@@ -1875,7 +1969,10 @@ export default function App() {
         Image URL
         <input
           value={draft.imageUrl}
-          onChange={(event) => setDraft((current) => ({ ...current, imageUrl: event.target.value }))}
+          onChange={(event) => {
+            setImageUploadError("");
+            setDraft((current) => ({ ...current, imageUrl: event.target.value }));
+          }}
           placeholder="/images/item.png"
         />
       </label>
@@ -2007,7 +2104,7 @@ export default function App() {
   ) : (
     <div className="editor-placeholder">
       <p>Select an item to edit it, or use Add item to create a wardrobe entry.</p>
-      <p>Direct photo upload will be added with the later cloud storage phase.</p>
+      <p>Uploaded item images are saved in this browser and included in backup JSON.</p>
     </div>
   );
 
