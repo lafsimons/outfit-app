@@ -862,6 +862,12 @@ export default function App() {
   }, [activeOutfitSlot, activeAccessorySlot]);
 
   function handleGenerate() {
+    setActivePanel(null);
+    setActiveOutfitSlot(null);
+    setActiveAccessorySlot(null);
+    setPickerAnchorSlot(null);
+    setWardrobeFiltersOpen(false);
+    setFitpicPreview(null);
     setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists));
   }
 
