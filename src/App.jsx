@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   deleteItem,
   exportBackup,
+  getDefaultData,
   loadAppState,
   loadItems,
   replaceWithBackup,
+  resetToDefaults,
   saveAppState,
   saveItem
 } from "./lib/storage";
@@ -30,7 +32,6 @@ const imageAssetEntries = Object.entries(imageAssets)
 const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
-const imageLibrary = imageAssetEntries;
 
 function resolveImageUrl(imageUrl) {
   if (!imageUrl?.startsWith("/images/")) {
@@ -136,6 +137,7 @@ const emptyForm = {
   name: "",
   imageUrl: "",
   value: "",
+  retailValue: "",
   brand: "",
   type: "",
   size: "",
@@ -246,7 +248,7 @@ function buildNextOutfit(items, currentOutfit, locked, layering, excluded = {}, 
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
 
   visibleSlots.forEach((slot) => {
-    if (locked[slot] && nextOutfit[slot]) {
+    if (locked[slot]) {
       if (slot === "TopInner" || slot === "TopOuter") {
         const lockedItem = itemsById[nextOutfit[slot]];
         if (lockedItem?.garmentType === "Top" && lockedItem.layerType === "Both") {
@@ -346,20 +348,6 @@ function createUniqueItemId(item, items, currentId = null) {
   return candidateId;
 }
 
-function guessNameFromFilename(filename) {
-  const stem = filename.replace(/\.[^.]+$/, "");
-  const cleaned = stem.replace(/[_-]+/g, " ").trim();
-
-  if (/^subject\s*\(\d+\)$/i.test(cleaned) || /^subject$/i.test(cleaned)) {
-    return "";
-  }
-
-  return cleaned
-    .split(/\s+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
-
 function buildDisplayName(item) {
   const parts = [item.brand, item.name]
     .map((value) => value?.trim())
@@ -374,27 +362,6 @@ function buildDisplayName(item) {
 
 function hasNamingMetadata(item) {
   return [item.name, item.brand, item.type, item.color].some((value) => value?.trim());
-}
-
-function arrayBufferToHex(buffer) {
-  return [...new Uint8Array(buffer)]
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function fingerprintImage(imageUrl) {
-  const response = await fetch(imageUrl, { cache: "no-store" });
-  const buffer = await response.arrayBuffer();
-
-  if (window.crypto?.subtle) {
-    return arrayBufferToHex(await window.crypto.subtle.digest("SHA-256", buffer));
-  }
-
-  let hash = 0;
-  for (const byte of new Uint8Array(buffer)) {
-    hash = (hash * 31 + byte) >>> 0;
-  }
-  return String(hash);
 }
 
 function getAccessoryLabel(slot) {
@@ -450,13 +417,23 @@ function getNumericValue(value) {
 }
 
 function normalizeItem(item) {
+  const value = item.value ?? "";
+  const retailValue = item.retailValue ?? "";
+  const shouldMoveValueToRetail = value !== "" && retailValue === "";
+
   return {
     ...emptyForm,
     ...item,
+    value: shouldMoveValueToRetail ? "" : value,
+    retailValue: shouldMoveValueToRetail ? value : retailValue,
     imageUrl: resolveImageUrl(item.imageUrl ?? item.img ?? ""),
     type: normalizeItemType(item.type ?? ""),
     list: normalizeList(item.list)
   };
+}
+
+function itemNeedsRetailMigration(originalItem, normalizedItem) {
+  return originalItem.value !== "" && originalItem.value !== undefined && !originalItem.retailValue && normalizedItem.retailValue === originalItem.value;
 }
 
 function formatCurrency(value) {
@@ -523,12 +500,6 @@ function normalizeGenerationLists(generationLists) {
     ...defaultGenerationLists,
     ...(generationLists ?? {})
   };
-}
-
-function getIgnoredFingerprintEntries(ignoredImportImages) {
-  return (ignoredImportImages ?? []).filter(
-    (entry) => typeof entry === "object" && entry?.fingerprint
-  );
 }
 
 function buildWardrobeDescription(item) {
@@ -612,6 +583,8 @@ function validateBackup(backup) {
 export default function App() {
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
+  const outfitStageRef = useRef(null);
+  const pickerOverlayRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layering, setLayering] = useState(false);
@@ -620,8 +593,6 @@ export default function App() {
   const [excluded, setExcluded] = useState({});
   const [outfit, setOutfit] = useState({});
   const [ignoredImportImages, setIgnoredImportImages] = useState([]);
-  const [importFingerprints, setImportFingerprints] = useState({});
-  const [importFingerprintsLoading, setImportFingerprintsLoading] = useState(false);
   const [savedOutfits, setSavedOutfits] = useState([]);
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
@@ -633,7 +604,8 @@ export default function App() {
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
-  const [removedImportsVisible, setRemovedImportsVisible] = useState(false);
+  const [fitpicPreview, setFitpicPreview] = useState(null);
+  const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(emptyForm);
   const [wardrobeFilters, setWardrobeFilters] = useState({
@@ -649,44 +621,6 @@ export default function App() {
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
-  );
-  const usedImageUrls = useMemo(
-    () => new Set(items.map((item) => item.imageUrl)),
-    [items]
-  );
-  const importableImages = useMemo(
-    () => {
-      const ignoredFingerprints = new Set(
-        getIgnoredFingerprintEntries(ignoredImportImages).map((entry) => entry.fingerprint)
-      );
-
-      return imageLibrary.filter((image) => {
-        if (usedImageUrls.has(image.imageUrl)) {
-          return false;
-        }
-
-        const fingerprint = importFingerprints[image.imageUrl];
-        return !fingerprint || !ignoredFingerprints.has(fingerprint);
-      });
-    },
-    [usedImageUrls, ignoredImportImages, importFingerprints]
-  );
-  const removedImportImages = useMemo(
-    () => {
-      const ignoredEntries = getIgnoredFingerprintEntries(ignoredImportImages);
-      const ignoredFingerprints = new Set(ignoredEntries.map((entry) => entry.fingerprint));
-      const ignoredUrls = new Set(ignoredEntries.map((entry) => entry.imageUrl));
-
-      return imageLibrary.filter((image) => {
-        if (usedImageUrls.has(image.imageUrl)) {
-          return false;
-        }
-
-        const fingerprint = importFingerprints[image.imageUrl];
-        return ignoredUrls.has(image.imageUrl) || (fingerprint && ignoredFingerprints.has(fingerprint));
-      });
-    },
-    [usedImageUrls, ignoredImportImages, importFingerprints]
   );
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
@@ -760,7 +694,7 @@ export default function App() {
   const wardrobeWorth = useMemo(() => {
     const categories = ["Tops", "Pants", "Shoes", "Accessories"];
     const byCategory = Object.fromEntries(
-      categories.map((category) => [category, { category, count: 0, value: 0 }])
+      categories.map((category) => [category, { category, count: 0, value: 0, retailValue: 0 }])
     );
 
     items
@@ -769,14 +703,16 @@ export default function App() {
         const category = getWorthCategory(item);
         byCategory[category].count += 1;
         byCategory[category].value += getNumericValue(item.value);
+        byCategory[category].retailValue += getNumericValue(item.retailValue);
       });
 
     const rows = categories.map((category) => byCategory[category]);
     const totalValue = rows.reduce((sum, row) => sum + row.value, 0);
+    const totalRetailValue = rows.reduce((sum, row) => sum + row.retailValue, 0);
     const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
-    const maxValue = Math.max(...rows.map((row) => row.value), 1);
+    const maxValue = Math.max(...rows.flatMap((row) => [row.value, row.retailValue]), 1);
 
-    return { rows, totalValue, totalCount, maxValue };
+    return { rows, totalValue, totalRetailValue, totalCount, maxValue };
   }, [items]);
 
   useEffect(() => {
@@ -785,9 +721,14 @@ export default function App() {
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
       const normalizedItems = storedItems.map(normalizeItem);
+      const migratedItems = normalizedItems.filter((item, index) => itemNeedsRetailMigration(storedItems[index], item));
 
       if (cancelled) {
         return;
+      }
+
+      if (migratedItems.length) {
+        await Promise.all(migratedItems.map((item) => saveItem(item)));
       }
 
       setItems(normalizedItems);
@@ -803,7 +744,17 @@ export default function App() {
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
         setFitpics(storedAppState.fitpics ?? []);
       } else {
-        setOutfit(buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists));
+        const defaultData = getDefaultData();
+        const defaultState = defaultData.appState;
+        setLayering(Boolean(defaultState.layering));
+        setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
+        setLocked(defaultState.locked ?? {});
+        setExcluded(defaultState.excluded ?? {});
+        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists));
+        setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
+        setSavedOutfits((defaultState.savedOutfits ?? []).map(normalizeSavedOutfit));
+        setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
+        setFitpics(defaultState.fitpics ?? []);
       }
 
       setLoading(false);
@@ -835,34 +786,6 @@ export default function App() {
   }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, fitpics, loading]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadFingerprints() {
-      setImportFingerprintsLoading(true);
-      const entries = await Promise.all(
-        imageLibrary.map(async (image) => {
-          try {
-            return [image.imageUrl, await fingerprintImage(image.imageUrl)];
-          } catch {
-            return [image.imageUrl, ""];
-          }
-        })
-      );
-
-      if (!cancelled) {
-        setImportFingerprints(Object.fromEntries(entries));
-        setImportFingerprintsLoading(false);
-      }
-    }
-
-    loadFingerprints();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     if (loading || !items.length) {
       return;
     }
@@ -887,6 +810,23 @@ export default function App() {
       return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists);
     });
   }, [items, itemsById, locked, layering, excluded, generationLists, loading]);
+
+  useEffect(() => {
+    if (!activeOutfitSlot && !activeAccessorySlot) {
+      return undefined;
+    }
+
+    function handleDocumentPointerDown(event) {
+      if (pickerOverlayRef.current?.contains(event.target)) {
+        return;
+      }
+
+      closePickerOverlay();
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }, [activeOutfitSlot, activeAccessorySlot]);
 
   function handleGenerate() {
     setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists));
@@ -995,6 +935,11 @@ export default function App() {
 
   function applyLoadedData(nextItems, nextAppState) {
     const normalizedItems = nextItems.map(normalizeItem);
+    const migratedItems = normalizedItems.filter((item, index) => itemNeedsRetailMigration(nextItems[index], item));
+
+    if (migratedItems.length) {
+      Promise.all(migratedItems.map((item) => saveItem(item)));
+    }
 
     setItems(normalizedItems);
     setLayering(Boolean(nextAppState?.layering));
@@ -1022,6 +967,8 @@ export default function App() {
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
     setPickerAnchorSlot(null);
+    setFitpicPreview(null);
+    setWardrobeFiltersOpen(false);
   }
 
   async function handleExportBackup() {
@@ -1070,6 +1017,67 @@ export default function App() {
     await replaceWithBackup(backup);
     applyLoadedData(backup.items, backup.appState);
     window.alert("Backup imported.");
+  }
+
+  async function handleExportOutfitImage() {
+    const stage = outfitStageRef.current;
+
+    if (!stage) {
+      return;
+    }
+
+    const stageRect = stage.getBoundingClientRect();
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    canvas.width = Math.round(stageRect.width * scale);
+    canvas.height = Math.round(stageRect.height * scale);
+    context.scale(scale, scale);
+    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f7f7";
+    context.fillRect(0, 0, stageRect.width, stageRect.height);
+
+    const images = [...stage.querySelectorAll(".outfit-slot img, .accessory-slot.has-item img")];
+
+    try {
+      await Promise.all(
+        images.map((image) => (image.complete ? Promise.resolve() : image.decode?.() ?? Promise.resolve()))
+      );
+
+      images.forEach((image) => {
+        const imageRect = image.getBoundingClientRect();
+        context.drawImage(
+          image,
+          imageRect.left - stageRect.left,
+          imageRect.top - stageRect.top,
+          imageRect.width,
+          imageRect.height
+        );
+      });
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `outfit-${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      window.alert("The outfit image could not be exported.");
+    }
+  }
+
+  async function handleResetToDefault() {
+    if (
+      !window.confirm(
+        "Reset this browser to the public default? This will replace all local wardrobe data, saved outfits, fitpics, settings, and imported backup data for this site."
+      )
+    ) {
+      return;
+    }
+
+    const defaultData = await resetToDefaults();
+    applyLoadedData(defaultData.items, defaultData.appState);
+    window.alert("Default data restored.");
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
@@ -1188,52 +1196,13 @@ export default function App() {
   }
 
   function startCreate() {
+    setWardrobeFiltersOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
   }
 
-  function startCreateFromImage(image) {
-    setEditingId("new");
-    setDraft({
-      ...emptyForm,
-      name: guessNameFromFilename(image.filename),
-      imageUrl: image.imageUrl
-    });
-  }
-
-  function ignoreImportImage(imageUrl) {
-    if (!window.confirm("Remove this image from imports?")) {
-      return;
-    }
-
-    const fingerprint = importFingerprints[imageUrl];
-
-    if (!fingerprint) {
-      return;
-    }
-
-    setIgnoredImportImages((current) => {
-      const entries = getIgnoredFingerprintEntries(current);
-
-      if (entries.some((entry) => entry.fingerprint === fingerprint)) {
-        return entries;
-      }
-
-      return [...entries, { imageUrl, fingerprint }];
-    });
-  }
-
-  function restoreImportImage(imageUrl) {
-    const fingerprint = importFingerprints[imageUrl];
-
-    setIgnoredImportImages((current) =>
-      getIgnoredFingerprintEntries(current).filter(
-        (entry) => entry.imageUrl !== imageUrl && (!fingerprint || entry.fingerprint !== fingerprint)
-      )
-    );
-  }
-
   function startEdit(item) {
+    setWardrobeFiltersOpen(false);
     setEditingId(item.id);
     setDraft(normalizeItem(item));
   }
@@ -1317,6 +1286,7 @@ export default function App() {
     const trimmedColor = draft.color.trim();
     const trimmedSize = draft.size.trim();
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
+    const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
 
     if (!trimmedImageUrl) {
       return;
@@ -1329,6 +1299,7 @@ export default function App() {
       !trimmedType &&
       !trimmedColor &&
       !normalizedValue &&
+      !normalizedRetailValue &&
       !trimmedSize
     ) {
       return;
@@ -1342,6 +1313,7 @@ export default function App() {
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
       value: normalizedValue,
+      retailValue: normalizedRetailValue,
       size: trimmedSize,
       list: normalizeList(draft.list)
     };
@@ -1548,23 +1520,27 @@ export default function App() {
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
-    setControlsOpen(true);
   }
 
   function toggleWorkspacePanel(panel) {
     setActivePanel((current) => {
       const nextPanel = current === panel ? null : panel;
-      setControlsOpen(!nextPanel);
+      if (nextPanel) {
+        setControlsOpen(false);
+      }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
       setPickerAnchorSlot(null);
+      setWardrobeFiltersOpen(false);
+      setFitpicPreview(null);
       return nextPanel;
     });
   }
 
   function closeWorkspacePanel() {
     setActivePanel(null);
-    setControlsOpen(true);
+    setWardrobeFiltersOpen(false);
+    setFitpicPreview(null);
   }
 
   function toggleControlsWindow() {
@@ -1575,13 +1551,14 @@ export default function App() {
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
+    setWardrobeFiltersOpen(false);
+    setFitpicPreview(null);
     setControlsOpen((current) => !current);
   }
 
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
     setActivePanel(null);
-    setControlsOpen(true);
   }
 
   function renderOutfitSlotPicker() {
@@ -1596,7 +1573,7 @@ export default function App() {
       <div className="slot-picker">
         <div className="slot-picker-header">
           <strong>{getSlotLabel(activeOutfitSlot)}</strong>
-          <button type="button" className="ghost-button" onClick={() => setActiveOutfitSlot(null)}>
+          <button type="button" className="ghost-button" onClick={closePickerOverlay}>
             Close
           </button>
         </div>
@@ -1654,7 +1631,7 @@ export default function App() {
           <button
             type="button"
             className="ghost-button"
-            onClick={() => setActiveAccessorySlot(null)}
+            onClick={closePickerOverlay}
           >
             Close
           </button>
@@ -1790,7 +1767,7 @@ export default function App() {
     ? editingId === "new"
       ? "Add wardrobe item"
       : "Edit wardrobe item"
-    : "Import from your image folder";
+    : "Item editor";
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
@@ -1815,6 +1792,21 @@ export default function App() {
             }))
           }
           placeholder="120"
+        />
+      </label>
+
+      <label>
+        Retail value
+        <input
+          inputMode="numeric"
+          value={draft.retailValue}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              retailValue: event.target.value.replace(/[^\d]/g, "")
+            }))
+          }
+          placeholder="280"
         />
       </label>
 
@@ -1961,84 +1953,9 @@ export default function App() {
       </div>
     </form>
   ) : (
-    <div className="image-library">
-      {importableImages.length ? (
-        <div className="image-library-grid">
-          {importableImages.map((image) => (
-            <article key={image.filename} className="image-library-card">
-              <div className="image-library-preview">
-                <img src={image.imageUrl} alt={image.filename} />
-              </div>
-              <strong>{image.filename}</strong>
-              <div className="image-library-actions">
-                <button
-                  type="button"
-                  className="primary-button"
-                  onClick={() => startCreateFromImage(image)}
-                >
-                  Import
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button danger"
-                  disabled={!importFingerprints[image.imageUrl]}
-                  onClick={() => ignoreImportImage(image.imageUrl)}
-                >
-                  Remove
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      ) : null}
-
-      {removedImportImages.length ? (
-        <section className="image-library-removed">
-          <div className="image-library-removed-header">
-            <p className="eyebrow">Removed imports</p>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => setRemovedImportsVisible((current) => !current)}
-            >
-              {removedImportsVisible ? "Hide" : `Show ${removedImportImages.length}`}
-            </button>
-          </div>
-
-          {removedImportsVisible ? (
-            <div className="image-library-grid">
-              {removedImportImages.map((image) => (
-                <article key={image.filename} className="image-library-card is-removed">
-                  <div className="image-library-preview">
-                    <img src={image.imageUrl} alt={image.filename} />
-                  </div>
-                  <strong>{image.filename}</strong>
-                  <div className="image-library-actions">
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={() => restoreImportImage(image.imageUrl)}
-                    >
-                      Undo
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {!importableImages.length && !removedImportImages.length ? (
-        <div className="editor-placeholder">
-          <p>
-            {importFingerprintsLoading
-              ? "Checking image fingerprints…"
-              : "Every image in the folder is already linked to a wardrobe item."}
-          </p>
-          <p>Add more files to <code>images</code> and refresh to import them here.</p>
-        </div>
-      ) : null}
+    <div className="editor-placeholder">
+      <p>Select an item to edit it, or use Add item to create a wardrobe entry.</p>
+      <p>Direct photo upload will be added with the later cloud storage phase.</p>
     </div>
   );
 
@@ -2050,18 +1967,14 @@ export default function App() {
         <article
           className={`outfit-slot outfit-slot-${slot.toLowerCase()} ${locked[slot] ? "is-locked" : ""} ${isActive ? "is-active" : ""}`}
         >
-          {item ? (
-            <button
-              type="button"
-              className="item-figure"
-              onClick={() => openOutfitSlotPicker(slot)}
-              aria-label={`${getSlotLabel(slot)} options`}
-            >
-              <img src={item.imageUrl} alt={item.name} />
-            </button>
-          ) : (
-            <div className="empty-slot">No item available for this slot.</div>
-          )}
+          <button
+            type="button"
+            className={`item-figure ${item ? "has-item" : "is-empty"}`}
+            onClick={() => openOutfitSlotPicker(slot)}
+            aria-label={`${getSlotLabel(slot)} options`}
+          >
+            {item ? <img src={item.imageUrl} alt={item.name} /> : <span aria-hidden="true" />}
+          </button>
         </article>
       </div>
     );
@@ -2071,7 +1984,7 @@ export default function App() {
     <main className="app-shell">
       <section className="content-grid">
         <div className="current-outfit-panel">
-          <div className="outfit-stage">
+          <div ref={outfitStageRef} className="outfit-stage">
             {accessoriesEnabled ? (
               <div className="accessory-ring">
                 {accessorySlots.map((slot) => renderAccessorySlot(slot))}
@@ -2101,7 +2014,7 @@ export default function App() {
         </div>
 
         {activeOutfitSlot || activeAccessorySlot ? (
-          <div className={`picker-overlay ${getPickerPositionClass()}`}>
+          <div ref={pickerOverlayRef} className={`picker-overlay ${getPickerPositionClass()}`}>
             {activeOutfitSlot ? renderOutfitSlotPicker() : renderAccessoryPicker()}
           </div>
         ) : null}
@@ -2114,6 +2027,15 @@ export default function App() {
             aria-pressed={controlsOpen && !activePanel}
           >
             CONTROLS
+          </button>
+          <button type="button" className="workspace-tab" onClick={handleGenerate}>
+            Generate
+          </button>
+          <button type="button" className="workspace-tab" onClick={saveCurrentOutfit}>
+            Save
+          </button>
+          <button type="button" className="workspace-tab" onClick={handleExportOutfitImage}>
+            Export image
           </button>
           {[
             ["saved", "Saved outfits"],
@@ -2147,12 +2069,6 @@ export default function App() {
               </button>
             </div>
 
-            <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-              Save outfit
-            </button>
-            <button type="button" className="primary-button" onClick={handleGenerate}>
-              Generate outfit
-            </button>
             <button type="button" className="secondary-button" onClick={toggleLayering}>
               Layering: {layering ? "On" : "Off"}
             </button>
@@ -2164,6 +2080,9 @@ export default function App() {
             </button>
             <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
               Import backup
+            </button>
+            <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
+              Reset to default
             </button>
             <input
               ref={importBackupRef}
@@ -2291,12 +2210,24 @@ export default function App() {
             <div>
               <p className="eyebrow">Wardrobe</p>
             </div>
-            <button type="button" className="primary-button" onClick={startCreate}>
-              Add item
+            <div className="wardrobe-header-actions">
+              <button type="button" className="secondary-button filter-button" onClick={() => setWardrobeFiltersOpen(true)}>
+                Filter
+              </button>
+              <button type="button" className="primary-button" onClick={startCreate}>
+                Add item
               </button>
             </div>
+            </div>
 
-            <div className="wardrobe-controls">
+            {wardrobeFiltersOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeFiltersOpen(false)} />
+            ) : null}
+
+            <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
+              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeFiltersOpen(false)}>
+                Close
+              </button>
               <label>
                 Brand
                 <select
@@ -2422,9 +2353,9 @@ export default function App() {
 
                     <div className="wardrobe-meta">
                       <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                      <span title={buildWardrobeDescription(item)}>{buildWardrobeDescription(item)}</span>
-                      <span title={`${item.color || "No color"} · ${formatCurrency(item.value)}`}>
-                        {item.color || "No color"} · {formatCurrency(item.value)}
+                      <span className="wardrobe-description" title={buildWardrobeDescription(item)}>{buildWardrobeDescription(item)}</span>
+                      <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)} · Retail ${formatCurrency(item.retailValue)}`}>
+                        {item.color || "No color"} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
                       </span>
                       <span title={normalizeList(item.list)}>{normalizeList(item.list)}</span>
                     </div>
@@ -2467,8 +2398,8 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <p className="eyebrow">Wardrobe worth</p>
-                <h2>{formatCurrency(wardrobeWorth.totalValue)}</h2>
-                <span>{wardrobeWorth.totalCount} wardrobe pieces</span>
+                <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
+                <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
               </div>
             </div>
 
@@ -2477,13 +2408,21 @@ export default function App() {
                 <div key={row.category} className="worth-row">
                   <div className="worth-row-header">
                     <strong>{row.category}</strong>
-                    <span>{row.count} pieces · {formatCurrency(row.value)}</span>
+                    <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
                   </div>
-                  <div className="worth-bar-track" aria-hidden="true">
+                  <div className="worth-bar-stack" aria-hidden="true">
+                  <div className="worth-bar-track">
+                    <div
+                      className="worth-bar worth-bar-retail"
+                      style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
+                    />
+                  </div>
+                  <div className="worth-bar-track">
                     <div
                       className="worth-bar"
                       style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
                     />
+                  </div>
                   </div>
                 </div>
               ))}
@@ -2510,7 +2449,13 @@ export default function App() {
               <div className="fitpic-list">
                 {fitpics.map((fitpic) => (
                   <article key={fitpic.id} className="fitpic-card">
-                    <img src={fitpic.imageData} alt={fitpic.name} />
+                    <button
+                      type="button"
+                      className="fitpic-image-button"
+                      onClick={() => setFitpicPreview(fitpic)}
+                    >
+                      <img src={fitpic.imageData} alt={fitpic.name} />
+                    </button>
                     <div>
                       <strong>{fitpic.name}</strong>
                       <span>{new Date(fitpic.createdAt).toLocaleDateString()}</span>
@@ -2531,6 +2476,14 @@ export default function App() {
         ) : null}
         </div>
         </div>
+        ) : null}
+
+        {fitpicPreview ? (
+          <div className="floating-backdrop fitpic-preview-backdrop" onClick={() => setFitpicPreview(null)}>
+            <div className="fitpic-preview-overlay" onClick={(event) => event.stopPropagation()}>
+              <img src={fitpicPreview.imageData} alt={fitpicPreview.name} />
+            </div>
+          </div>
         ) : null}
       </section>
     </main>

@@ -1,9 +1,14 @@
 import defaultWardrobe from "../data/defaultWardrobe";
+import defaultAppState from "../data/defaultAppState";
 
 const DB_NAME = "outfit-app-db";
 const DB_VERSION = 1;
 const ITEM_STORE = "items";
 const APP_STORE = "appState";
+
+function cloneData(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
@@ -153,4 +158,16 @@ export async function replaceWithBackup(backup) {
       value: backup.appState
     });
   });
+}
+
+export function getDefaultData() {
+  return {
+    items: cloneData(defaultWardrobe),
+    appState: cloneData(defaultAppState)
+  };
+}
+
+export async function resetToDefaults() {
+  await replaceWithBackup(getDefaultData());
+  return getDefaultData();
 }

@@ -226,6 +226,10 @@ button:disabled {
   z-index: 19;
 }
 
+.filter-backdrop {
+  z-index: 34;
+}
+
 .active-panel-overlay {
   position: fixed;
   left: 50%;
@@ -611,6 +615,23 @@ button:disabled {
   position: relative;
 }
 
+.outfit-slot-headwear {
+  min-height: 72px;
+}
+
+.outfit-slot-topinner,
+.outfit-slot-topouter {
+  min-height: 188px;
+}
+
+.outfit-slot-bottom {
+  min-height: 140px;
+}
+
+.outfit-slot-footwear {
+  min-height: 84px;
+}
+
 .outfit-slot.is-active {
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.16));
 }
@@ -658,10 +679,14 @@ button:disabled {
 }
 
 .outfit-slot .item-figure {
-  min-height: unset;
+  min-height: inherit;
   padding: 0;
   background: transparent;
   border-radius: 0;
+}
+
+.outfit-slot .item-figure.is-empty {
+  opacity: 0;
 }
 
 .reroll-icon {
@@ -775,6 +800,18 @@ button:disabled {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
+}
+
+.wardrobe-header-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.filter-close-button,
+.filter-button {
+  display: none;
 }
 
 .wardrobe-controls label {
@@ -1065,6 +1102,15 @@ button:disabled {
   background: var(--primary);
 }
 
+.worth-bar-stack {
+  display: grid;
+  gap: 3px;
+}
+
+.worth-bar-retail {
+  background: var(--border-strong);
+}
+
 .fitpic-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1091,6 +1137,37 @@ button:disabled {
   object-fit: cover;
   border-radius: var(--radius-panel);
   background: var(--preview-end);
+}
+
+.fitpic-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.fitpic-preview-backdrop {
+  z-index: 48;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.fitpic-preview-overlay {
+  max-width: min(980px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+}
+
+.fitpic-preview-overlay img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 64px);
+  object-fit: contain;
 }
 
 .saved-outfit-form {
@@ -1314,7 +1391,7 @@ button:disabled {
   .controls-window {
     left: 12px;
     bottom: calc(72px + env(safe-area-inset-bottom));
-    width: min(230px, calc(100vw - 24px));
+    width: min(260px, calc(100vw - 24px));
   }
 
   .workspace-tabs {
@@ -1366,44 +1443,132 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .wardrobe-panel,
-  .side-editor {
+  .wardrobe-panel {
     position: static;
+    height: 100%;
+  }
+
+  .side-editor {
+    position: fixed;
+    inset: 14px 10px calc(86px + env(safe-area-inset-bottom));
+    z-index: 46;
+    display: none;
     height: auto;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    backdrop-filter: blur(18px);
+  }
+
+  .side-editor.is-open {
+    display: flex;
   }
 
   .top-layer-row {
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
+    gap: 0;
   }
 
-  .outfit-stage,
+  .outfit-stage {
+    width: 620px;
+    min-height: 680px;
+    transform: scale(0.68);
+    transform-origin: top center;
+    margin: 0 auto -218px;
+  }
+
   .outfit-grid {
-    height: auto;
-    min-height: auto;
+    min-height: 680px;
   }
 
   .accessory-ring {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-    gap: 10px;
-    margin-bottom: 16px;
+    position: absolute;
+    display: block;
+    inset: 0;
+    margin: 0;
   }
 
   .accessory-slot {
-    position: static;
-    transform: none;
-    width: auto;
-    min-height: 96px;
+    position: absolute;
+    transform: scale(0.72);
+    transform-origin: center;
   }
 
   .top-layer-row .outfit-slot {
-    width: min(100%, 280px);
+    width: 240px;
   }
 
   .outfit-slot-wrap {
-    flex-direction: column;
+    flex-direction: row;
+  }
+
+  .wardrobe-header-actions {
+    justify-content: stretch;
+  }
+
+  .wardrobe-header-actions > button {
+    flex: 1;
+  }
+
+  .filter-button,
+  .filter-close-button {
+    display: inline-grid;
+  }
+
+  .wardrobe-controls {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: 16px;
+    z-index: 45;
+    display: none;
+    max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
+    overflow: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    backdrop-filter: blur(18px);
+  }
+
+  .wardrobe-controls.is-open {
+    display: grid;
+  }
+
+  .filter-close-button,
+  .clear-laundry-button {
+    grid-column: 1 / -1;
+  }
+
+  .wardrobe-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .wardrobe-card {
+    padding: 7px;
+    gap: 6px;
+  }
+
+  .wardrobe-preview {
+    min-height: 92px;
+    padding: 8px;
+  }
+
+  .wardrobe-preview img {
+    max-height: 104px;
+  }
+
+  .wardrobe-description {
+    display: none;
+  }
+
+  .card-actions .ghost-button {
+    padding: 4px 5px;
+    font-size: 0.62rem;
   }
 
   .slot-picker-list {
