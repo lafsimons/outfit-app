@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { deleteItem, loadAppState, loadItems, saveAppState, saveItem } from "./lib/storage";
+import {
+  deleteItem,
+  exportBackup,
+  loadAppState,
+  loadItems,
+  replaceWithBackup,
+  saveAppState,
+  saveItem
+} from "./lib/storage";
 
 const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
   eager: true,
@@ -580,8 +588,30 @@ function readFileAsDataUrl(file) {
   });
 }
 
+function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
+function validateBackup(backup) {
+  return (
+    backup &&
+    backup.source === "outfit-app" &&
+    backup.version === 1 &&
+    Array.isArray(backup.items) &&
+    backup.appState &&
+    typeof backup.appState === "object" &&
+    !Array.isArray(backup.appState)
+  );
+}
+
 export default function App() {
   const editorRef = useRef(null);
+  const importBackupRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layering, setLayering] = useState(false);
@@ -961,6 +991,85 @@ export default function App() {
     }
 
     return nextOutfit;
+  }
+
+  function applyLoadedData(nextItems, nextAppState) {
+    const normalizedItems = nextItems.map(normalizeItem);
+
+    setItems(normalizedItems);
+    setLayering(Boolean(nextAppState?.layering));
+    setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
+    setLocked(nextAppState?.locked ?? {});
+    setExcluded(nextAppState?.excluded ?? {});
+    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists));
+    setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
+    setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
+    setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
+    setFitpics(nextAppState?.fitpics ?? []);
+    setWardrobeFilters({
+      brand: "",
+      type: "",
+      garmentType: "",
+      color: "",
+      laundry: "",
+      list: ""
+    });
+    setWardrobeSort("");
+    setEditingId(null);
+    setDraft(emptyForm);
+    setActivePanel(null);
+    setControlsOpen(true);
+    setActiveAccessorySlot(null);
+    setActiveOutfitSlot(null);
+    setPickerAnchorSlot(null);
+  }
+
+  async function handleExportBackup() {
+    const backup = await exportBackup();
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {
+      type: "application/json"
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `outfit-app-backup-${date}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImportBackup(event) {
+    const [file] = event.target.files;
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    let backup;
+
+    try {
+      backup = JSON.parse(await readFileAsText(file));
+    } catch {
+      window.alert("This backup file could not be read.");
+      return;
+    }
+
+    if (!validateBackup(backup)) {
+      window.alert("This is not a valid outfit app backup.");
+      return;
+    }
+
+    if (!window.confirm("Import this backup? This will replace all wardrobe data in this browser.")) {
+      return;
+    }
+
+    await replaceWithBackup(backup);
+    applyLoadedData(backup.items, backup.appState);
+    window.alert("Backup imported.");
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
@@ -2050,6 +2159,19 @@ export default function App() {
             <button type="button" className="secondary-button" onClick={toggleAccessories}>
               Accessories: {accessoriesEnabled ? "On" : "Off"}
             </button>
+            <button type="button" className="ghost-button" onClick={handleExportBackup}>
+              Export backup
+            </button>
+            <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
+              Import backup
+            </button>
+            <input
+              ref={importBackupRef}
+              type="file"
+              accept="application/json,.json"
+              className="backup-file-input"
+              onChange={handleImportBackup}
+            />
 
             <div className="generation-list-controls" aria-label="Generation lists">
               {itemLists.map((list) => (

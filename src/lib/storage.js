@@ -67,6 +67,33 @@ async function withStore(storeName, mode, run) {
   });
 }
 
+async function withStores(storeNames, mode, run) {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(storeNames, mode);
+    const stores = Object.fromEntries(storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]));
+
+    try {
+      run(stores);
+    } catch (error) {
+      reject(error);
+      db.close();
+      return;
+    }
+
+    transaction.oncomplete = () => {
+      resolve();
+      db.close();
+    };
+
+    transaction.onerror = () => {
+      reject(transaction.error);
+      db.close();
+    };
+  });
+}
+
 export async function loadItems() {
   const items = await withStore(ITEM_STORE, "readonly", (store) => store.getAll());
 
@@ -101,4 +128,29 @@ export async function saveAppState(value) {
       value
     })
   );
+}
+
+export async function exportBackup() {
+  const [items, appState] = await Promise.all([loadItems(), loadAppState()]);
+
+  return {
+    source: "outfit-app",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    items,
+    appState: appState ?? {}
+  };
+}
+
+export async function replaceWithBackup(backup) {
+  await withStores([ITEM_STORE, APP_STORE], "readwrite", ({ items, appState }) => {
+    items.clear();
+    appState.clear();
+
+    backup.items.forEach((item) => items.put(item));
+    appState.put({
+      key: "state",
+      value: backup.appState
+    });
+  });
 }

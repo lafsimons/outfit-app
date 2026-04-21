@@ -342,6 +342,10 @@ button:disabled {
   display: none;
 }
 
+.backup-file-input {
+  display: none;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button {
