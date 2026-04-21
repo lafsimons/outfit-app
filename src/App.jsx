@@ -698,6 +698,7 @@ export default function App() {
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
@@ -929,6 +930,8 @@ export default function App() {
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setFitpicPreview(null);
+    setEditorFloatingOpen(false);
+    setEditingId(null);
     setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists));
   }
 
@@ -1312,23 +1315,33 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
+    setEditorFloatingOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
   }
 
-  function startEdit(item) {
+  function startEdit(item, options = {}) {
     setWardrobeFiltersOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
+    setEditorFloatingOpen(Boolean(options.floating));
     setEditingId(item.id);
     setDraft(normalizeItem(item));
   }
 
   function cancelEdit() {
     setEditingId(null);
+    setEditorFloatingOpen(false);
     setDraft(emptyForm);
     setImageUploadError("");
     setImageProcessing(false);
+  }
+
+  function startFloatingEdit(item) {
+    startEdit(item, { floating: true });
+    closePickerOverlay();
+    setActivePanel(null);
+    setWardrobeFiltersOpen(false);
   }
 
   function toggleExcluded(itemId) {
@@ -1707,6 +1720,8 @@ export default function App() {
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
       setFitpicPreview(null);
+      setEditorFloatingOpen(false);
+      setEditingId(null);
       return nextPanel;
     });
   }
@@ -1727,6 +1742,8 @@ export default function App() {
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setFitpicPreview(null);
+    setEditorFloatingOpen(false);
+    setEditingId(null);
     setControlsOpen((current) => !current);
   }
 
@@ -1742,6 +1759,7 @@ export default function App() {
 
     const options = getSlotOptions(activeOutfitSlot);
     const isLocked = Boolean(locked[activeOutfitSlot]);
+    const currentItem = itemsById[outfit[activeOutfitSlot]];
 
     return (
       <div className="slot-picker">
@@ -1765,6 +1783,11 @@ export default function App() {
           <button type="button" className="ghost-button" onClick={() => cycleOutfitSlot(activeOutfitSlot, 1)}>
             Next
           </button>
+          {currentItem ? (
+            <button type="button" className="ghost-button" onClick={() => startFloatingEdit(currentItem)}>
+              Edit
+            </button>
+          ) : null}
           <button type="button" className="ghost-button danger" onClick={() => removeOutfitSlot(activeOutfitSlot)}>
             Remove
           </button>
@@ -2318,7 +2341,7 @@ export default function App() {
         ) : null}
 
         {activePanel ? (
-        <div className="floating-backdrop active-panel-backdrop" onClick={closeWorkspacePanel}>
+          <div className="floating-backdrop active-panel-backdrop" onClick={closeWorkspacePanel}>
         <div
           className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
           onClick={(event) => event.stopPropagation()}
@@ -2686,6 +2709,22 @@ export default function App() {
         ) : null}
         </div>
         </div>
+        ) : null}
+
+        {editorFloatingOpen && editingId ? (
+          <aside className="panel floating-item-editor">
+            <div className="panel-header side-editor-header">
+              <div>
+                <p className="eyebrow">Item editor</p>
+                <h2>{editorTitle}</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={cancelEdit}>
+                Close
+              </button>
+            </div>
+
+            {editorBody}
+          </aside>
         ) : null}
 
         {fitpicPreview ? (

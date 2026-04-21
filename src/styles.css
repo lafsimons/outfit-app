@@ -1233,6 +1233,25 @@ button:disabled {
   overflow: visible;
 }
 
+.floating-item-editor {
+  position: fixed;
+  top: 18px;
+  right: max(18px, calc((100vw - 1320px) / 2 + 20px));
+  z-index: 47;
+  width: min(430px, calc(100vw - 40px));
+  max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  overflow: visible;
+}
+
+.floating-item-editor > *:last-child {
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+
 .editor-placeholder {
   color: var(--muted-strong);
   display: grid;
@@ -1529,6 +1548,22 @@ button:disabled {
   }
 
   .side-editor > *:last-child {
+    overflow: auto;
+  }
+
+  .floating-item-editor {
+    top: 50%;
+    right: auto;
+    left: 50%;
+    bottom: auto;
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
+    transform: translate(-50%, -50%);
+    padding: 14px;
+    overflow: hidden;
+  }
+
+  .floating-item-editor > *:last-child {
     overflow: auto;
   }
 
