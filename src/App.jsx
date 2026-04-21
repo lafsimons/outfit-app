@@ -676,6 +676,7 @@ export default function App() {
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const generatePressedTimeoutRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layering, setLayering] = useState(false);
@@ -702,6 +703,7 @@ export default function App() {
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
+  const [generatePressed, setGeneratePressed] = useState(false);
   const [wardrobeFilters, setWardrobeFilters] = useState({
     brand: "",
     type: "",
@@ -862,6 +864,15 @@ export default function App() {
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      if (generatePressedTimeoutRef.current) {
+        window.clearTimeout(generatePressedTimeoutRef.current);
+      }
+    },
+    []
+  );
+
   useEffect(() => {
     if (loading) {
       return;
@@ -924,6 +935,11 @@ export default function App() {
   }, [activeOutfitSlot, activeAccessorySlot]);
 
   function handleGenerate() {
+    setGeneratePressed(true);
+    if (generatePressedTimeoutRef.current) {
+      window.clearTimeout(generatePressedTimeoutRef.current);
+    }
+    generatePressedTimeoutRef.current = window.setTimeout(() => setGeneratePressed(false), 180);
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
@@ -1505,7 +1521,13 @@ export default function App() {
       );
     }
 
+    const shouldReturnToWardrobe = editorFloatingOpen || activePanel !== "wardrobe";
     cancelEdit();
+
+    if (shouldReturnToWardrobe) {
+      setActivePanel("wardrobe");
+      setControlsOpen(false);
+    }
   }
 
   async function handleItemImageUpload(event) {
@@ -2253,7 +2275,11 @@ export default function App() {
         ) : null}
 
         <div className="workspace-tabs" aria-label="Workspace sections">
-          <button type="button" className="workspace-tab" onClick={handleGenerate}>
+          <button
+            type="button"
+            className={`workspace-tab ${generatePressed ? "is-active" : ""}`}
+            onClick={handleGenerate}
+          >
             Generate
           </button>
           <button
