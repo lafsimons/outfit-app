@@ -1,20 +1,37 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { deleteItem, loadAppState, loadItems, saveAppState, saveItem } from "./lib/storage";
 
-const imageLibrary = Object.keys(
-  import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", { eager: true })
-)
-  .map((path) => {
+const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
+  eager: true,
+  query: "?url",
+  import: "default"
+});
+
+const imageAssetEntries = Object.entries(imageAssets)
+  .map(([path, imageUrl]) => {
     const filename = path.split("/").pop();
 
     return filename && !filename.startsWith(".")
       ? {
           filename,
-          imageUrl: `/images/${filename}`
+          imageUrl
         }
       : null;
   })
   .filter(Boolean);
+const imageUrlByFilename = Object.fromEntries(
+  imageAssetEntries.map((image) => [image.filename, image.imageUrl])
+);
+const imageLibrary = imageAssetEntries;
+
+function resolveImageUrl(imageUrl) {
+  if (!imageUrl?.startsWith("/images/")) {
+    return imageUrl;
+  }
+
+  const filename = imageUrl.split("/").pop();
+  return imageUrlByFilename[filename] ?? imageUrl;
+}
 
 const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
 const garmentTypes = [
@@ -428,7 +445,7 @@ function normalizeItem(item) {
   return {
     ...emptyForm,
     ...item,
-    imageUrl: item.imageUrl ?? item.img ?? "",
+    imageUrl: resolveImageUrl(item.imageUrl ?? item.img ?? ""),
     type: normalizeItemType(item.type ?? ""),
     list: normalizeList(item.list)
   };
