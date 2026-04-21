@@ -1230,7 +1230,7 @@ button:disabled {
 .side-editor > *:last-child {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .editor-placeholder {
@@ -1328,23 +1328,23 @@ button:disabled {
 .editor-form {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .item-image-upload {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: minmax(120px, 160px) 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(96px, 126px) 1fr;
+  gap: 8px;
   align-items: start;
-  padding: 10px;
+  padding: 7px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel);
   background: var(--surface-soft);
 }
 
 .item-image-preview {
-  min-height: 150px;
+  min-height: 104px;
   display: grid;
   place-items: center;
   border: 1px solid var(--border-soft);
@@ -1358,7 +1358,7 @@ button:disabled {
 .item-image-preview img {
   display: block;
   width: 100%;
-  max-height: 180px;
+  max-height: 120px;
   object-fit: contain;
 }
 
@@ -1373,7 +1373,7 @@ button:disabled {
 .form-error {
   grid-column: 2;
   margin: 0;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   line-height: 1.35;
 }
 
@@ -1388,9 +1388,9 @@ button:disabled {
 
 .editor-form label {
   display: grid;
-  gap: 5px;
+  gap: 4px;
   color: var(--text);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -1402,8 +1402,8 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface-solid);
-  padding: 8px 9px;
-  font-size: 0.76rem;
+  padding: 6px 8px;
+  font-size: 0.72rem;
 }
 
 .form-actions {
@@ -1413,8 +1413,8 @@ button:disabled {
 .id-preview {
   grid-column: 1 / -1;
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 3px;
+  padding: 7px 9px;
   border-radius: var(--radius-panel);
   background: var(--soft);
   color: var(--text);
@@ -1526,6 +1526,10 @@ button:disabled {
 
   .side-editor.is-open {
     display: flex;
+  }
+
+  .side-editor > *:last-child {
+    overflow: auto;
   }
 
   .item-image-upload {

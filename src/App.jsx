@@ -606,12 +606,16 @@ function canvasToDataUrl(canvas, type, quality) {
   return dataUrl.startsWith(`data:${type}`) ? dataUrl : "";
 }
 
-async function compressImageFile(file, maxDimension = 1400, quality = 0.86) {
-  if (!file.type.startsWith("image/")) {
+function isLocalDataImage(imageUrl) {
+  return imageUrl.trim().startsWith("data:image/");
+}
+
+async function compressImageSource(source, maxDimension = 1400, quality = 0.86) {
+  if (!source.type.startsWith("image/")) {
     throw new Error("Selected file is not an image.");
   }
 
-  const dataUrl = await readFileAsDataUrl(file);
+  const dataUrl = await readFileAsDataUrl(source);
   const image = await loadImage(dataUrl);
   const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
@@ -629,6 +633,11 @@ async function compressImageFile(file, maxDimension = 1400, quality = 0.86) {
   context.drawImage(image, 0, 0, width, height);
 
   return canvasToDataUrl(canvas, "image/webp", quality) || canvas.toDataURL("image/png");
+}
+
+async function dataUrlToBlob(dataUrl) {
+  const response = await fetch(dataUrl);
+  return response.blob();
 }
 
 function readFileAsText(file) {
@@ -681,6 +690,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [imageProcessing, setImageProcessing] = useState(false);
   const [wardrobeFilters, setWardrobeFilters] = useState({
     brand: "",
     type: "",
@@ -733,6 +743,7 @@ export default function App() {
     }),
     [items]
   );
+  const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const visibleWardrobeItems = useMemo(() => {
     const filtered = items.filter((item) =>
       matchesMetadataFilter(item.brand, wardrobeFilters.brand) &&
@@ -1290,6 +1301,7 @@ export default function App() {
   function startCreate() {
     setWardrobeFiltersOpen(false);
     setImageUploadError("");
+    setImageProcessing(false);
     setEditingId("new");
     setDraft(emptyForm);
   }
@@ -1297,6 +1309,7 @@ export default function App() {
   function startEdit(item) {
     setWardrobeFiltersOpen(false);
     setImageUploadError("");
+    setImageProcessing(false);
     setEditingId(item.id);
     setDraft(normalizeItem(item));
   }
@@ -1305,6 +1318,7 @@ export default function App() {
     setEditingId(null);
     setDraft(emptyForm);
     setImageUploadError("");
+    setImageProcessing(false);
   }
 
   function toggleExcluded(itemId) {
@@ -1480,7 +1494,7 @@ export default function App() {
 
     try {
       setImageUploadError("");
-      const imageUrl = await compressImageFile(file);
+      const imageUrl = await compressImageSource(file);
       setDraft((current) => ({ ...current, imageUrl }));
     } catch (error) {
       setImageUploadError(error?.message || "This image could not be processed.");
@@ -1492,6 +1506,33 @@ export default function App() {
   function removeDraftImage() {
     setDraft((current) => ({ ...current, imageUrl: "" }));
     setImageUploadError("");
+  }
+
+  async function removeDraftBackground() {
+    const originalImageUrl = draft.imageUrl.trim();
+
+    if (!isLocalDataImage(originalImageUrl) || imageProcessing) {
+      return;
+    }
+
+    try {
+      setImageProcessing(true);
+      setImageUploadError("");
+      const inputBlob = await dataUrlToBlob(originalImageUrl);
+      const { default: removeBackground } = await import("@imgly/background-removal");
+      const transparentBlob = await removeBackground(inputBlob, {
+        output: {
+          format: "image/png",
+          quality: 0.9
+        }
+      });
+      const compressedImageUrl = await compressImageSource(transparentBlob);
+      setDraft((current) => ({ ...current, imageUrl: compressedImageUrl }));
+    } catch (error) {
+      setImageUploadError(error?.message || "Background could not be removed.");
+    } finally {
+      setImageProcessing(false);
+    }
   }
 
   async function handleDelete(itemId) {
@@ -1903,16 +1944,24 @@ export default function App() {
         <div className="item-image-actions">
           <label className="upload-button">
             {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-            <input type="file" accept="image/*" onChange={handleItemImageUpload} />
+            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
           </label>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={removeDraftBackground}
+            disabled={!canRemoveDraftBackground || imageProcessing}
+          >
+            {imageProcessing ? "Removing..." : "Remove background"}
+          </button>
           {draft.imageUrl.trim() ? (
-            <button type="button" className="ghost-button" onClick={removeDraftImage}>
+            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
               Remove image
             </button>
           ) : null}
         </div>
         <p className="item-image-note">
-          Images are saved in this browser and included in backup JSON. Large uploads are compressed.
+          Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
         </p>
         {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
       </div>
