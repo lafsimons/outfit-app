@@ -820,6 +820,12 @@ button:disabled {
   display: none;
 }
 
+.filter-button.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-text);
+}
+
 .wardrobe-controls label {
   display: grid;
   gap: 5px;

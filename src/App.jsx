@@ -899,6 +899,8 @@ export default function App() {
     [items]
   );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
+  const activeWardrobeFilterCount = Object.values(wardrobeFilters).filter(Boolean).length;
+  const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -2844,8 +2846,18 @@ export default function App() {
               <p className="eyebrow">Wardrobe</p>
             </div>
             <div className="wardrobe-header-actions">
-              <button type="button" className="secondary-button filter-button" onClick={() => setWardrobeFiltersOpen(true)}>
-                Filter
+              <button
+                type="button"
+                className={`secondary-button filter-button ${hasActiveWardrobeFilters ? "is-active" : ""}`}
+                onClick={() => setWardrobeFiltersOpen(true)}
+                aria-pressed={hasActiveWardrobeFilters}
+                title={
+                  hasActiveWardrobeFilters
+                    ? `${activeWardrobeFilterCount} active filter${activeWardrobeFilterCount === 1 ? "" : "s"}`
+                    : "No active filters"
+                }
+              >
+                {hasActiveWardrobeFilters ? `Filter ${activeWardrobeFilterCount}` : "Filter"}
               </button>
               <button type="button" className="primary-button" onClick={startCreate}>
                 Add item
