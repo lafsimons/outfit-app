@@ -322,6 +322,19 @@ button:disabled {
   transform: translateY(-1px);
 }
 
+.workspace-tab-icon {
+  width: 30px;
+  min-width: 30px;
+  padding: 6px;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.workspace-tab-icon span {
+  display: block;
+  transform: rotate(90deg);
+}
+
 .list-toggle,
 .upload-button {
   border: 1px solid var(--border);

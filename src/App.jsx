@@ -2840,11 +2840,13 @@ export default function App() {
           </button>
           <button
             type="button"
-            className={`workspace-tab ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
+            className={`workspace-tab workspace-tab-icon ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
             onClick={toggleOutfitFiltersWindow}
             aria-pressed={outfitFiltersOpen && !activePanel}
+            aria-label="Outfit filters"
+            title="Outfit filters"
           >
-            Outfit filters
+            <span aria-hidden="true">⌯</span>
           </button>
           {[
             ["saved", "Saved outfits"],
