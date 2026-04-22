@@ -2586,6 +2586,39 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
+      <div className="item-image-upload">
+        <div className="item-image-preview">
+          {draft.imageUrl.trim() ? (
+            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
+          ) : (
+            <span>No image selected</span>
+          )}
+        </div>
+        <div className="item-image-actions">
+          <label className="upload-button">
+            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
+            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
+          </label>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={removeDraftBackground}
+            disabled={!canRemoveDraftBackground || imageProcessing}
+          >
+            {imageProcessing ? "Removing..." : "Remove background"}
+          </button>
+          {draft.imageUrl.trim() ? (
+            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
+              Remove image
+            </button>
+          ) : null}
+        </div>
+        <p className="item-image-note">
+          Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
+        </p>
+        {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
+      </div>
+
       <label>
         Type
         <select
@@ -2722,39 +2755,6 @@ export default function App() {
         Favorite
       </label>
 
-      <div className="item-image-upload">
-        <div className="item-image-preview">
-          {draft.imageUrl.trim() ? (
-            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
-          ) : (
-            <span>No image selected</span>
-          )}
-        </div>
-        <div className="item-image-actions">
-          <label className="upload-button">
-            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
-          </label>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={removeDraftBackground}
-            disabled={!canRemoveDraftBackground || imageProcessing}
-          >
-            {imageProcessing ? "Removing..." : "Remove background"}
-          </button>
-          {draft.imageUrl.trim() ? (
-            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
-              Remove image
-            </button>
-          ) : null}
-        </div>
-        <p className="item-image-note">
-          Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
-        </p>
-        {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
-      </div>
-
       <label>
         Image size
         <div className="image-scale-control">
@@ -2778,70 +2778,6 @@ export default function App() {
           />
           <span>%</span>
         </div>
-      </label>
-
-      <div className="image-position-controls">
-        <label>
-          Image X
-          <div className="image-scale-control">
-            <input
-              type="range"
-              min="-50"
-              max="50"
-              step="1"
-              value={normalizeImageOffset(draft.imageOffsetX)}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, imageOffsetX: Number(event.target.value) }))
-              }
-            />
-            <input
-              inputMode="numeric"
-              value={normalizeImageOffset(draft.imageOffsetX)}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, imageOffsetX: normalizeImageOffset(event.target.value) }))
-              }
-              aria-label="Image horizontal position"
-            />
-            <span>%</span>
-          </div>
-        </label>
-
-        <label>
-          Image Y
-          <div className="image-scale-control">
-            <input
-              type="range"
-              min="-50"
-              max="50"
-              step="1"
-              value={normalizeImageOffset(draft.imageOffsetY)}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, imageOffsetY: Number(event.target.value) }))
-              }
-            />
-            <input
-              inputMode="numeric"
-              value={normalizeImageOffset(draft.imageOffsetY)}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, imageOffsetY: normalizeImageOffset(event.target.value) }))
-              }
-              aria-label="Image vertical position"
-            />
-            <span>%</span>
-          </div>
-        </label>
-      </div>
-
-      <label>
-        Image URL
-        <input
-          value={draft.imageUrl}
-          onChange={(event) => {
-            setImageUploadError("");
-            setDraft((current) => ({ ...current, imageUrl: event.target.value }));
-          }}
-          placeholder="/images/item.png"
-        />
       </label>
 
       <label>

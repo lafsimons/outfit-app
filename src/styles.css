@@ -278,11 +278,12 @@ button:disabled {
 
 .picker-overlay {
   position: fixed;
-  left: 50%;
+  top: auto;
+  left: 16px;
   right: auto;
   bottom: calc(78px + env(safe-area-inset-bottom));
   z-index: 40;
-  width: min(520px, calc(100vw - 40px));
+  width: min(340px, calc(100vw - 48px));
   max-height: min(42vh, 390px);
   overflow: hidden;
   padding: 12px;
@@ -291,12 +292,12 @@ button:disabled {
   background: rgba(255, 255, 255, 0.94);
   box-shadow: none;
   backdrop-filter: blur(18px);
-  transform: translateX(-50%);
+  transform: none;
 }
 
 .picker-overlay-right,
 .picker-overlay-left {
-  left: 50%;
+  left: 16px;
   right: auto;
 }
 
