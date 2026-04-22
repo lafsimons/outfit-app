@@ -375,6 +375,12 @@ button:disabled {
   color: var(--text);
 }
 
+.secondary-button.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
 .ghost-button {
   background: var(--soft);
   color: var(--text);
@@ -572,6 +578,7 @@ button:disabled {
 
 .accessory-picker-item,
 .slot-picker-item {
+  position: relative;
   display: grid;
   gap: 6px;
   justify-items: center;
@@ -582,6 +589,49 @@ button:disabled {
   background: var(--surface-solid);
   color: var(--text);
   font-size: 0.7rem;
+}
+
+.slot-picker-select {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
+
+.slot-picker-item.is-excluded .slot-picker-select {
+  opacity: 0.42;
+  text-decoration: line-through;
+}
+
+.picker-exclude-toggle {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: rgba(255, 255, 255, 0.94);
+  color: var(--text);
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.picker-exclude-toggle.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
 }
 
 .accessory-picker-item img,
@@ -596,6 +646,31 @@ button:disabled {
 .accessory-picker-item.is-current,
 .slot-picker-item.is-current {
   box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.outfit-filters-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.outfit-filter-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.outfit-filter-group {
+  display: grid;
+  gap: 7px;
+}
+
+.outfit-filter-group .eyebrow {
+  margin: 0;
+}
+
+.outfit-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
 .outfit-slot,

@@ -22,6 +22,11 @@ const defaultAppState = {
     Wardrobe: true,
     Wishlist: false
   },
+  outfitFilters: {
+    style: [],
+    climate: [],
+    color: []
+  },
   fitpics: []
 };
 

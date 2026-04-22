@@ -91,6 +91,16 @@ const defaultGenerationLists = {
   Wardrobe: true,
   Wishlist: false
 };
+const outfitFilterOptions = {
+  style: ["Casual", "Formal", "Athleisure", "Going Out"],
+  climate: ["Cold", "Warm", "Hot", "Snow", "Rain", "Indoor", "Transitional"],
+  color: ["Light", "Dark", "Monochrome", "Colorful"]
+};
+const emptyOutfitFilters = {
+  style: [],
+  climate: [],
+  color: []
+};
 const emptyWardrobeFilters = {
   brand: "",
   type: "",
@@ -702,6 +712,17 @@ function normalizeGenerationLists(generationLists) {
   };
 }
 
+function normalizeOutfitFilters(outfitFilters) {
+  return Object.fromEntries(
+    Object.entries(outfitFilterOptions).map(([group, options]) => [
+      group,
+      Array.isArray(outfitFilters?.[group])
+        ? outfitFilters[group].filter((value) => options.includes(value))
+        : []
+    ])
+  );
+}
+
 function buildWardrobeDescription(item) {
   const parts = [item.garmentType];
   const accessoryLabel = item.accessorySlot ? getAccessoryLabel(item.accessorySlot) : "";
@@ -854,6 +875,7 @@ export default function App() {
   const [savedOutfits, setSavedOutfits] = useState([]);
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
+  const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
   const [wardrobeWorthVisible, setWardrobeWorthVisible] = useState(true);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -1081,6 +1103,7 @@ export default function App() {
         setIgnoredImportImages(storedAppState.ignoredImportImages ?? []);
         setSavedOutfits((storedAppState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
+        setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
         setFitpics(storedAppState.fitpics ?? []);
       } else {
         const defaultData = getDefaultData();
@@ -1093,6 +1116,7 @@ export default function App() {
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits((defaultState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
+        setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
         setFitpics(defaultState.fitpics ?? []);
       }
 
@@ -1120,9 +1144,10 @@ export default function App() {
       ignoredImportImages,
       savedOutfits,
       generationLists,
+      outfitFilters,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -1267,6 +1292,23 @@ export default function App() {
     return pool;
   }
 
+  function getSlotPickerOptions(slot) {
+    let pool = getPool(items, slot, {}, generationLists, layering);
+
+    if (layering && (slot === "TopInner" || slot === "TopOuter")) {
+      const otherTopSlot = getOtherTopSlot(slot);
+      const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
+
+      if (otherItem?.layerType === "Both") {
+        pool = pool.filter((item) => item.layerType !== "Both");
+      }
+
+      pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
+    }
+
+    return pool;
+  }
+
   function getAccessoryOptions(slot) {
     return items.filter(
       (item) =>
@@ -1386,6 +1428,7 @@ export default function App() {
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
+    setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
     setFitpics(nextAppState?.fitpics ?? []);
     setWardrobeFilters(emptyWardrobeFilters);
     setWardrobeSort("");
@@ -1716,6 +1759,24 @@ export default function App() {
 
   function clearWardrobeFilters() {
     setWardrobeFilters(emptyWardrobeFilters);
+  }
+
+  function toggleOutfitFilter(group, value) {
+    setOutfitFilters((current) => {
+      const selectedValues = current[group] ?? [];
+      const isSelected = selectedValues.includes(value);
+
+      return {
+        ...current,
+        [group]: isSelected
+          ? selectedValues.filter((selectedValue) => selectedValue !== value)
+          : [...selectedValues, value]
+      };
+    });
+  }
+
+  function clearOutfitFilters() {
+    setOutfitFilters(emptyOutfitFilters);
   }
 
   function toggleGenerationList(list) {
@@ -2120,7 +2181,7 @@ export default function App() {
       return null;
     }
 
-    const options = getSlotOptions(activeOutfitSlot);
+    const options = getSlotPickerOptions(activeOutfitSlot);
     const isLocked = Boolean(locked[activeOutfitSlot]);
     const currentItem = itemsById[outfit[activeOutfitSlot]];
 
@@ -2162,17 +2223,36 @@ export default function App() {
 
         {options.length ? (
           <div className="slot-picker-list">
-            {options.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`slot-picker-item ${outfit[activeOutfitSlot] === item.id ? "is-current" : ""}`}
-                onClick={() => setOutfitSlot(activeOutfitSlot, item.id)}
-              >
-                <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
-                <span>{buildDisplayName(item)}</span>
-              </button>
-            ))}
+            {options.map((item) => {
+              const isExcluded = Boolean(excluded[item.id]);
+
+              return (
+                <article
+                  key={item.id}
+                  className={`slot-picker-item ${outfit[activeOutfitSlot] === item.id ? "is-current" : ""} ${isExcluded ? "is-excluded" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="slot-picker-select"
+                    onClick={() => setOutfitSlot(activeOutfitSlot, item.id)}
+                  >
+                    <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
+                    <span>{buildDisplayName(item)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`picker-exclude-toggle ${isExcluded ? "is-active" : ""}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleExcluded(item.id);
+                    }}
+                    aria-label={isExcluded ? "Include item in generation" : "Exclude item from generation"}
+                  >
+                    {isExcluded ? "×" : "✓"}
+                  </button>
+                </article>
+              );
+            })}
           </div>
         ) : (
           <div className="editor-placeholder">
@@ -2738,6 +2818,7 @@ export default function App() {
             CONTROLS
           </button>
           {[
+            ["filters", "Outfit filters"],
             ["saved", "Saved outfits"],
             ["wardrobe", "Wardrobe"],
             ["worth", "Wardrobe worth"],
@@ -2769,10 +2850,10 @@ export default function App() {
               </button>
             </div>
 
-            <button type="button" className="secondary-button" onClick={toggleLayering}>
+            <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
               Layering: {layering ? "On" : "Off"}
             </button>
-            <button type="button" className="secondary-button" onClick={toggleAccessories}>
+            <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
               Accessories: {accessoriesEnabled ? "On" : "Off"}
             </button>
             <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
@@ -2819,6 +2900,42 @@ export default function App() {
           className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
           onClick={(event) => event.stopPropagation()}
         >
+        {activePanel === "filters" ? (
+        <div className="panel outfit-filters-panel">
+          <div className="panel-header">
+            <p className="eyebrow">Outfit filters</p>
+            <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+              Clear outfit filters
+            </button>
+          </div>
+
+          <div className="outfit-filter-groups">
+            {Object.entries(outfitFilterOptions).map(([group, options]) => (
+              <section key={group} className="outfit-filter-group">
+                <p className="eyebrow">{group}</p>
+                <div className="outfit-filter-options">
+                  {options.map((option) => {
+                    const isSelected = outfitFilters[group]?.includes(option);
+
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                        onClick={() => toggleOutfitFilter(group, option)}
+                        aria-pressed={isSelected}
+                      >
+                        {option}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+        ) : null}
+
         {activePanel === "saved" ? (
         <div className="panel saved-outfits-panel">
           <div className="panel-header">
