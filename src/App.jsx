@@ -889,7 +889,6 @@ export default function App() {
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
-  const [wardrobeWorthVisible, setWardrobeWorthVisible] = useState(true);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -900,6 +899,7 @@ export default function App() {
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
+  const [wardrobeWorthOpen, setWardrobeWorthOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
@@ -1252,6 +1252,12 @@ export default function App() {
         return;
       }
 
+      if (wardrobeWorthOpen) {
+        event.preventDefault();
+        setWardrobeWorthOpen(false);
+        return;
+      }
+
       if (wardrobeManageOpen) {
         event.preventDefault();
         setWardrobeManageOpen(false);
@@ -1275,6 +1281,7 @@ export default function App() {
     editorFloatingOpen,
     fitpicPreview,
     wardrobeFiltersOpen,
+    wardrobeWorthOpen,
     wardrobeManageOpen
   ]);
 
@@ -1284,6 +1291,7 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setOutfitFiltersOpen(false);
     setFitpicPreview(null);
@@ -1477,6 +1485,7 @@ export default function App() {
     setPickerAnchorSlot(null);
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
   }
 
@@ -1798,6 +1807,7 @@ export default function App() {
 
   function startCreate() {
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
@@ -1809,6 +1819,7 @@ export default function App() {
 
   function startEdit(item, options = {}) {
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
@@ -1832,6 +1843,7 @@ export default function App() {
     closePickerOverlay();
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
   }
 
@@ -2252,6 +2264,7 @@ export default function App() {
       setActiveAccessorySlot(null);
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
+      setWardrobeWorthOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
       setEditorFloatingOpen(false);
@@ -2264,6 +2277,7 @@ export default function App() {
   function closeWorkspacePanel() {
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
   }
@@ -2277,6 +2291,7 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setOutfitFiltersOpen(false);
     setFitpicPreview(null);
@@ -2291,12 +2306,20 @@ export default function App() {
   }
 
   function openWardrobeFilters() {
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
     setWardrobeFiltersOpen(true);
   }
 
+  function toggleWardrobeWorth() {
+    setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
+    setWardrobeWorthOpen((current) => !current);
+  }
+
   function toggleWardrobeManage() {
     setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
     setWardrobeManageOpen((current) => !current);
   }
 
@@ -2893,7 +2916,6 @@ export default function App() {
           {[
             ["saved", "Saved outfits"],
             ["wardrobe", "Wardrobe"],
-            ["worth", "Wardrobe worth"],
             ["fitpics", "Fitpics"]
           ].map(([panel, label]) => (
             <button
@@ -3111,6 +3133,14 @@ export default function App() {
               </button>
               <button
                 type="button"
+                className={`secondary-button ${wardrobeWorthOpen ? "is-active" : ""}`}
+                onClick={toggleWardrobeWorth}
+                aria-expanded={wardrobeWorthOpen}
+              >
+                Worth
+              </button>
+              <button
+                type="button"
                 className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                 onClick={toggleWardrobeManage}
                 aria-expanded={wardrobeManageOpen}
@@ -3125,6 +3155,10 @@ export default function App() {
 
             {wardrobeFiltersOpen ? (
               <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeFiltersOpen(false)} />
+            ) : null}
+
+            {wardrobeWorthOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeWorthOpen(false)} />
             ) : null}
 
             {wardrobeManageOpen ? (
@@ -3257,6 +3291,42 @@ export default function App() {
               </button>
             </div>
 
+            <div className={`wardrobe-worth-window ${wardrobeWorthOpen ? "is-open" : ""}`} aria-label="Wardrobe worth">
+              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeWorthOpen(false)}>
+                Close
+              </button>
+              <div className="wardrobe-worth-summary">
+                <p className="eyebrow">Wardrobe worth</p>
+                <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
+                <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
+              </div>
+
+              <div className="worth-chart">
+                {wardrobeWorth.rows.map((row) => (
+                  <div key={row.category} className="worth-row">
+                    <div className="worth-row-header">
+                      <strong>{row.category}</strong>
+                      <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
+                    </div>
+                    <div className="worth-bar-stack" aria-hidden="true">
+                    <div className="worth-bar-track">
+                      <div
+                        className="worth-bar worth-bar-retail"
+                        style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
+                      />
+                    </div>
+                    <div className="worth-bar-track">
+                      <div
+                        className="worth-bar"
+                        style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
+                      />
+                    </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             <div className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`} aria-label="Wardrobe management">
               <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeManageOpen(false)}>
                 Close
@@ -3362,45 +3432,6 @@ export default function App() {
             {editorBody}
           </aside>
         </div>
-        ) : null}
-
-        {activePanel === "worth" ? (
-        <section className="insights-stack">
-          <div className="panel wardrobe-worth-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Wardrobe worth</p>
-                <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
-                <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
-              </div>
-            </div>
-
-            <div className="worth-chart">
-              {wardrobeWorth.rows.map((row) => (
-                <div key={row.category} className="worth-row">
-                  <div className="worth-row-header">
-                    <strong>{row.category}</strong>
-                    <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
-                  </div>
-                  <div className="worth-bar-stack" aria-hidden="true">
-                  <div className="worth-bar-track">
-                    <div
-                      className="worth-bar worth-bar-retail"
-                      style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
-                    />
-                  </div>
-                  <div className="worth-bar-track">
-                    <div
-                      className="worth-bar"
-                      style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
-                    />
-                  </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
         ) : null}
 
         {activePanel === "fitpics" ? (

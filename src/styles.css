@@ -958,6 +958,7 @@ button:disabled {
 }
 
 .wardrobe-controls,
+.wardrobe-worth-window,
 .wardrobe-manage-window {
   position: absolute;
   top: 40px;
@@ -977,8 +978,14 @@ button:disabled {
 }
 
 .wardrobe-controls.is-open,
+.wardrobe-worth-window.is-open,
 .wardrobe-manage-window.is-open {
   display: grid;
+}
+
+.wardrobe-worth-window {
+  grid-template-columns: 1fr;
+  width: min(520px, 100%);
 }
 
 .wardrobe-manage-window {
@@ -1283,12 +1290,25 @@ button:disabled {
   gap: 16px;
 }
 
-.wardrobe-worth-panel,
 .fitpics-panel {
   padding: 14px;
 }
 
-.wardrobe-worth-panel .panel-header span,
+.wardrobe-worth-summary {
+  display: grid;
+  gap: 3px;
+}
+
+.wardrobe-worth-summary .eyebrow,
+.wardrobe-worth-summary h2 {
+  margin: 0;
+}
+
+.wardrobe-worth-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .fitpic-card span {
   color: var(--muted);
   font-size: 0.72rem;
@@ -2012,6 +2032,7 @@ button:disabled {
   }
 
   .wardrobe-controls,
+  .wardrobe-worth-window,
   .wardrobe-manage-window {
     position: fixed;
     left: 10px;
@@ -2030,11 +2051,13 @@ button:disabled {
     width: auto;
   }
 
+  .wardrobe-worth-window,
   .wardrobe-manage-window {
     grid-template-columns: 1fr;
   }
 
   .wardrobe-controls.is-open,
+  .wardrobe-worth-window.is-open,
   .wardrobe-manage-window.is-open {
     display: grid;
   }
