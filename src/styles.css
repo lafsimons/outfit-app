@@ -927,11 +927,33 @@ button:disabled {
   padding-right: 4px;
 }
 
-.wardrobe-controls {
-  display: grid;
+.wardrobe-controls,
+.wardrobe-manage-window {
+  position: absolute;
+  top: 40px;
+  right: 0;
+  z-index: 45;
+  display: none;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
-  margin-bottom: 12px;
+  width: min(720px, 100%);
+  max-height: min(620px, calc(100vh - 170px - env(safe-area-inset-bottom)));
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  backdrop-filter: blur(18px);
+}
+
+.wardrobe-controls.is-open,
+.wardrobe-manage-window.is-open {
+  display: grid;
+}
+
+.wardrobe-manage-window {
+  grid-template-columns: 1fr;
+  width: min(270px, 100%);
 }
 
 .wardrobe-header-actions {
@@ -941,9 +963,8 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.filter-close-button,
-.filter-button {
-  display: none;
+.filter-close-button {
+  display: inline-grid;
 }
 
 .filter-button.is-active {
@@ -1408,6 +1429,7 @@ button:disabled {
 }
 
 .wardrobe-panel {
+  position: relative;
   min-width: 0;
   height: 880px;
   display: flex;
@@ -1944,12 +1966,12 @@ button:disabled {
     flex: 1;
   }
 
-  .filter-button,
   .filter-close-button {
     display: inline-grid;
   }
 
-  .wardrobe-controls {
+  .wardrobe-controls,
+  .wardrobe-manage-window {
     position: fixed;
     left: 10px;
     right: 10px;
@@ -1964,9 +1986,15 @@ button:disabled {
     border-radius: var(--radius-panel);
     background: var(--surface);
     backdrop-filter: blur(18px);
+    width: auto;
   }
 
-  .wardrobe-controls.is-open {
+  .wardrobe-manage-window {
+    grid-template-columns: 1fr;
+  }
+
+  .wardrobe-controls.is-open,
+  .wardrobe-manage-window.is-open {
     display: grid;
   }
 

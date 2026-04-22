@@ -900,6 +900,7 @@ export default function App() {
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
+  const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
@@ -1251,6 +1252,12 @@ export default function App() {
         return;
       }
 
+      if (wardrobeManageOpen) {
+        event.preventDefault();
+        setWardrobeManageOpen(false);
+        return;
+      }
+
       if (activePanel) {
         event.preventDefault();
         closeWorkspacePanel();
@@ -1267,7 +1274,8 @@ export default function App() {
     editingId,
     editorFloatingOpen,
     fitpicPreview,
-    wardrobeFiltersOpen
+    wardrobeFiltersOpen,
+    wardrobeManageOpen
   ]);
 
   function handleGenerate() {
@@ -1276,6 +1284,7 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
@@ -1467,6 +1476,7 @@ export default function App() {
     setPickerAnchorSlot(null);
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
   }
 
   async function handleExportBackup() {
@@ -1787,6 +1797,7 @@ export default function App() {
 
   function startCreate() {
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
     setEditorFloatingOpen(false);
@@ -1797,6 +1808,7 @@ export default function App() {
 
   function startEdit(item, options = {}) {
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
     setEditorFloatingOpen(Boolean(options.floating));
@@ -1819,6 +1831,7 @@ export default function App() {
     closePickerOverlay();
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
   }
 
   function toggleExcluded(itemId) {
@@ -2238,6 +2251,7 @@ export default function App() {
       setActiveAccessorySlot(null);
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
+      setWardrobeManageOpen(false);
       setFitpicPreview(null);
       setEditorFloatingOpen(false);
       setEditingId(null);
@@ -2249,6 +2263,7 @@ export default function App() {
   function closeWorkspacePanel() {
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setFitpicPreview(null);
   }
 
@@ -2262,6 +2277,7 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
@@ -2279,11 +2295,22 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
     setOutfitFiltersOpen((current) => !current);
+  }
+
+  function openWardrobeFilters() {
+    setWardrobeManageOpen(false);
+    setWardrobeFiltersOpen(true);
+  }
+
+  function toggleWardrobeManage() {
+    setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen((current) => !current);
   }
 
   function loadAndCloseSavedOutfit(savedOutfit) {
@@ -2989,27 +3016,11 @@ export default function App() {
               Accessories: {accessoriesEnabled ? "On" : "Off"}
             </button>
             <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-              Save
+              Save outfit
             </button>
             <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-              Export image
+              Export outfit image
             </button>
-            <button type="button" className="ghost-button" onClick={handleExportBackup}>
-              Export backup
-            </button>
-            <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
-              Import backup
-            </button>
-            <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
-              Reset to default
-            </button>
-            <input
-              ref={importBackupRef}
-              type="file"
-              accept="application/json,.json"
-              className="backup-file-input"
-              onChange={handleImportBackup}
-            />
 
             <div className="generation-list-controls" aria-label="Generation lists">
               {itemLists.map((list) => (
@@ -3178,7 +3189,7 @@ export default function App() {
               <button
                 type="button"
                 className={`secondary-button filter-button ${hasActiveWardrobeFilters ? "is-active" : ""}`}
-                onClick={() => setWardrobeFiltersOpen(true)}
+                onClick={openWardrobeFilters}
                 aria-pressed={hasActiveWardrobeFilters}
                 title={
                   hasActiveWardrobeFilters
@@ -3188,8 +3199,13 @@ export default function App() {
               >
                 {hasActiveWardrobeFilters ? `Filter ${activeWardrobeFilterCount}` : "Filter"}
               </button>
-              <button type="button" className="secondary-button" onClick={handleExportWardrobeImage}>
-                Export image
+              <button
+                type="button"
+                className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
+                onClick={toggleWardrobeManage}
+                aria-expanded={wardrobeManageOpen}
+              >
+                Manage
               </button>
               <button type="button" className="primary-button" onClick={startCreate}>
                 Add item
@@ -3199,6 +3215,10 @@ export default function App() {
 
             {wardrobeFiltersOpen ? (
               <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeFiltersOpen(false)} />
+            ) : null}
+
+            {wardrobeManageOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeManageOpen(false)} />
             ) : null}
 
             <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
@@ -3326,6 +3346,32 @@ export default function App() {
                 Clear laundry
               </button>
             </div>
+
+            <div className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`} aria-label="Wardrobe management">
+              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeManageOpen(false)}>
+                Close
+              </button>
+              <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
+                Export wardrobe image
+              </button>
+              <button type="button" className="ghost-button" onClick={handleExportBackup}>
+                Export backup
+              </button>
+              <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
+                Import backup
+              </button>
+              <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
+                Reset to default
+              </button>
+            </div>
+
+            <input
+              ref={importBackupRef}
+              type="file"
+              accept="application/json,.json"
+              className="backup-file-input"
+              onChange={handleImportBackup}
+            />
 
             {hasActiveWardrobeFilters ? (
               <div className="active-filter-summary" aria-label="Active wardrobe filters">
