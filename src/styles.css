@@ -735,12 +735,8 @@ button:disabled {
 .outfit-filters-panel {
   display: grid;
   gap: 8px;
-  padding-top: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--border-soft);
-}
-
-.outfit-filters-panel > .eyebrow {
-  margin: 0;
 }
 
 .outfit-filter-group {
