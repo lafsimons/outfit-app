@@ -107,11 +107,13 @@ const emptyWardrobeFilters = {
   garmentType: "",
   color: "",
   laundry: "",
-  list: ""
+  list: "",
+  favorite: ""
 };
 const itemTypes = [
   "Beanie",
   "Cap",
+  "Casual Shirt",
   "Shirt",
   "T-Shirt",
   "Knit",
@@ -148,6 +150,7 @@ const accessorySlotByItemType = {
 const garmentTypeByItemType = {
   Beanie: "Headwear",
   Cap: "Headwear",
+  "Casual Shirt": "Top",
   Shirt: "Top",
   "T-Shirt": "Top",
   Knit: "Top",
@@ -172,6 +175,7 @@ const garmentTypeByItemType = {
   Belt: "Accessory"
 };
 const layerTypeByItemType = {
+  "Casual Shirt": "Inner",
   Shirt: "Inner",
   "T-Shirt": "Inner",
   Jacket: "Outer",
@@ -195,6 +199,7 @@ const emptyForm = {
   brand: "",
   type: "",
   size: "",
+  favorite: false,
   garmentType: "Top",
   layerType: "Both",
   accessorySlot: "",
@@ -489,7 +494,10 @@ function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
     (ignored.has("type") || matchesMetadataFilter(item.type, filters.type)) &&
     (ignored.has("garmentType") || matchesMetadataFilter(item.garmentType, filters.garmentType)) &&
     (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
-    (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list)
+    (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list) &&
+    (ignored.has("favorite") ||
+      !filters.favorite ||
+      (filters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
   );
 }
 
@@ -614,6 +622,7 @@ function normalizeItem(item) {
     imageScale: normalizeImageScale(item.imageScale),
     imageOffsetX: normalizeImageOffset(item.imageOffsetX),
     imageOffsetY: normalizeImageOffset(item.imageOffsetY),
+    favorite: Boolean(item.favorite),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
@@ -634,6 +643,10 @@ function itemNeedsImageOffsetMigration(originalItem, normalizedItem) {
     normalizeImageOffset(originalItem.imageOffsetX) !== normalizedItem.imageOffsetX ||
     normalizeImageOffset(originalItem.imageOffsetY) !== normalizedItem.imageOffsetY
   );
+}
+
+function itemNeedsFavoriteMigration(originalItem, normalizedItem) {
+  return originalItem.favorite === undefined && normalizedItem.favorite === false;
 }
 
 function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
@@ -955,12 +968,20 @@ export default function App() {
     ["Garment", wardrobeFilters.garmentType],
     ["Color", wardrobeFilters.color],
     ["List", wardrobeFilters.list],
-    ["Laundry", wardrobeFilters.laundry]
+    ["Laundry", wardrobeFilters.laundry],
+    ["Favorite", wardrobeFilters.favorite]
   ]
     .filter(([, value]) => Boolean(value))
     .map(([label, value]) => ({
       label,
-      value: value === "__none__" ? `No ${label.toLowerCase()}` : value
+      value:
+        value === "__none__"
+          ? `No ${label.toLowerCase()}`
+          : label === "Favorite"
+            ? value === "yes"
+              ? "Yes"
+              : "No"
+            : value
     }));
 
   useEffect(() => {
@@ -1082,6 +1103,7 @@ export default function App() {
           itemNeedsRetailMigration(storedItems[index], item) ||
           itemNeedsImageScaleMigration(storedItems[index], item) ||
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
+          itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item)
       );
 
@@ -1413,6 +1435,7 @@ export default function App() {
         itemNeedsRetailMigration(nextItems[index], item) ||
         itemNeedsImageScaleMigration(nextItems[index], item) ||
         itemNeedsImageOffsetMigration(nextItems[index], item) ||
+        itemNeedsFavoriteMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item)
     );
 
@@ -1557,6 +1580,76 @@ export default function App() {
       link.remove();
     } catch {
       window.alert("The outfit image could not be exported.");
+    }
+  }
+
+  async function handleExportWardrobeImage() {
+    if (!visibleWardrobeItems.length) {
+      window.alert("There are no filtered wardrobe pieces to export.");
+      return;
+    }
+
+    const shuffledItems = [...visibleWardrobeItems].sort(() => Math.random() - 0.5);
+    const cellSize = 190;
+    const columns = Math.max(1, Math.ceil(Math.sqrt(shuffledItems.length * 1.18)));
+    const rows = Math.ceil(shuffledItems.length / columns);
+    const padding = 44;
+    const canvasWidth = columns * cellSize + padding * 2;
+    const canvasHeight = rows * cellSize + padding * 2;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      window.alert("The wardrobe image could not be exported.");
+      return;
+    }
+
+    canvas.width = canvasWidth * 2;
+    canvas.height = canvasHeight * 2;
+    context.scale(2, 2);
+    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f7f7";
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    try {
+      const loadedItems = await Promise.all(
+        shuffledItems.map(async (item) => ({
+          item,
+          image: await loadImage(resolveImageUrl(item.imageUrl))
+        }))
+      );
+
+      loadedItems.forEach(({ item, image }, index) => {
+        const column = index % columns;
+        const row = Math.floor(index / columns);
+        const cellLeft = padding + column * cellSize;
+        const cellTop = padding + row * cellSize;
+        const maxImageSize = cellSize * 0.78;
+        const baseScale = Math.min(
+          maxImageSize / image.naturalWidth,
+          maxImageSize / image.naturalHeight,
+          1
+        );
+        const itemScale = normalizeImageScale(item.imageScale) / 100;
+        const drawWidth = image.naturalWidth * baseScale * itemScale;
+        const drawHeight = image.naturalHeight * baseScale * itemScale;
+        const jitterX = (Math.random() - 0.5) * cellSize * 0.22;
+        const jitterY = (Math.random() - 0.5) * cellSize * 0.22;
+        const offsetX = (normalizeImageOffset(item.imageOffsetX) / 100) * drawWidth;
+        const offsetY = (normalizeImageOffset(item.imageOffsetY) / 100) * drawHeight;
+        const drawX = cellLeft + (cellSize - drawWidth) / 2 + jitterX + offsetX;
+        const drawY = cellTop + (cellSize - drawHeight) / 2 + jitterY + offsetY;
+
+        context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+      });
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `wardrobe-wishlist-${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      window.alert("The wardrobe image could not be exported.");
     }
   }
 
@@ -1859,6 +1952,7 @@ export default function App() {
       brand: trimmedBrand,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
+      favorite: Boolean(draft.favorite),
       value: normalizedValue,
       retailValue: normalizedRetailValue,
       size: trimmedSize,
@@ -2744,6 +2838,15 @@ export default function App() {
         </select>
       </label>
 
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.favorite)}
+          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
+        />
+        Favorite
+      </label>
+
       <div className="id-preview">
         <span>Generated item ID</span>
         <strong>{generatedIdPreview || "Starts generating once metadata is filled in"}</strong>
@@ -2840,17 +2943,12 @@ export default function App() {
           </button>
           <button
             type="button"
-            className={`workspace-tab workspace-tab-icon ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
+            className={`workspace-tab ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
             onClick={toggleOutfitFiltersWindow}
             aria-pressed={outfitFiltersOpen && !activePanel}
-            aria-label="Outfit filters"
             title="Outfit filters"
           >
-            <span className="mixer-icon" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
+            Filters
           </button>
           {[
             ["saved", "Saved outfits"],
@@ -3090,6 +3188,9 @@ export default function App() {
               >
                 {hasActiveWardrobeFilters ? `Filter ${activeWardrobeFilterCount}` : "Filter"}
               </button>
+              <button type="button" className="secondary-button" onClick={handleExportWardrobeImage}>
+                Export image
+              </button>
               <button type="button" className="primary-button" onClick={startCreate}>
                 Add item
               </button>
@@ -3179,6 +3280,19 @@ export default function App() {
                 </select>
               </label>
               <label>
+                Favorite
+                <select
+                  value={wardrobeFilters.favorite}
+                  onChange={(event) =>
+                    setWardrobeFilters((current) => ({ ...current, favorite: event.target.value }))
+                  }
+                >
+                  <option value="">All</option>
+                  <option value="yes">Favorites</option>
+                  <option value="no">Not favorites</option>
+                </select>
+              </label>
+              <label>
                 Laundry
                 <select
                   value={wardrobeFilters.laundry}
@@ -3257,7 +3371,9 @@ export default function App() {
                       <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)} · Retail ${formatCurrency(item.retailValue)}`}>
                         {item.color || "No color"} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
                       </span>
-                      <span title={normalizeList(item.list)}>{normalizeList(item.list)}</span>
+                      <span title={normalizeList(item.list)}>
+                        {normalizeList(item.list)}{item.favorite ? " · Favorite" : ""}
+                      </span>
                     </div>
 
                     <div className="card-actions">

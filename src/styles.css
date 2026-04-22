@@ -1638,6 +1638,16 @@ button:disabled {
   letter-spacing: 0.02em;
 }
 
+.editor-form .checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-form .checkbox-field input {
+  width: auto;
+}
+
 .editor-form input,
 .editor-form select {
   width: 100%;
@@ -1719,18 +1729,60 @@ button:disabled {
   }
 
   .picker-overlay {
-    top: 72px;
+    top: auto;
     left: 10px;
     right: 10px;
+    bottom: calc(72px + env(safe-area-inset-bottom));
     width: calc(100vw - 20px);
-    max-height: calc(100vh - 158px - env(safe-area-inset-bottom));
-    padding: 14px;
+    max-height: min(42vh, 360px);
+    padding: 10px;
   }
 
   .picker-overlay-left,
   .picker-overlay-right {
     left: 10px;
     right: 10px;
+  }
+
+  .accessory-picker,
+  .slot-picker {
+    display: flex;
+    flex-direction: column;
+    max-height: min(36vh, 338px);
+    min-height: 0;
+  }
+
+  .accessory-picker-header,
+  .slot-picker-header {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .accessory-picker-list,
+  .slot-picker-list,
+  .accessory-picker .editor-placeholder,
+  .slot-picker .editor-placeholder {
+    order: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .accessory-picker-actions,
+  .slot-picker-actions {
+    order: 3;
+    flex: 0 0 auto;
+    position: sticky;
+    bottom: 0;
+    margin: 6px -2px -2px;
+    padding-top: 7px;
+    background: var(--surface);
+  }
+
+  .accessory-picker-actions .ghost-button,
+  .slot-picker-actions .ghost-button {
+    flex: 1 1 auto;
+    padding: 6px 7px;
+    font-size: 0.66rem;
   }
 
   .current-outfit-actions {
@@ -1994,13 +2046,13 @@ button:disabled {
   }
 
   .slot-picker-list {
-    max-height: calc(100vh - 300px - env(safe-area-inset-bottom));
+    max-height: 100%;
     overflow: auto;
     padding-right: 0;
   }
 
   .accessory-picker-list {
-    max-height: calc(100vh - 260px - env(safe-area-inset-bottom));
+    max-height: 100%;
     padding-right: 0;
   }
 
