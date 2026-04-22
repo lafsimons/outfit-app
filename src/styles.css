@@ -187,12 +187,6 @@ button:disabled {
   width: 100%;
 }
 
-.outfit-filters-window {
-  width: min(320px, calc(100% - 48px));
-  max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
-  overflow: auto;
-}
-
 .generation-list-controls {
   display: grid;
   gap: 6px;
@@ -736,6 +730,17 @@ button:disabled {
 .outfit-filter-groups {
   display: grid;
   gap: 12px;
+}
+
+.outfit-filters-panel {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.outfit-filters-panel > .eyebrow {
+  margin: 0;
 }
 
 .outfit-filter-group {

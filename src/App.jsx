@@ -1470,7 +1470,6 @@ export default function App() {
     setDraft(emptyForm);
     setActivePanel(null);
     setControlsOpen(true);
-    setOutfitFiltersOpen(false);
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
     setPickerAnchorSlot(null);
@@ -2245,7 +2244,6 @@ export default function App() {
       const nextPanel = current === panel ? null : panel;
       if (nextPanel) {
         setControlsOpen(false);
-        setOutfitFiltersOpen(false);
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
@@ -2272,7 +2270,6 @@ export default function App() {
       setActivePanel(null);
     }
 
-    setOutfitFiltersOpen(false);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
@@ -2283,24 +2280,6 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setControlsOpen((current) => !current);
-  }
-
-  function toggleOutfitFiltersWindow() {
-    if (activePanel) {
-      setActivePanel(null);
-    }
-
-    setControlsOpen(false);
-    setActiveOutfitSlot(null);
-    setActiveAccessorySlot(null);
-    setPickerAnchorSlot(null);
-    setWardrobeFiltersOpen(false);
-    setWardrobeManageOpen(false);
-    setFitpicPreview(null);
-    setEditorFloatingOpen(false);
-    setEditingId(null);
-    setEditorReturnTarget(null);
-    setOutfitFiltersOpen((current) => !current);
   }
 
   function openWardrobeFilters() {
@@ -2903,15 +2882,6 @@ export default function App() {
           >
             CONTROLS
           </button>
-          <button
-            type="button"
-            className={`workspace-tab ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
-            onClick={toggleOutfitFiltersWindow}
-            aria-pressed={outfitFiltersOpen && !activePanel}
-            title="Outfit filters"
-          >
-            Filters
-          </button>
           {[
             ["saved", "Saved outfits"],
             ["wardrobe", "Wardrobe"],
@@ -2969,50 +2939,37 @@ export default function App() {
                 </button>
               ))}
             </div>
-          </div>
-        ) : null}
 
-        {outfitFiltersOpen && !activePanel ? (
-          <div className="controls-window outfit-filters-window" aria-label="Outfit filters">
-            <div className="controls-window-header">
+            <div className="outfit-filters-panel" aria-label="Outfit filters">
               <p className="eyebrow">Outfit filters</p>
-              <button
-                type="button"
-                className="controls-hide-button"
-                onClick={() => setOutfitFiltersOpen(false)}
-                aria-label="Hide outfit filters"
-              >
-                ×
+              <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+                Clear outfit filters
               </button>
-            </div>
 
-            <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-              Clear outfit filters
-            </button>
+              <div className="outfit-filter-groups">
+                {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                  <section key={group} className="outfit-filter-group">
+                    <p className="eyebrow">{group}</p>
+                    <div className="outfit-filter-options">
+                      {options.map((option) => {
+                        const isSelected = outfitFilters[group]?.includes(option);
 
-            <div className="outfit-filter-groups">
-              {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                <section key={group} className="outfit-filter-group">
-                  <p className="eyebrow">{group}</p>
-                  <div className="outfit-filter-options">
-                    {options.map((option) => {
-                      const isSelected = outfitFilters[group]?.includes(option);
-
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                          onClick={() => toggleOutfitFilter(group, option)}
-                          aria-pressed={isSelected}
-                        >
-                          {option}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </section>
-              ))}
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                            onClick={() => toggleOutfitFilter(group, option)}
+                            aria-pressed={isSelected}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
           </div>
         ) : null}
