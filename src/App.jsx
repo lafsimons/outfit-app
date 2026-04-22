@@ -463,20 +463,110 @@ function getNumericValue(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const defaultMetadataCorrections = {
+  headwear_cap_beige: {
+    name: "R18C1 Shallow Cap Reed Linen",
+    retailValue: "94",
+    brand: "Man-tle",
+    type: "Cap",
+    size: "OS",
+    garmentType: "Headwear",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "Beige",
+    list: "Wardrobe"
+  },
+  top_shirt_111: {
+    name: "Lot.111 Work Shirt",
+    retailValue: "263",
+    brand: "Taiga Takahashi",
+    type: "Shirt",
+    size: "16",
+    garmentType: "Top",
+    layerType: "Inner",
+    accessorySlot: "",
+    color: "Indigo",
+    list: "Wardrobe"
+  },
+  top_jacket_303sumi: {
+    name: "Lot.303 Coverall",
+    retailValue: "316",
+    brand: "Taiga Takahashi",
+    type: "Jacket",
+    size: "40",
+    garmentType: "Top",
+    layerType: "Outer",
+    accessorySlot: "",
+    color: "Sumi",
+    list: "Wardrobe"
+  },
+  bottom_204_brown: {
+    name: "Lot.204 Engineer Trousers",
+    retailValue: "228",
+    brand: "Taiga Takahashi",
+    type: "Trousers",
+    size: "34",
+    garmentType: "Bottom",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "Brown",
+    list: "Wardrobe"
+  },
+  footwear_sneaker_gat: {
+    name: "GAT",
+    retailValue: "30",
+    brand: "Vintage",
+    type: "Sneakers",
+    size: "45",
+    garmentType: "Footwear",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "White",
+    list: "Wardrobe"
+  }
+};
+
+const defaultMetadataCorrectionById = {
+  headwear_cap_default_beige_os_beige: defaultMetadataCorrections.headwear_cap_beige,
+  headwear_cap_man_tle_r18c1_shallow_cap_reed_linen_os_beige: defaultMetadataCorrections.headwear_cap_beige,
+  top_inner_shirt_default_white_size_m: defaultMetadataCorrections.top_shirt_111,
+  top_inner_shirt_taiga_takahashi_lot_111_work_shirt_16_indigo: defaultMetadataCorrections.top_shirt_111,
+  top_outer_jacket_default_sumi_size_m: defaultMetadataCorrections.top_jacket_303sumi,
+  top_outer_jacket_taiga_takahashi_lot_303_coverall_40_sumi: defaultMetadataCorrections.top_jacket_303sumi,
+  bottom_trousers_default_brown_size_m: defaultMetadataCorrections.bottom_204_brown,
+  bottom_trousers_brown_trousers_m_brown: defaultMetadataCorrections.bottom_204_brown,
+  bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown: defaultMetadataCorrections.bottom_204_brown,
+  footwear_sneakers_default_gat_size_42: defaultMetadataCorrections.footwear_sneaker_gat,
+  footwear_sneakers_vintage_gat_45_white: defaultMetadataCorrections.footwear_sneaker_gat
+};
+
+function getImageStem(imageUrl) {
+  const filename = stripViteHash(getImageFilename(imageUrl));
+  const extensionIndex = filename.lastIndexOf(".");
+  return extensionIndex > 0 ? filename.slice(0, extensionIndex) : filename;
+}
+
+function getDefaultMetadataCorrection(item) {
+  return defaultMetadataCorrectionById[item.id] ?? defaultMetadataCorrections[getImageStem(item.imageUrl)];
+}
+
 function normalizeItem(item) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
   const shouldMoveValueToRetail = value !== "" && retailValue === "";
+  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
+  const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
 
   return {
     ...emptyForm,
     ...item,
+    ...correction,
     value: shouldMoveValueToRetail ? "" : value,
-    retailValue: shouldMoveValueToRetail ? value : retailValue,
-    imageUrl: resolveImageUrl(item.imageUrl ?? item.img ?? ""),
+    retailValue: shouldMoveValueToRetail ? value : correction?.retailValue ?? retailValue,
+    imageUrl,
     imageScale: normalizeImageScale(item.imageScale),
-    type: normalizeItemType(item.type ?? ""),
-    list: normalizeList(item.list)
+    type: normalizeItemType(correction?.type ?? item.type ?? ""),
+    list: normalizeList(correction?.list ?? item.list)
   };
 }
 
@@ -486,6 +576,16 @@ function itemNeedsRetailMigration(originalItem, normalizedItem) {
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
   return originalItem.imageScale === undefined || normalizeImageScale(originalItem.imageScale) !== normalizedItem.imageScale;
+}
+
+function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
+  const correction = getDefaultMetadataCorrection(normalizedItem);
+
+  if (!correction) {
+    return false;
+  }
+
+  return Object.entries(correction).some(([key, value]) => originalItem[key] !== value);
 }
 
 function formatCurrency(value) {
@@ -857,7 +957,8 @@ export default function App() {
       const migratedItems = normalizedItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
-          itemNeedsImageScaleMigration(storedItems[index], item)
+          itemNeedsImageScaleMigration(storedItems[index], item) ||
+          itemNeedsDefaultMetadataMigration(storedItems[index], item)
       );
 
       if (cancelled) {
@@ -1083,7 +1184,8 @@ export default function App() {
     const migratedItems = normalizedItems.filter(
       (item, index) =>
         itemNeedsRetailMigration(nextItems[index], item) ||
-        itemNeedsImageScaleMigration(nextItems[index], item)
+        itemNeedsImageScaleMigration(nextItems[index], item) ||
+        itemNeedsDefaultMetadataMigration(nextItems[index], item)
     );
 
     if (migratedItems.length) {
