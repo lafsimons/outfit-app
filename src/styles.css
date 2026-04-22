@@ -283,7 +283,7 @@ button:disabled {
   right: auto;
   bottom: calc(78px + env(safe-area-inset-bottom));
   z-index: 40;
-  width: min(340px, calc(100vw - 48px));
+  width: min(700px, calc(100vw - 48px));
   max-height: min(42vh, 390px);
   overflow: hidden;
   padding: 12px;
@@ -642,7 +642,7 @@ button:disabled {
 .accessory-picker-list,
 .slot-picker-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   order: 2;
   flex: 1 1 auto;
@@ -1822,6 +1822,11 @@ button:disabled {
     order: 2;
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  .accessory-picker-list,
+  .slot-picker-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .accessory-picker-actions,
