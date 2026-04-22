@@ -2612,6 +2612,30 @@ export default function App() {
               Remove image
             </button>
           ) : null}
+          <label className="image-size-field">
+            Image size
+            <div className="image-scale-control">
+              <input
+                type="range"
+                min="50"
+                max="180"
+                step="5"
+                value={normalizeImageScale(draft.imageScale)}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, imageScale: Number(event.target.value) }))
+                }
+              />
+              <input
+                inputMode="numeric"
+                value={normalizeImageScale(draft.imageScale)}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, imageScale: normalizeImageScale(event.target.value) }))
+                }
+                aria-label="Image size percentage"
+              />
+              <span>%</span>
+            </div>
+          </label>
         </div>
         <p className="item-image-note">
           Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
@@ -2746,40 +2770,6 @@ export default function App() {
         </select>
       </label>
 
-      <label className="checkbox-field">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.favorite)}
-          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
-        />
-        Favorite
-      </label>
-
-      <label>
-        Image size
-        <div className="image-scale-control">
-          <input
-            type="range"
-            min="50"
-            max="180"
-            step="5"
-            value={normalizeImageScale(draft.imageScale)}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, imageScale: Number(event.target.value) }))
-            }
-          />
-          <input
-            inputMode="numeric"
-            value={normalizeImageScale(draft.imageScale)}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, imageScale: normalizeImageScale(event.target.value) }))
-            }
-            aria-label="Image size percentage"
-          />
-          <span>%</span>
-        </div>
-      </label>
-
       <label>
         Value
         <input
@@ -2808,6 +2798,15 @@ export default function App() {
           }
           placeholder="280"
         />
+      </label>
+
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.favorite)}
+          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
+        />
+        Favorite
       </label>
 
       <div className="id-preview">

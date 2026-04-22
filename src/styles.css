@@ -1647,6 +1647,11 @@ button:disabled {
   align-items: flex-start;
 }
 
+.item-image-actions .image-size-field {
+  flex: 1 0 100%;
+  margin-top: 2px;
+}
+
 .image-scale-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 58px auto;
