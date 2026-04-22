@@ -471,6 +471,18 @@ function getUniqueValues(items, key) {
   );
 }
 
+function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
+  const ignored = new Set(ignoredKeys);
+
+  return (
+    (ignored.has("brand") || matchesMetadataFilter(item.brand, filters.brand)) &&
+    (ignored.has("type") || matchesMetadataFilter(item.type, filters.type)) &&
+    (ignored.has("garmentType") || matchesMetadataFilter(item.garmentType, filters.garmentType)) &&
+    (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
+    (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list)
+  );
+}
+
 function matchesMetadataFilter(value, filterValue) {
   if (!filterValue) {
     return true;
@@ -891,13 +903,25 @@ export default function App() {
     [draft]
   );
   const wardrobeFilterOptions = useMemo(
-    () => ({
-      brand: getUniqueValues(items, "brand"),
-      type: getUniqueValues(items, "type"),
-      garmentType: getUniqueValues(items, "garmentType"),
-      color: getUniqueValues(items, "color")
-    }),
-    [items]
+    () => {
+      const typeItems = items.filter((item) =>
+        matchesWardrobeFilters(item, wardrobeFilters, ["type"])
+      );
+      const brandItems = items.filter((item) =>
+        matchesWardrobeFilters(item, wardrobeFilters, ["brand"])
+      );
+      const colorItems = items.filter((item) =>
+        matchesWardrobeFilters(item, wardrobeFilters, ["color"])
+      );
+
+      return {
+        brand: getUniqueValues(brandItems, "brand"),
+        type: getUniqueValues(typeItems, "type"),
+        garmentType: getUniqueValues(items, "garmentType"),
+        color: getUniqueValues(colorItems, "color")
+      };
+    },
+    [items, wardrobeFilters]
   );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.values(wardrobeFilters).filter(Boolean).length;
@@ -915,6 +939,18 @@ export default function App() {
       label,
       value: value === "__none__" ? `No ${label.toLowerCase()}` : value
     }));
+
+  useEffect(() => {
+    if (!wardrobeFilters.type || wardrobeFilters.type === "__none__") {
+      return;
+    }
+
+    if (wardrobeFilterOptions.type.includes(wardrobeFilters.type)) {
+      return;
+    }
+
+    setWardrobeFilters((current) => ({ ...current, type: "" }));
+  }, [wardrobeFilterOptions.type, wardrobeFilters.type]);
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -935,11 +971,7 @@ export default function App() {
   }
   const visibleWardrobeItems = useMemo(() => {
     const filtered = items.filter((item) =>
-      matchesMetadataFilter(item.brand, wardrobeFilters.brand) &&
-      matchesMetadataFilter(item.type, wardrobeFilters.type) &&
-      matchesMetadataFilter(item.garmentType, wardrobeFilters.garmentType) &&
-      matchesMetadataFilter(item.color, wardrobeFilters.color) &&
-      (!wardrobeFilters.list || normalizeList(item.list) === wardrobeFilters.list) &&
+      matchesWardrobeFilters(item, wardrobeFilters) &&
       (!wardrobeFilters.laundry ||
         (wardrobeFilters.laundry === "show" ? Boolean(excluded[item.id]) : !excluded[item.id]))
     );
@@ -951,8 +983,36 @@ export default function App() {
           return a.item.garmentType.localeCompare(b.item.garmentType) || a.index - b.index;
         }
 
-        if (wardrobeSort === "value") {
+        if (wardrobeSort === "brand") {
+          return (a.item.brand || "").localeCompare(b.item.brand || "") || a.index - b.index;
+        }
+
+        if (wardrobeSort === "type") {
+          return (a.item.type || "").localeCompare(b.item.type || "") || a.index - b.index;
+        }
+
+        if (wardrobeSort === "value" || wardrobeSort === "paidHigh") {
           return getNumericValue(b.item.value) - getNumericValue(a.item.value) || a.index - b.index;
+        }
+
+        if (wardrobeSort === "paidLow") {
+          return getNumericValue(a.item.value) - getNumericValue(b.item.value) || a.index - b.index;
+        }
+
+        if (wardrobeSort === "retailHigh") {
+          return getNumericValue(b.item.retailValue) - getNumericValue(a.item.retailValue) || a.index - b.index;
+        }
+
+        if (wardrobeSort === "retailLow") {
+          return getNumericValue(a.item.retailValue) - getNumericValue(b.item.retailValue) || a.index - b.index;
+        }
+
+        if (wardrobeSort === "newest") {
+          return b.index - a.index;
+        }
+
+        if (wardrobeSort === "oldest") {
+          return a.index - b.index;
         }
 
         if (wardrobeSort === "color") {
@@ -2900,21 +2960,6 @@ export default function App() {
                 </select>
               </label>
               <label>
-                Type
-                <select
-                  value={wardrobeFilters.type}
-                  onChange={(event) =>
-                    setWardrobeFilters((current) => ({ ...current, type: event.target.value }))
-                  }
-                >
-                  <option value="">All types</option>
-                  <option value="__none__">No type</option>
-                  {wardrobeFilterOptions.type.map((value) => (
-                    <option key={value} value={value}>{value}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 Garment
                 <select
                   value={wardrobeFilters.garmentType}
@@ -2925,6 +2970,21 @@ export default function App() {
                   <option value="">All garments</option>
                   <option value="__none__">No garment</option>
                   {wardrobeFilterOptions.garmentType.map((value) => (
+                    <option key={value} value={value}>{value}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Type
+                <select
+                  value={wardrobeFilters.type}
+                  onChange={(event) =>
+                    setWardrobeFilters((current) => ({ ...current, type: event.target.value }))
+                  }
+                >
+                  <option value="">All types</option>
+                  <option value="__none__">No type</option>
+                  {wardrobeFilterOptions.type.map((value) => (
                     <option key={value} value={value}>{value}</option>
                   ))}
                 </select>
@@ -2976,8 +3036,16 @@ export default function App() {
                 <select value={wardrobeSort} onChange={(event) => setWardrobeSort(event.target.value)}>
                   <option value="">Default</option>
                   <option value="garmentType">Garment type</option>
+                  <option value="brand">Brand A-Z</option>
+                  <option value="type">Type A-Z</option>
                   <option value="value">Value</option>
+                  <option value="paidHigh">Paid high-low</option>
+                  <option value="paidLow">Paid low-high</option>
+                  <option value="retailHigh">Retail high-low</option>
+                  <option value="retailLow">Retail low-high</option>
                   <option value="color">Color</option>
+                  <option value="newest">Newest</option>
+                  <option value="oldest">Oldest</option>
                 </select>
               </label>
               <button type="button" className="secondary-button clear-laundry-button" onClick={clearLaundry}>
