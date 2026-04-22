@@ -870,12 +870,7 @@ export default function App() {
       return [];
     }
 
-    return items.filter(
-      (item) =>
-        item.garmentType === "Accessory" &&
-        item.accessorySlot === activeAccessorySlot &&
-        isEligibleForGeneration(item, excluded, generationLists)
-    );
+    return getAccessoryOptions(activeAccessorySlot);
   }, [activeAccessorySlot, items, excluded, generationLists]);
   const generatedIdPreview = useMemo(
     () =>
@@ -1196,6 +1191,15 @@ export default function App() {
     return pool;
   }
 
+  function getAccessoryOptions(slot) {
+    return items.filter(
+      (item) =>
+        item.garmentType === "Accessory" &&
+        item.accessorySlot === slot &&
+        isEligibleForGeneration(item, excluded, generationLists)
+    );
+  }
+
   function setOutfitSlot(slot, itemId) {
     setOutfit((current) => ({
       ...current,
@@ -1220,6 +1224,24 @@ export default function App() {
     const nextIndex = (currentIndex === -1 ? fallbackIndex : currentIndex + direction + options.length) % options.length;
 
     setOutfitSlot(slot, options[nextIndex].id);
+  }
+
+  function cycleAccessorySlot(slot, direction) {
+    const options = getAccessoryOptions(slot);
+
+    if (!options.length) {
+      removeAccessoryFromSlot(slot);
+      return;
+    }
+
+    const currentIndex = options.findIndex((item) => item.id === outfit[slot]);
+    const fallbackIndex = direction > 0 ? -1 : 0;
+    const nextIndex = (currentIndex === -1 ? fallbackIndex : currentIndex + direction + options.length) % options.length;
+
+    setOutfit((current) => ({
+      ...current,
+      [slot]: options[nextIndex].id
+    }));
   }
 
   function toggleLayering() {
@@ -2093,6 +2115,8 @@ export default function App() {
       return null;
     }
 
+    const currentItem = itemsById[outfit[activeAccessorySlot]];
+
     return (
       <div className="accessory-picker">
         <div className="accessory-picker-header">
@@ -2107,6 +2131,17 @@ export default function App() {
         </div>
 
         <div className="accessory-picker-actions">
+          <button type="button" className="ghost-button" onClick={() => cycleAccessorySlot(activeAccessorySlot, -1)}>
+            Previous
+          </button>
+          <button type="button" className="ghost-button" onClick={() => cycleAccessorySlot(activeAccessorySlot, 1)}>
+            Next
+          </button>
+          {currentItem ? (
+            <button type="button" className="ghost-button" onClick={() => startFloatingEdit(currentItem)}>
+              Edit
+            </button>
+          ) : null}
           <button
             type="button"
             className="ghost-button"
