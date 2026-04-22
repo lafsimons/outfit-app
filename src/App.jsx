@@ -2884,9 +2884,6 @@ export default function App() {
               <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeFiltersOpen(false)}>
                 Close
               </button>
-              <button type="button" className="ghost-button clear-filters-button" onClick={clearWardrobeFilters} disabled={!hasActiveWardrobeFilters}>
-                Clear filters
-              </button>
               <label>
                 Brand
                 <select
