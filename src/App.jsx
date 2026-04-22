@@ -211,6 +211,11 @@ function normalizeList(list) {
   return itemLists.includes(list) ? list : "Wardrobe";
 }
 
+function isWishlistItem(item) {
+  const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
+  return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
+}
+
 function normalizeItemType(type) {
   return type === "Derbies" ? "Derby" : type;
 }
@@ -1077,7 +1082,7 @@ export default function App() {
     );
 
     items
-      .filter((item) => normalizeList(item.list) === "Wardrobe")
+      .filter((item) => !isWishlistItem(item))
       .forEach((item) => {
         const category = getWorthCategory(item);
         byCategory[category].count += 1;
