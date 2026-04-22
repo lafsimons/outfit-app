@@ -100,34 +100,36 @@ const defaultWardrobe = [
     color: "Gray"
   },
   {
-    id: "headwear_cap_default_beige_os_beige",
-    name: "Beige cap",
+    id: "headwear_cap_man_tle_r18c1_shallow_cap_reed_linen_os_beige",
+    name: "R18C1 Shallow Cap Reed Linen",
     imageUrl: "/images/headwear_cap_beige.png",
     imageScale: 100,
     value: "",
-    retailValue: "",
-    brand: "",
+    retailValue: "94",
+    brand: "Man-tle",
     type: "Cap",
     size: "OS",
     garmentType: "Headwear",
     layerType: "Both",
     accessorySlot: "",
-    color: "Beige"
+    color: "Beige",
+    list: "Wardrobe"
   },
   {
-    id: "top_inner_shirt_default_white_size_m",
-    name: "White shirt",
+    id: "top_inner_shirt_taiga_takahashi_lot_111_work_shirt_16_indigo",
+    name: "Lot.111 Work Shirt",
     imageUrl: "/images/top_shirt_111.png",
     imageScale: 100,
     value: "",
-    retailValue: "",
-    brand: "",
+    retailValue: "263",
+    brand: "Taiga Takahashi",
     type: "Shirt",
-    size: "M",
+    size: "16",
     garmentType: "Top",
     layerType: "Inner",
     accessorySlot: "",
-    color: "White"
+    color: "Indigo",
+    list: "Wardrobe"
   },
   {
     id: "top_both_sweatshirt_taiga_takahashi_lot_603_sweat_shirt_40_sumi",
@@ -144,19 +146,20 @@ const defaultWardrobe = [
     color: "Sumi"
   },
   {
-    id: "top_outer_jacket_default_sumi_size_m",
-    name: "Sumi jacket",
+    id: "top_outer_jacket_taiga_takahashi_lot_303_coverall_40_sumi",
+    name: "Lot.303 Coverall",
     imageUrl: "/images/top_jacket_303sumi.png",
     imageScale: 100,
     value: "",
-    retailValue: "",
-    brand: "",
+    retailValue: "316",
+    brand: "Taiga Takahashi",
     type: "Jacket",
-    size: "M",
+    size: "40",
     garmentType: "Top",
     layerType: "Outer",
     accessorySlot: "",
-    color: "Sumi"
+    color: "Sumi",
+    list: "Wardrobe"
   },
   {
     id: "top_outer_jacket_taiga_takahashi_lot_309_buckle_backed_jacket_42_black",
@@ -173,34 +176,36 @@ const defaultWardrobe = [
     color: "Black"
   },
   {
-    id: "bottom_trousers_default_brown_size_m",
-    name: "Brown trousers",
+    id: "bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown",
+    name: "Lot.204 Engineer Trousers",
     imageUrl: "/images/bottom_204_brown.png",
     imageScale: 100,
     value: "",
-    retailValue: "",
-    brand: "",
+    retailValue: "228",
+    brand: "Taiga Takahashi",
     type: "Trousers",
-    size: "M",
+    size: "34",
     garmentType: "Bottom",
     layerType: "Both",
     accessorySlot: "",
-    color: "Brown"
+    color: "Brown",
+    list: "Wardrobe"
   },
   {
-    id: "footwear_sneakers_default_gat_size_42",
-    name: "GAT sneakers",
+    id: "footwear_sneakers_vintage_gat_45_white",
+    name: "GAT",
     imageUrl: "/images/footwear_sneaker_gat.png",
     imageScale: 100,
     value: "",
-    retailValue: "",
-    brand: "",
+    retailValue: "30",
+    brand: "Vintage",
     type: "Sneakers",
-    size: "42",
+    size: "45",
     garmentType: "Footwear",
     layerType: "Both",
     accessorySlot: "",
-    color: "White"
+    color: "White",
+    list: "Wardrobe"
   }
 ];
 
