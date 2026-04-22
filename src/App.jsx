@@ -170,6 +170,8 @@ const emptyForm = {
   name: "",
   imageUrl: "",
   imageScale: 100,
+  imageOffsetX: 0,
+  imageOffsetY: 0,
   value: "",
   retailValue: "",
   brand: "",
@@ -198,9 +200,24 @@ function normalizeImageScale(value) {
   return Math.min(180, Math.max(50, Math.round(parsed)));
 }
 
+function normalizeImageOffset(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.min(50, Math.max(-50, Math.round(parsed)));
+}
+
 function getItemImageStyle(item) {
   const scale = normalizeImageScale(item?.imageScale);
-  return scale === 100 ? undefined : { transform: `scale(${scale / 100})` };
+  const offsetX = normalizeImageOffset(item?.imageOffsetX);
+  const offsetY = normalizeImageOffset(item?.imageOffsetY);
+
+  if (scale === 100 && offsetX === 0 && offsetY === 0) {
+    return undefined;
+  }
+
+  return { transform: `translate(${offsetX}%, ${offsetY}%) scale(${scale / 100})` };
 }
 
 function pickRandom(items) {
@@ -565,6 +582,8 @@ function normalizeItem(item) {
     retailValue: shouldMoveValueToRetail ? value : correction?.retailValue ?? retailValue,
     imageUrl,
     imageScale: normalizeImageScale(item.imageScale),
+    imageOffsetX: normalizeImageOffset(item.imageOffsetX),
+    imageOffsetY: normalizeImageOffset(item.imageOffsetY),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
@@ -576,6 +595,15 @@ function itemNeedsRetailMigration(originalItem, normalizedItem) {
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
   return originalItem.imageScale === undefined || normalizeImageScale(originalItem.imageScale) !== normalizedItem.imageScale;
+}
+
+function itemNeedsImageOffsetMigration(originalItem, normalizedItem) {
+  return (
+    originalItem.imageOffsetX === undefined ||
+    originalItem.imageOffsetY === undefined ||
+    normalizeImageOffset(originalItem.imageOffsetX) !== normalizedItem.imageOffsetX ||
+    normalizeImageOffset(originalItem.imageOffsetY) !== normalizedItem.imageOffsetY
+  );
 }
 
 function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
@@ -818,6 +846,7 @@ export default function App() {
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
+  const [editorReturnTarget, setEditorReturnTarget] = useState(null);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
@@ -958,6 +987,7 @@ export default function App() {
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
           itemNeedsImageScaleMigration(storedItems[index], item) ||
+          itemNeedsImageOffsetMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item)
       );
 
@@ -1066,6 +1096,61 @@ export default function App() {
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
   }, [activeOutfitSlot, activeAccessorySlot]);
 
+  useEffect(() => {
+    function handleDocumentKeyDown(event) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (confirmation) {
+        event.preventDefault();
+        confirmation.onCancel();
+        return;
+      }
+
+      if (fitpicPreview) {
+        event.preventDefault();
+        setFitpicPreview(null);
+        return;
+      }
+
+      if (editorFloatingOpen && editingId) {
+        event.preventDefault();
+        cancelEdit();
+        return;
+      }
+
+      if (activeOutfitSlot || activeAccessorySlot) {
+        event.preventDefault();
+        closePickerOverlay();
+        return;
+      }
+
+      if (wardrobeFiltersOpen) {
+        event.preventDefault();
+        setWardrobeFiltersOpen(false);
+        return;
+      }
+
+      if (activePanel) {
+        event.preventDefault();
+        closeWorkspacePanel();
+      }
+    }
+
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    return () => document.removeEventListener("keydown", handleDocumentKeyDown);
+  }, [
+    activeAccessorySlot,
+    activeOutfitSlot,
+    activePanel,
+    confirmation,
+    editingId,
+    editorFloatingOpen,
+    fitpicPreview,
+    wardrobeFiltersOpen
+  ]);
+
   function handleGenerate() {
     setActivePanel(null);
     setActiveOutfitSlot(null);
@@ -1075,6 +1160,7 @@ export default function App() {
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
+    setEditorReturnTarget(null);
     setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists));
   }
 
@@ -1185,6 +1271,7 @@ export default function App() {
       (item, index) =>
         itemNeedsRetailMigration(nextItems[index], item) ||
         itemNeedsImageScaleMigration(nextItems[index], item) ||
+        itemNeedsImageOffsetMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item)
     );
 
@@ -1212,6 +1299,7 @@ export default function App() {
     });
     setWardrobeSort("");
     setEditingId(null);
+    setEditorReturnTarget(null);
     setDraft(emptyForm);
     setActivePanel(null);
     setControlsOpen(true);
@@ -1473,6 +1561,7 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setEditorFloatingOpen(false);
+    setEditorReturnTarget("wardrobe");
     setEditingId("new");
     setDraft(emptyForm);
   }
@@ -1482,6 +1571,7 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setEditorFloatingOpen(Boolean(options.floating));
+    setEditorReturnTarget(options.returnTarget ?? "wardrobe");
     setEditingId(item.id);
     setDraft(normalizeItem(item));
   }
@@ -1489,13 +1579,14 @@ export default function App() {
   function cancelEdit() {
     setEditingId(null);
     setEditorFloatingOpen(false);
+    setEditorReturnTarget(null);
     setDraft(emptyForm);
     setImageUploadError("");
     setImageProcessing(false);
   }
 
   function startFloatingEdit(item) {
-    startEdit(item, { floating: true });
+    startEdit(item, { floating: true, returnTarget: "outfit" });
     closePickerOverlay();
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
@@ -1577,6 +1668,8 @@ export default function App() {
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
     const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
     const normalizedImageScale = normalizeImageScale(draft.imageScale);
+    const normalizedImageOffsetX = normalizeImageOffset(draft.imageOffsetX);
+    const normalizedImageOffsetY = normalizeImageOffset(draft.imageOffsetY);
 
     if (!trimmedImageUrl) {
       setImageUploadError("Choose an image or enter an image URL before saving.");
@@ -1603,6 +1696,8 @@ export default function App() {
       name: trimmedName,
       imageUrl: trimmedImageUrl,
       imageScale: normalizedImageScale,
+      imageOffsetX: normalizedImageOffsetX,
+      imageOffsetY: normalizedImageOffsetY,
       brand: trimmedBrand,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
@@ -1664,7 +1759,7 @@ export default function App() {
       );
     }
 
-    const shouldReturnToWardrobe = editorFloatingOpen || activePanel !== "wardrobe";
+    const shouldReturnToWardrobe = editorReturnTarget === "wardrobe" && activePanel !== "wardrobe";
     cancelEdit();
 
     if (shouldReturnToWardrobe) {
@@ -1893,6 +1988,7 @@ export default function App() {
       setFitpicPreview(null);
       setEditorFloatingOpen(false);
       setEditingId(null);
+      setEditorReturnTarget(null);
       return nextPanel;
     });
   }
@@ -1915,6 +2011,7 @@ export default function App() {
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
+    setEditorReturnTarget(null);
     setControlsOpen((current) => !current);
   }
 
@@ -2216,6 +2313,58 @@ export default function App() {
           <span>%</span>
         </div>
       </label>
+
+      <div className="image-position-controls">
+        <label>
+          Image X
+          <div className="image-scale-control">
+            <input
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              value={normalizeImageOffset(draft.imageOffsetX)}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, imageOffsetX: Number(event.target.value) }))
+              }
+            />
+            <input
+              inputMode="numeric"
+              value={normalizeImageOffset(draft.imageOffsetX)}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, imageOffsetX: normalizeImageOffset(event.target.value) }))
+              }
+              aria-label="Image horizontal position"
+            />
+            <span>%</span>
+          </div>
+        </label>
+
+        <label>
+          Image Y
+          <div className="image-scale-control">
+            <input
+              type="range"
+              min="-50"
+              max="50"
+              step="1"
+              value={normalizeImageOffset(draft.imageOffsetY)}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, imageOffsetY: Number(event.target.value) }))
+              }
+            />
+            <input
+              inputMode="numeric"
+              value={normalizeImageOffset(draft.imageOffsetY)}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, imageOffsetY: normalizeImageOffset(event.target.value) }))
+              }
+              aria-label="Image vertical position"
+            />
+            <span>%</span>
+          </div>
+        </label>
+      </div>
 
       <label>
         Name

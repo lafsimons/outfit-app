@@ -1437,6 +1437,10 @@ button:disabled {
   padding: 0;
 }
 
+.image-position-controls {
+  display: contents;
+}
+
 .item-image-note,
 .form-error {
   grid-column: 2;
