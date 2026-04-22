@@ -2586,6 +2586,142 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
+      <label>
+        Type
+        <select
+          value={draft.type}
+          onChange={(event) => updateType(event.target.value)}
+        >
+          <option value="">Select type</option>
+          {itemTypes.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Garment type
+        <select
+          value={draft.garmentType}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              garmentType: event.target.value,
+              layerType: event.target.value === "Top" ? current.layerType : "Both",
+              accessorySlot: event.target.value === "Accessory" ? current.accessorySlot : "",
+              size:
+                event.target.value === "Accessory" && !current.size.trim()
+                  ? "OS"
+                  : current.size
+            }))
+          }
+        >
+          {garmentTypes.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {draft.garmentType === "Top" ? (
+        <label>
+          Layer type
+          <select
+            value={draft.layerType}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, layerType: event.target.value }))
+            }
+          >
+            {layerTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {draft.garmentType === "Accessory" ? (
+        <label>
+          Accessory slot
+          <select
+            value={draft.accessorySlot}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, accessorySlot: event.target.value }))
+            }
+          >
+            <option value="">Select slot</option>
+            {accessorySlots.map((slot) => (
+              <option key={slot} value={slot}>
+                {getAccessoryLabel(slot)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      <label>
+        Brand
+        <input
+          value={draft.brand}
+          onChange={(event) => setDraft((current) => ({ ...current, brand: event.target.value }))}
+          placeholder="Brand"
+        />
+      </label>
+
+      <label>
+        Name
+        <input
+          value={draft.name}
+          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+          placeholder="Grey wool beanie"
+        />
+      </label>
+
+      <label>
+        Color
+        <input
+          value={draft.color}
+          onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))}
+          placeholder="Black"
+        />
+      </label>
+
+      <label>
+        Size
+        <input
+          value={draft.size}
+          onChange={(event) => setDraft((current) => ({ ...current, size: event.target.value }))}
+          placeholder="M"
+        />
+      </label>
+
+      <label>
+        List
+        <select
+          value={draft.list}
+          onChange={(event) => setDraft((current) => ({ ...current, list: event.target.value }))}
+        >
+          {itemLists.map((list) => (
+            <option key={list} value={list}>
+              {list}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={Boolean(draft.favorite)}
+          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
+        />
+        Favorite
+      </label>
+
       <div className="item-image-upload">
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
@@ -2697,11 +2833,14 @@ export default function App() {
       </div>
 
       <label>
-        Name
+        Image URL
         <input
-          value={draft.name}
-          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-          placeholder="Grey wool beanie"
+          value={draft.imageUrl}
+          onChange={(event) => {
+            setImageUploadError("");
+            setDraft((current) => ({ ...current, imageUrl: event.target.value }));
+          }}
+          placeholder="/images/item.png"
         />
       </label>
 
@@ -2733,145 +2872,6 @@ export default function App() {
           }
           placeholder="280"
         />
-      </label>
-
-      <label>
-        Brand
-        <input
-          value={draft.brand}
-          onChange={(event) => setDraft((current) => ({ ...current, brand: event.target.value }))}
-          placeholder="Brand"
-        />
-      </label>
-
-      <label>
-        Image URL
-        <input
-          value={draft.imageUrl}
-          onChange={(event) => {
-            setImageUploadError("");
-            setDraft((current) => ({ ...current, imageUrl: event.target.value }));
-          }}
-          placeholder="/images/item.png"
-        />
-      </label>
-
-      <label>
-        Type
-        <select
-          value={draft.type}
-          onChange={(event) => updateType(event.target.value)}
-        >
-          <option value="">Select type</option>
-          {itemTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        Size
-        <input
-          value={draft.size}
-          onChange={(event) => setDraft((current) => ({ ...current, size: event.target.value }))}
-          placeholder="M"
-        />
-      </label>
-
-      <label>
-        Garment type
-        <select
-          value={draft.garmentType}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              garmentType: event.target.value,
-              layerType: event.target.value === "Top" ? current.layerType : "Both",
-              accessorySlot: event.target.value === "Accessory" ? current.accessorySlot : "",
-              size:
-                event.target.value === "Accessory" && !current.size.trim()
-                  ? "OS"
-                  : current.size
-            }))
-          }
-        >
-          {garmentTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {draft.garmentType === "Top" ? (
-        <label>
-          Layer type
-          <select
-            value={draft.layerType}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, layerType: event.target.value }))
-            }
-          >
-            {layerTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {draft.garmentType === "Accessory" ? (
-        <label>
-          Accessory slot
-          <select
-            value={draft.accessorySlot}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, accessorySlot: event.target.value }))
-            }
-          >
-            <option value="">Select slot</option>
-            {accessorySlots.map((slot) => (
-              <option key={slot} value={slot}>
-                {getAccessoryLabel(slot)}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      <label>
-        Color
-        <input
-          value={draft.color}
-          onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))}
-          placeholder="Black"
-        />
-      </label>
-
-      <label>
-        List
-        <select
-          value={draft.list}
-          onChange={(event) => setDraft((current) => ({ ...current, list: event.target.value }))}
-        >
-          {itemLists.map((list) => (
-            <option key={list} value={list}>
-              {list}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="checkbox-field">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.favorite)}
-          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
-        />
-        Favorite
       </label>
 
       <div className="id-preview">
