@@ -959,6 +959,7 @@ button:disabled {
 
 .wardrobe-controls,
 .wardrobe-worth-window,
+.wardrobe-saved-window,
 .wardrobe-manage-window {
   position: absolute;
   top: 40px;
@@ -979,6 +980,7 @@ button:disabled {
 
 .wardrobe-controls.is-open,
 .wardrobe-worth-window.is-open,
+.wardrobe-saved-window.is-open,
 .wardrobe-manage-window.is-open {
   display: grid;
 }
@@ -986,6 +988,15 @@ button:disabled {
 .wardrobe-worth-window {
   grid-template-columns: 1fr;
   width: min(520px, 100%);
+}
+
+.wardrobe-saved-window {
+  grid-template-columns: 1fr;
+  width: min(720px, 100%);
+}
+
+.wardrobe-saved-window > .eyebrow {
+  margin: 0;
 }
 
 .wardrobe-manage-window {
@@ -1134,10 +1145,6 @@ button:disabled {
 .active-panel-overlay .wardrobe-panel,
 .active-panel-overlay .side-editor {
   height: calc(100vh - 164px - env(safe-area-inset-bottom));
-}
-
-.saved-outfits-panel {
-  padding-top: 14px;
 }
 
 .saved-outfits-list {
@@ -2033,6 +2040,7 @@ button:disabled {
 
   .wardrobe-controls,
   .wardrobe-worth-window,
+  .wardrobe-saved-window,
   .wardrobe-manage-window {
     position: fixed;
     left: 10px;
@@ -2052,12 +2060,14 @@ button:disabled {
   }
 
   .wardrobe-worth-window,
+  .wardrobe-saved-window,
   .wardrobe-manage-window {
     grid-template-columns: 1fr;
   }
 
   .wardrobe-controls.is-open,
   .wardrobe-worth-window.is-open,
+  .wardrobe-saved-window.is-open,
   .wardrobe-manage-window.is-open {
     display: grid;
   }

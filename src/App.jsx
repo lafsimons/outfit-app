@@ -900,6 +900,7 @@ export default function App() {
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [wardrobeWorthOpen, setWardrobeWorthOpen] = useState(false);
+  const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
@@ -1258,6 +1259,12 @@ export default function App() {
         return;
       }
 
+      if (wardrobeSavedOpen) {
+        event.preventDefault();
+        setWardrobeSavedOpen(false);
+        return;
+      }
+
       if (wardrobeManageOpen) {
         event.preventDefault();
         setWardrobeManageOpen(false);
@@ -1282,6 +1289,7 @@ export default function App() {
     fitpicPreview,
     wardrobeFiltersOpen,
     wardrobeWorthOpen,
+    wardrobeSavedOpen,
     wardrobeManageOpen
   ]);
 
@@ -1292,6 +1300,7 @@ export default function App() {
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setOutfitFiltersOpen(false);
     setFitpicPreview(null);
@@ -1486,6 +1495,7 @@ export default function App() {
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
   }
 
@@ -1808,6 +1818,7 @@ export default function App() {
   function startCreate() {
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
@@ -1820,6 +1831,7 @@ export default function App() {
   function startEdit(item, options = {}) {
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
@@ -1844,6 +1856,7 @@ export default function App() {
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
   }
 
@@ -2265,6 +2278,7 @@ export default function App() {
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
       setWardrobeWorthOpen(false);
+      setWardrobeSavedOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
       setEditorFloatingOpen(false);
@@ -2278,6 +2292,7 @@ export default function App() {
     setActivePanel(null);
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
   }
@@ -2292,6 +2307,7 @@ export default function App() {
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setOutfitFiltersOpen(false);
     setFitpicPreview(null);
@@ -2307,24 +2323,35 @@ export default function App() {
 
   function openWardrobeFilters() {
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setWardrobeFiltersOpen(true);
   }
 
   function toggleWardrobeWorth() {
     setWardrobeFiltersOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setWardrobeWorthOpen((current) => !current);
+  }
+
+  function toggleWardrobeSaved() {
+    setWardrobeFiltersOpen(false);
+    setWardrobeWorthOpen(false);
+    setWardrobeManageOpen(false);
+    setWardrobeSavedOpen((current) => !current);
   }
 
   function toggleWardrobeManage() {
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
+    setWardrobeSavedOpen(false);
     setWardrobeManageOpen((current) => !current);
   }
 
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
+    setWardrobeSavedOpen(false);
     setActivePanel(null);
   }
 
@@ -2475,6 +2502,94 @@ export default function App() {
             <p>No compatible accessories available for this slot.</p>
           </div>
         )}
+      </div>
+    );
+  }
+
+  function renderSavedOutfitsContent() {
+    if (!savedOutfits.length) {
+      return (
+        <div className="editor-placeholder">
+          <p>Save an outfit you like and it will appear here.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="saved-outfits-list">
+        {savedOutfits.map((savedOutfit) => (
+          <article key={savedOutfit.id} className="saved-outfit-card">
+            {editingSavedOutfitId === savedOutfit.id ? (
+              <form
+                className="saved-outfit-form"
+                onSubmit={(event) => submitSavedOutfit(event, savedOutfit.id)}
+              >
+                <label>
+                  Name
+                  <input
+                    value={savedOutfitDraft.name}
+                    onChange={(event) =>
+                      setSavedOutfitDraft((current) => ({
+                        ...current,
+                        name: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  Description
+                  <textarea
+                    value={savedOutfitDraft.description}
+                    onChange={(event) =>
+                      setSavedOutfitDraft((current) => ({
+                        ...current,
+                        description: event.target.value
+                      }))
+                    }
+                    rows="3"
+                  />
+                </label>
+                <div className="saved-outfit-actions">
+                  <button type="submit" className="primary-button">Save</button>
+                  <button type="button" className="ghost-button" onClick={cancelEditSavedOutfit}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="saved-outfit-load"
+                  onClick={() => loadAndCloseSavedOutfit(savedOutfit)}
+                >
+                  {renderSavedOutfitPreview(savedOutfit)}
+                  <strong>{savedOutfit.name}</strong>
+                  <span>{savedOutfit.description || "No description"}</span>
+                  {savedOutfitHasMissingItems(savedOutfit, itemsById) ? (
+                    <span className="saved-outfit-warning">Missing item</span>
+                  ) : null}
+                </button>
+                <div className="saved-outfit-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => startEditSavedOutfit(savedOutfit)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button danger"
+                    onClick={() => deleteSavedOutfit(savedOutfit.id)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </>
+            )}
+          </article>
+        ))}
       </div>
     );
   }
@@ -2914,7 +3029,6 @@ export default function App() {
             CONTROLS
           </button>
           {[
-            ["saved", "Saved outfits"],
             ["wardrobe", "Wardrobe"],
             ["fitpics", "Fitpics"]
           ].map(([panel, label]) => (
@@ -3020,96 +3134,6 @@ export default function App() {
           className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
           onClick={(event) => event.stopPropagation()}
         >
-        {activePanel === "saved" ? (
-        <div className="panel saved-outfits-panel">
-          <div className="panel-header">
-            <p className="eyebrow">Saved outfits</p>
-          </div>
-
-          {savedOutfits.length ? (
-            <div className="saved-outfits-list">
-              {savedOutfits.map((savedOutfit) => (
-                <article key={savedOutfit.id} className="saved-outfit-card">
-                  {editingSavedOutfitId === savedOutfit.id ? (
-                    <form
-                      className="saved-outfit-form"
-                      onSubmit={(event) => submitSavedOutfit(event, savedOutfit.id)}
-                    >
-                      <label>
-                        Name
-                        <input
-                          value={savedOutfitDraft.name}
-                          onChange={(event) =>
-                            setSavedOutfitDraft((current) => ({
-                              ...current,
-                              name: event.target.value
-                            }))
-                          }
-                        />
-                      </label>
-                      <label>
-                        Description
-                        <textarea
-                          value={savedOutfitDraft.description}
-                          onChange={(event) =>
-                            setSavedOutfitDraft((current) => ({
-                              ...current,
-                              description: event.target.value
-                            }))
-                          }
-                          rows="3"
-                        />
-                      </label>
-                      <div className="saved-outfit-actions">
-                        <button type="submit" className="primary-button">Save</button>
-                        <button type="button" className="ghost-button" onClick={cancelEditSavedOutfit}>
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="saved-outfit-load"
-                        onClick={() => loadAndCloseSavedOutfit(savedOutfit)}
-                      >
-                        {renderSavedOutfitPreview(savedOutfit)}
-                        <strong>{savedOutfit.name}</strong>
-                        <span>{savedOutfit.description || "No description"}</span>
-                        {savedOutfitHasMissingItems(savedOutfit, itemsById) ? (
-                          <span className="saved-outfit-warning">Missing item</span>
-                        ) : null}
-                      </button>
-                      <div className="saved-outfit-actions">
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => startEditSavedOutfit(savedOutfit)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button danger"
-                          onClick={() => deleteSavedOutfit(savedOutfit.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="editor-placeholder">
-              <p>Save an outfit you like and it will appear here.</p>
-            </div>
-          )}
-        </div>
-        ) : null}
-
         {activePanel === "wardrobe" ? (
         <div className="wardrobe-workspace">
           <div className="panel wardrobe-panel">
@@ -3141,6 +3165,14 @@ export default function App() {
               </button>
               <button
                 type="button"
+                className={`secondary-button ${wardrobeSavedOpen ? "is-active" : ""}`}
+                onClick={toggleWardrobeSaved}
+                aria-expanded={wardrobeSavedOpen}
+              >
+                Saved
+              </button>
+              <button
+                type="button"
                 className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                 onClick={toggleWardrobeManage}
                 aria-expanded={wardrobeManageOpen}
@@ -3159,6 +3191,10 @@ export default function App() {
 
             {wardrobeWorthOpen ? (
               <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeWorthOpen(false)} />
+            ) : null}
+
+            {wardrobeSavedOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeSavedOpen(false)} />
             ) : null}
 
             {wardrobeManageOpen ? (
@@ -3325,6 +3361,14 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className={`wardrobe-saved-window ${wardrobeSavedOpen ? "is-open" : ""}`} aria-label="Saved outfits">
+              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeSavedOpen(false)}>
+                Close
+              </button>
+              <p className="eyebrow">Saved outfits</p>
+              {renderSavedOutfitsContent()}
             </div>
 
             <div className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`} aria-label="Wardrobe management">
