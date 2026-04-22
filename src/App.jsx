@@ -2846,7 +2846,11 @@ export default function App() {
             aria-label="Outfit filters"
             title="Outfit filters"
           >
-            <span aria-hidden="true">⌯</span>
+            <span className="mixer-icon" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
           </button>
           {[
             ["saved", "Saved outfits"],

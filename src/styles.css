@@ -330,9 +330,46 @@ button:disabled {
   line-height: 1;
 }
 
-.workspace-tab-icon span {
+.mixer-icon {
+  display: grid;
+  grid-template-columns: repeat(3, 1px);
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  width: 16px;
+  height: 14px;
+  margin: 0 auto;
+}
+
+.mixer-icon span {
+  position: relative;
   display: block;
-  transform: rotate(90deg);
+  width: 1px;
+  height: 14px;
+  background: currentColor;
+}
+
+.mixer-icon span::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 5px;
+  height: 3px;
+  border: 1px solid currentColor;
+  background: currentColor;
+  transform: translateX(-50%);
+}
+
+.mixer-icon span:nth-child(1)::after {
+  top: 2px;
+}
+
+.mixer-icon span:nth-child(2)::after {
+  top: 8px;
+}
+
+.mixer-icon span:nth-child(3)::after {
+  top: 5px;
 }
 
 .list-toggle,
