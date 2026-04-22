@@ -187,6 +187,12 @@ button:disabled {
   width: 100%;
 }
 
+.outfit-filters-window {
+  width: min(320px, calc(100% - 48px));
+  max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
 .generation-list-controls {
   display: grid;
   gap: 6px;
@@ -646,11 +652,6 @@ button:disabled {
 .accessory-picker-item.is-current,
 .slot-picker-item.is-current {
   box-shadow: inset 0 0 0 1px var(--primary);
-}
-
-.outfit-filters-panel {
-  display: grid;
-  gap: 14px;
 }
 
 .outfit-filter-groups {

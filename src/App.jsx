@@ -878,6 +878,7 @@ export default function App() {
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
   const [wardrobeWorthVisible, setWardrobeWorthVisible] = useState(true);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
@@ -1437,6 +1438,7 @@ export default function App() {
     setDraft(emptyForm);
     setActivePanel(null);
     setControlsOpen(true);
+    setOutfitFiltersOpen(false);
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
     setPickerAnchorSlot(null);
@@ -2136,6 +2138,7 @@ export default function App() {
       const nextPanel = current === panel ? null : panel;
       if (nextPanel) {
         setControlsOpen(false);
+        setOutfitFiltersOpen(false);
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
@@ -2160,6 +2163,7 @@ export default function App() {
       setActivePanel(null);
     }
 
+    setOutfitFiltersOpen(false);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
@@ -2169,6 +2173,23 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setControlsOpen((current) => !current);
+  }
+
+  function toggleOutfitFiltersWindow() {
+    if (activePanel) {
+      setActivePanel(null);
+    }
+
+    setControlsOpen(false);
+    setActiveOutfitSlot(null);
+    setActiveAccessorySlot(null);
+    setPickerAnchorSlot(null);
+    setWardrobeFiltersOpen(false);
+    setFitpicPreview(null);
+    setEditorFloatingOpen(false);
+    setEditingId(null);
+    setEditorReturnTarget(null);
+    setOutfitFiltersOpen((current) => !current);
   }
 
   function loadAndCloseSavedOutfit(savedOutfit) {
@@ -2817,8 +2838,15 @@ export default function App() {
           >
             CONTROLS
           </button>
+          <button
+            type="button"
+            className={`workspace-tab ${outfitFiltersOpen && !activePanel ? "is-active" : ""}`}
+            onClick={toggleOutfitFiltersWindow}
+            aria-pressed={outfitFiltersOpen && !activePanel}
+          >
+            Outfit filters
+          </button>
           {[
-            ["filters", "Outfit filters"],
             ["saved", "Saved outfits"],
             ["wardrobe", "Wardrobe"],
             ["worth", "Wardrobe worth"],
@@ -2894,48 +2922,57 @@ export default function App() {
           </div>
         ) : null}
 
+        {outfitFiltersOpen && !activePanel ? (
+          <div className="controls-window outfit-filters-window" aria-label="Outfit filters">
+            <div className="controls-window-header">
+              <p className="eyebrow">Outfit filters</p>
+              <button
+                type="button"
+                className="controls-hide-button"
+                onClick={() => setOutfitFiltersOpen(false)}
+                aria-label="Hide outfit filters"
+              >
+                ×
+              </button>
+            </div>
+
+            <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+              Clear outfit filters
+            </button>
+
+            <div className="outfit-filter-groups">
+              {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                <section key={group} className="outfit-filter-group">
+                  <p className="eyebrow">{group}</p>
+                  <div className="outfit-filter-options">
+                    {options.map((option) => {
+                      const isSelected = outfitFilters[group]?.includes(option);
+
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                          onClick={() => toggleOutfitFilter(group, option)}
+                          aria-pressed={isSelected}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {activePanel ? (
           <div className="floating-backdrop active-panel-backdrop" onClick={closeWorkspacePanel}>
         <div
           className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
           onClick={(event) => event.stopPropagation()}
         >
-        {activePanel === "filters" ? (
-        <div className="panel outfit-filters-panel">
-          <div className="panel-header">
-            <p className="eyebrow">Outfit filters</p>
-            <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-              Clear outfit filters
-            </button>
-          </div>
-
-          <div className="outfit-filter-groups">
-            {Object.entries(outfitFilterOptions).map(([group, options]) => (
-              <section key={group} className="outfit-filter-group">
-                <p className="eyebrow">{group}</p>
-                <div className="outfit-filter-options">
-                  {options.map((option) => {
-                    const isSelected = outfitFilters[group]?.includes(option);
-
-                    return (
-                      <button
-                        key={option}
-                        type="button"
-                        className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                        onClick={() => toggleOutfitFilter(group, option)}
-                        aria-pressed={isSelected}
-                      >
-                        {option}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-        </div>
-        ) : null}
-
         {activePanel === "saved" ? (
         <div className="panel saved-outfits-panel">
           <div className="panel-header">
