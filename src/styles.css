@@ -826,6 +826,44 @@ button:disabled {
   color: var(--primary-text);
 }
 
+.active-filter-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-soft);
+}
+
+.active-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.active-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.active-filter-chip span {
+  color: var(--muted);
+}
+
 .wardrobe-controls label {
   display: grid;
   gap: 5px;
@@ -1755,8 +1793,14 @@ button:disabled {
   }
 
   .filter-close-button,
+  .clear-filters-button,
   .clear-laundry-button {
     grid-column: 1 / -1;
+  }
+
+  .active-filter-summary {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .wardrobe-grid {

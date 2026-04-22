@@ -91,6 +91,14 @@ const defaultGenerationLists = {
   Wardrobe: true,
   Wishlist: false
 };
+const emptyWardrobeFilters = {
+  brand: "",
+  type: "",
+  garmentType: "",
+  color: "",
+  laundry: "",
+  list: ""
+};
 const itemTypes = [
   "Beanie",
   "Cap",
@@ -851,14 +859,7 @@ export default function App() {
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
-  const [wardrobeFilters, setWardrobeFilters] = useState({
-    brand: "",
-    type: "",
-    garmentType: "",
-    color: "",
-    laundry: "",
-    list: ""
-  });
+  const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState("");
 
   const itemsById = useMemo(
@@ -901,6 +902,19 @@ export default function App() {
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.values(wardrobeFilters).filter(Boolean).length;
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
+  const activeWardrobeFilterChips = [
+    ["Brand", wardrobeFilters.brand],
+    ["Type", wardrobeFilters.type],
+    ["Garment", wardrobeFilters.garmentType],
+    ["Color", wardrobeFilters.color],
+    ["List", wardrobeFilters.list],
+    ["Laundry", wardrobeFilters.laundry]
+  ]
+    .filter(([, value]) => Boolean(value))
+    .map(([label, value]) => ({
+      label,
+      value: value === "__none__" ? `No ${label.toLowerCase()}` : value
+    }));
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -1313,14 +1327,7 @@ export default function App() {
     setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
     setFitpics(nextAppState?.fitpics ?? []);
-    setWardrobeFilters({
-      brand: "",
-      type: "",
-      garmentType: "",
-      color: "",
-      laundry: "",
-      list: ""
-    });
+    setWardrobeFilters(emptyWardrobeFilters);
     setWardrobeSort("");
     setEditingId(null);
     setEditorReturnTarget(null);
@@ -1645,6 +1652,10 @@ export default function App() {
 
   function clearLaundry() {
     setExcluded({});
+  }
+
+  function clearWardrobeFilters() {
+    setWardrobeFilters(emptyWardrobeFilters);
   }
 
   function toggleGenerationList(list) {
@@ -2873,6 +2884,9 @@ export default function App() {
               <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeFiltersOpen(false)}>
                 Close
               </button>
+              <button type="button" className="ghost-button clear-filters-button" onClick={clearWardrobeFilters} disabled={!hasActiveWardrobeFilters}>
+                Clear filters
+              </button>
               <label>
                 Brand
                 <select
@@ -2973,6 +2987,22 @@ export default function App() {
                 Clear laundry
               </button>
             </div>
+
+            {hasActiveWardrobeFilters ? (
+              <div className="active-filter-summary" aria-label="Active wardrobe filters">
+                <div className="active-filter-chips">
+                  {activeWardrobeFilterChips.map((filter) => (
+                    <span key={filter.label} className="active-filter-chip">
+                      <span>{filter.label}</span>
+                      {filter.value}
+                    </span>
+                  ))}
+                </div>
+                <button type="button" className="ghost-button clear-filters-button" onClick={clearWardrobeFilters}>
+                  Clear filters
+                </button>
+              </div>
+            ) : null}
 
             <div className="wardrobe-grid">
               {visibleWardrobeItems.map((item) => {
