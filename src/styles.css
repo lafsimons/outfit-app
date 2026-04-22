@@ -380,6 +380,12 @@ button:disabled {
   color: var(--text);
 }
 
+.ghost-button.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
 .ghost-button.danger {
   color: var(--text);
 }
@@ -511,7 +517,7 @@ button:disabled {
 
 .accessory-slot-glasses {
   top: 18px;
-  left: 254px;
+  right: 186px;
 }
 
 .accessory-slot-belt {
@@ -1154,6 +1160,38 @@ button:disabled {
   padding: 20px;
 }
 
+.confirm-backdrop {
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.confirm-dialog {
+  width: min(360px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.confirm-dialog p {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 0.74rem;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .fitpic-preview-overlay {
   max-width: min(980px, calc(100vw - 40px));
   max-height: calc(100vh - 40px);
@@ -1386,6 +1424,17 @@ button:disabled {
   gap: 6px;
   flex-wrap: wrap;
   align-items: flex-start;
+}
+
+.image-scale-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-scale-control input[type="range"] {
+  padding: 0;
 }
 
 .item-image-note,

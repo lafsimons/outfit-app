@@ -100,6 +100,36 @@ const defaultWardrobe = [
     color: "Gray"
   },
   {
+    id: "headwear_cap_default_beige_os_beige",
+    name: "Beige cap",
+    imageUrl: "/images/headwear_cap_beige.png",
+    imageScale: 100,
+    value: "",
+    retailValue: "",
+    brand: "",
+    type: "Cap",
+    size: "OS",
+    garmentType: "Headwear",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "Beige"
+  },
+  {
+    id: "top_inner_shirt_default_white_size_m",
+    name: "White shirt",
+    imageUrl: "/images/top_shirt_111.png",
+    imageScale: 100,
+    value: "",
+    retailValue: "",
+    brand: "",
+    type: "Shirt",
+    size: "M",
+    garmentType: "Top",
+    layerType: "Inner",
+    accessorySlot: "",
+    color: "White"
+  },
+  {
     id: "top_both_sweatshirt_taiga_takahashi_lot_603_sweat_shirt_40_sumi",
     name: "Lot.603 Sweat Shirt",
     imageUrl: "/images/top_sweatshirt_603sumi.png",
@@ -110,6 +140,21 @@ const defaultWardrobe = [
     size: "40",
     garmentType: "Top",
     layerType: "Both",
+    accessorySlot: "",
+    color: "Sumi"
+  },
+  {
+    id: "top_outer_jacket_default_sumi_size_m",
+    name: "Sumi jacket",
+    imageUrl: "/images/top_jacket_303sumi.png",
+    imageScale: 100,
+    value: "",
+    retailValue: "",
+    brand: "",
+    type: "Jacket",
+    size: "M",
+    garmentType: "Top",
+    layerType: "Outer",
     accessorySlot: "",
     color: "Sumi"
   },
@@ -126,6 +171,36 @@ const defaultWardrobe = [
     layerType: "Outer",
     accessorySlot: "",
     color: "Black"
+  },
+  {
+    id: "bottom_trousers_default_brown_size_m",
+    name: "Brown trousers",
+    imageUrl: "/images/bottom_204_brown.png",
+    imageScale: 100,
+    value: "",
+    retailValue: "",
+    brand: "",
+    type: "Trousers",
+    size: "M",
+    garmentType: "Bottom",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "Brown"
+  },
+  {
+    id: "footwear_sneakers_default_gat_size_42",
+    name: "GAT sneakers",
+    imageUrl: "/images/footwear_sneaker_gat.png",
+    imageScale: 100,
+    value: "",
+    retailValue: "",
+    brand: "",
+    type: "Sneakers",
+    size: "42",
+    garmentType: "Footwear",
+    layerType: "Both",
+    accessorySlot: "",
+    color: "White"
   }
 ];
 

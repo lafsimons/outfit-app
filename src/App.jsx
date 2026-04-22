@@ -169,6 +169,7 @@ const emptyForm = {
   id: "",
   name: "",
   imageUrl: "",
+  imageScale: 100,
   value: "",
   retailValue: "",
   brand: "",
@@ -187,6 +188,19 @@ function normalizeList(list) {
 
 function normalizeItemType(type) {
   return type === "Derbies" ? "Derby" : type;
+}
+
+function normalizeImageScale(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+  return Math.min(180, Math.max(50, Math.round(parsed)));
+}
+
+function getItemImageStyle(item) {
+  const scale = normalizeImageScale(item?.imageScale);
+  return scale === 100 ? undefined : { transform: `scale(${scale / 100})` };
 }
 
 function pickRandom(items) {
@@ -460,6 +474,7 @@ function normalizeItem(item) {
     value: shouldMoveValueToRetail ? "" : value,
     retailValue: shouldMoveValueToRetail ? value : retailValue,
     imageUrl: resolveImageUrl(item.imageUrl ?? item.img ?? ""),
+    imageScale: normalizeImageScale(item.imageScale),
     type: normalizeItemType(item.type ?? ""),
     list: normalizeList(item.list)
   };
@@ -467,6 +482,10 @@ function normalizeItem(item) {
 
 function itemNeedsRetailMigration(originalItem, normalizedItem) {
   return originalItem.value !== "" && originalItem.value !== undefined && !originalItem.retailValue && normalizedItem.retailValue === originalItem.value;
+}
+
+function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
+  return originalItem.imageScale === undefined || normalizeImageScale(originalItem.imageScale) !== normalizedItem.imageScale;
 }
 
 function formatCurrency(value) {
@@ -676,7 +695,6 @@ export default function App() {
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
-  const generatePressedTimeoutRef = useRef(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layering, setLayering] = useState(false);
@@ -703,7 +721,7 @@ export default function App() {
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
-  const [generatePressed, setGeneratePressed] = useState(false);
+  const [confirmation, setConfirmation] = useState(null);
   const [wardrobeFilters, setWardrobeFilters] = useState({
     brand: "",
     type: "",
@@ -757,6 +775,24 @@ export default function App() {
     [items]
   );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
+
+  function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
+    return new Promise((resolve) => {
+      setConfirmation({
+        title,
+        message,
+        confirmLabel,
+        onCancel: () => {
+          setConfirmation(null);
+          resolve(false);
+        },
+        onConfirm: () => {
+          setConfirmation(null);
+          resolve(true);
+        }
+      });
+    });
+  }
   const visibleWardrobeItems = useMemo(() => {
     const filtered = items.filter((item) =>
       matchesMetadataFilter(item.brand, wardrobeFilters.brand) &&
@@ -818,7 +854,11 @@ export default function App() {
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
       const normalizedItems = storedItems.map(normalizeItem);
-      const migratedItems = normalizedItems.filter((item, index) => itemNeedsRetailMigration(storedItems[index], item));
+      const migratedItems = normalizedItems.filter(
+        (item, index) =>
+          itemNeedsRetailMigration(storedItems[index], item) ||
+          itemNeedsImageScaleMigration(storedItems[index], item)
+      );
 
       if (cancelled) {
         return;
@@ -863,15 +903,6 @@ export default function App() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(
-    () => () => {
-      if (generatePressedTimeoutRef.current) {
-        window.clearTimeout(generatePressedTimeoutRef.current);
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     if (loading) {
@@ -935,11 +966,6 @@ export default function App() {
   }, [activeOutfitSlot, activeAccessorySlot]);
 
   function handleGenerate() {
-    setGeneratePressed(true);
-    if (generatePressedTimeoutRef.current) {
-      window.clearTimeout(generatePressedTimeoutRef.current);
-    }
-    generatePressedTimeoutRef.current = window.setTimeout(() => setGeneratePressed(false), 180);
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
@@ -1054,7 +1080,11 @@ export default function App() {
 
   function applyLoadedData(nextItems, nextAppState) {
     const normalizedItems = nextItems.map(normalizeItem);
-    const migratedItems = normalizedItems.filter((item, index) => itemNeedsRetailMigration(nextItems[index], item));
+    const migratedItems = normalizedItems.filter(
+      (item, index) =>
+        itemNeedsRetailMigration(nextItems[index], item) ||
+        itemNeedsImageScaleMigration(nextItems[index], item)
+    );
 
     if (migratedItems.length) {
       Promise.all(migratedItems.map((item) => saveItem(item)));
@@ -1129,7 +1159,13 @@ export default function App() {
       return;
     }
 
-    if (!window.confirm("Import this backup? This will replace all wardrobe data in this browser.")) {
+    const confirmed = await requestConfirmation({
+      title: "Import backup?",
+      message: "This will replace all wardrobe data in this browser.",
+      confirmLabel: "Import"
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -1199,11 +1235,14 @@ export default function App() {
   }
 
   async function handleResetToDefault() {
-    if (
-      !window.confirm(
-        "Reset this browser to the public default? This will replace all local wardrobe data, saved outfits, fitpics, settings, and imported backup data for this site."
-      )
-    ) {
+    const confirmed = await requestConfirmation({
+      title: "Reset to default?",
+      message:
+        "This will replace all local wardrobe data, saved outfits, fitpics, settings, and imported backup data for this site.",
+      confirmLabel: "Reset"
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -1435,6 +1474,7 @@ export default function App() {
     const trimmedSize = draft.size.trim();
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
     const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
+    const normalizedImageScale = normalizeImageScale(draft.imageScale);
 
     if (!trimmedImageUrl) {
       setImageUploadError("Choose an image or enter an image URL before saving.");
@@ -1460,6 +1500,7 @@ export default function App() {
       ...draft,
       name: trimmedName,
       imageUrl: trimmedImageUrl,
+      imageScale: normalizedImageScale,
       brand: trimmedBrand,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
@@ -1583,7 +1624,13 @@ export default function App() {
   }
 
   async function handleDelete(itemId) {
-    if (!window.confirm("Delete this wardrobe item?")) {
+    const confirmed = await requestConfirmation({
+      title: "Delete item?",
+      message: "This wardrobe item will be removed from outfits and saved outfits in this browser.",
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
       return false;
     }
 
@@ -1656,7 +1703,7 @@ export default function App() {
 
           return (
             <div key={`${savedOutfit.id}-${slot}`} className={slotClass}>
-              <img src={item.imageUrl} alt="" />
+              <img src={item.imageUrl} alt="" style={getItemImageStyle(item)} />
             </div>
           );
         })}
@@ -1676,7 +1723,7 @@ export default function App() {
         onClick={() => openAccessoryPicker(slot)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
-        {item ? <img src={item.imageUrl} alt={item.name} /> : null}
+        {item ? <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} /> : null}
       </button>
     );
   }
@@ -1793,7 +1840,11 @@ export default function App() {
         </div>
 
         <div className="slot-picker-actions">
-          <button type="button" className="ghost-button" onClick={() => toggleLock(activeOutfitSlot)}>
+          <button
+            type="button"
+            className={`ghost-button ${isLocked ? "is-active" : ""}`}
+            onClick={() => toggleLock(activeOutfitSlot)}
+          >
             {isLocked ? "Unlock" : "Lock"}
           </button>
           <button type="button" className="ghost-button" onClick={() => handleReroll(activeOutfitSlot)}>
@@ -1824,7 +1875,7 @@ export default function App() {
                 className={`slot-picker-item ${outfit[activeOutfitSlot] === item.id ? "is-current" : ""}`}
                 onClick={() => setOutfitSlot(activeOutfitSlot, item.id)}
               >
-                <img src={item.imageUrl} alt={item.name} />
+                <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
                 <span>{buildDisplayName(item)}</span>
               </button>
             ))}
@@ -1875,7 +1926,7 @@ export default function App() {
                 className={`accessory-picker-item ${outfit[activeAccessorySlot] === item.id ? "is-current" : ""}`}
                 onClick={() => swapAccessory(activeAccessorySlot, item.id)}
               >
-                <img src={item.imageUrl} alt={item.name} />
+                <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
                 <span>{buildDisplayName(item)}</span>
               </button>
             ))}
@@ -1923,7 +1974,17 @@ export default function App() {
     cancelEditSavedOutfit();
   }
 
-  function deleteSavedOutfit(savedOutfitId) {
+  async function deleteSavedOutfit(savedOutfitId) {
+    const confirmed = await requestConfirmation({
+      title: "Delete outfit?",
+      message: "This saved outfit will be removed from this browser.",
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
     setSavedOutfits((current) => current.filter((savedOutfit) => savedOutfit.id !== savedOutfitId));
 
     if (editingSavedOutfitId === savedOutfitId) {
@@ -1951,8 +2012,14 @@ export default function App() {
     event.target.value = "";
   }
 
-  function deleteFitpic(fitpicId) {
-    if (!window.confirm("Delete this fitpic?")) {
+  async function deleteFitpic(fitpicId) {
+    const confirmed = await requestConfirmation({
+      title: "Delete fitpic?",
+      message: "This fitpic will be removed from this browser.",
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -1993,7 +2060,7 @@ export default function App() {
       <div className="item-image-upload">
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
-            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" />
+            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
           ) : (
             <span>No image selected</span>
           )}
@@ -2022,6 +2089,31 @@ export default function App() {
         </p>
         {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
       </div>
+
+      <label>
+        Image size
+        <div className="image-scale-control">
+          <input
+            type="range"
+            min="50"
+            max="180"
+            step="5"
+            value={normalizeImageScale(draft.imageScale)}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, imageScale: Number(event.target.value) }))
+            }
+          />
+          <input
+            inputMode="numeric"
+            value={normalizeImageScale(draft.imageScale)}
+            onChange={(event) =>
+              setDraft((current) => ({ ...current, imageScale: normalizeImageScale(event.target.value) }))
+            }
+            aria-label="Image size percentage"
+          />
+          <span>%</span>
+        </div>
+      </label>
 
       <label>
         Name
@@ -2228,7 +2320,7 @@ export default function App() {
             onClick={() => openOutfitSlotPicker(slot)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <img src={item.imageUrl} alt={item.name} /> : <span aria-hidden="true" />}
+            {item ? <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} /> : <span aria-hidden="true" />}
           </button>
         </article>
       </div>
@@ -2275,11 +2367,7 @@ export default function App() {
         ) : null}
 
         <div className="workspace-tabs" aria-label="Workspace sections">
-          <button
-            type="button"
-            className={`workspace-tab ${generatePressed ? "is-active" : ""}`}
-            onClick={handleGenerate}
-          >
+          <button type="button" className="workspace-tab is-active" onClick={handleGenerate}>
             Generate
           </button>
           <button
@@ -2607,7 +2695,7 @@ export default function App() {
                     </button>
 
                     <button type="button" className="wardrobe-preview" onClick={() => equipItem(item)}>
-                      <img src={item.imageUrl} alt={item.name} />
+                      <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
                     </button>
 
                     <div className="wardrobe-meta">
@@ -2751,6 +2839,26 @@ export default function App() {
 
             {editorBody}
           </aside>
+        ) : null}
+
+        {confirmation ? (
+          <div className="floating-backdrop confirm-backdrop" onClick={confirmation.onCancel}>
+            <div className="confirm-dialog" onClick={(event) => event.stopPropagation()}>
+              <div>
+                <p className="eyebrow">Confirm</p>
+                <h2>{confirmation.title}</h2>
+              </div>
+              <p>{confirmation.message}</p>
+              <div className="confirm-actions">
+                <button type="button" className="ghost-button" onClick={confirmation.onCancel}>
+                  Cancel
+                </button>
+                <button type="button" className="primary-button" onClick={confirmation.onConfirm}>
+                  {confirmation.confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
 
         {fitpicPreview ? (
