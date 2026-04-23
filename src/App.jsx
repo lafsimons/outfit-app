@@ -1280,6 +1280,113 @@ function validateBackup(backup) {
   );
 }
 
+const emptyWeatherSettings = {
+  locationName: "",
+  latitude: null,
+  longitude: null
+};
+
+function normalizeWeatherSettings(settings) {
+  const latitude = Number(settings?.latitude);
+  const longitude = Number(settings?.longitude);
+
+  return {
+    locationName: settings?.locationName ?? "",
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null
+  };
+}
+
+function getWeatherConditionLabel(code) {
+  if (code === 0) return "Clear";
+  if ([1, 2, 3].includes(code)) return "Cloudy";
+  if ([45, 48].includes(code)) return "Fog";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Rain";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Snow";
+  if ([95, 96, 99].includes(code)) return "Storm";
+  return "Weather";
+}
+
+function getWeatherClimateFilters(temperature, code) {
+  const filters = [];
+
+  if (Number.isFinite(temperature)) {
+    if (temperature >= 24) {
+      filters.push("Hot");
+    } else if (temperature >= 16) {
+      filters.push("Warm");
+    } else if (temperature >= 8) {
+      filters.push("Transitional");
+    } else {
+      filters.push("Cold");
+    }
+  }
+
+  if ([61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(code)) {
+    filters.push("Rain");
+  }
+
+  if ([71, 73, 75, 77, 85, 86].includes(code)) {
+    filters.push("Snow");
+  }
+
+  return [...new Set(filters)];
+}
+
+async function fetchWeatherForLocation(query) {
+  const searchUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  searchUrl.searchParams.set("name", query);
+  searchUrl.searchParams.set("count", "1");
+  searchUrl.searchParams.set("language", "en");
+  searchUrl.searchParams.set("format", "json");
+
+  const searchResponse = await fetch(searchUrl);
+  if (!searchResponse.ok) {
+    throw new Error("Location search failed.");
+  }
+
+  const searchData = await searchResponse.json();
+  const [location] = searchData.results ?? [];
+  if (!location) {
+    throw new Error("Location was not found.");
+  }
+
+  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
+  weatherUrl.searchParams.set("latitude", location.latitude);
+  weatherUrl.searchParams.set("longitude", location.longitude);
+  weatherUrl.searchParams.set("current", "temperature_2m,weather_code");
+  weatherUrl.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
+  weatherUrl.searchParams.set("timezone", "auto");
+  weatherUrl.searchParams.set("forecast_days", "1");
+
+  const weatherResponse = await fetch(weatherUrl);
+  if (!weatherResponse.ok) {
+    throw new Error("Weather could not be loaded.");
+  }
+
+  const weatherData = await weatherResponse.json();
+  const temperature = weatherData.current?.temperature_2m;
+  const code = weatherData.current?.weather_code;
+
+  return {
+    settings: {
+      locationName: [location.name, location.admin1, location.country].filter(Boolean).join(", "),
+      latitude: location.latitude,
+      longitude: location.longitude
+    },
+    weather: {
+      temperature,
+      code,
+      condition: getWeatherConditionLabel(code),
+      high: weatherData.daily?.temperature_2m_max?.[0],
+      low: weatherData.daily?.temperature_2m_min?.[0],
+      suggestedFilters: getWeatherClimateFilters(temperature, code),
+      updatedAt: new Date().toISOString()
+    }
+  };
+}
+
 export default function App() {
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
@@ -1323,6 +1430,12 @@ export default function App() {
   const [wardrobeSort, setWardrobeSort] = useState("");
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [weatherOpen, setWeatherOpen] = useState(false);
+  const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
+  const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
+  const [weatherData, setWeatherData] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1599,6 +1712,9 @@ export default function App() {
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
         setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
         setOutfitFilterRules(normalizeOutfitFilterRules(storedAppState.outfitFilterRules));
+        setWeatherSettings(normalizeWeatherSettings(storedAppState.weatherSettings));
+        setWeatherLocationDraft(storedAppState.weatherSettings?.locationName ?? "");
+        setWeatherData(storedAppState.weatherData ?? null);
         setFitpics(storedAppState.fitpics ?? []);
       } else {
         const defaultData = getDefaultData();
@@ -1613,6 +1729,9 @@ export default function App() {
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
         setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
         setOutfitFilterRules(normalizeOutfitFilterRules(defaultState.outfitFilterRules));
+        setWeatherSettings(normalizeWeatherSettings(defaultState.weatherSettings));
+        setWeatherLocationDraft(defaultState.weatherSettings?.locationName ?? "");
+        setWeatherData(defaultState.weatherData ?? null);
         setFitpics(defaultState.fitpics ?? []);
       }
 
@@ -1642,9 +1761,11 @@ export default function App() {
       generationLists,
       outfitFilters,
       outfitFilterRules,
+      weatherSettings,
+      weatherData,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, outfitFilterRules, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, outfitFilterRules, weatherSettings, weatherData, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -1954,6 +2075,9 @@ export default function App() {
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
     setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
     setOutfitFilterRules(normalizeOutfitFilterRules(nextAppState?.outfitFilterRules));
+    setWeatherSettings(normalizeWeatherSettings(nextAppState?.weatherSettings));
+    setWeatherLocationDraft(nextAppState?.weatherSettings?.locationName ?? "");
+    setWeatherData(nextAppState?.weatherData ?? null);
     setFitpics(nextAppState?.fitpics ?? []);
     setWardrobeFilters(emptyWardrobeFilters);
     setWardrobeSort("");
@@ -2391,6 +2515,41 @@ export default function App() {
 
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
+  }
+
+  async function refreshWeather(locationOverride = weatherLocationDraft) {
+    const query = locationOverride.trim();
+
+    if (!query) {
+      setWeatherError("Enter a city first.");
+      return;
+    }
+
+    try {
+      setWeatherLoading(true);
+      setWeatherError("");
+      const nextWeather = await fetchWeatherForLocation(query);
+      setWeatherSettings(nextWeather.settings);
+      setWeatherLocationDraft(nextWeather.settings.locationName);
+      setWeatherData(nextWeather.weather);
+    } catch (error) {
+      setWeatherError(error?.message || "Weather could not be loaded.");
+    } finally {
+      setWeatherLoading(false);
+    }
+  }
+
+  function applyWeatherFilters() {
+    if (!weatherData?.suggestedFilters?.length) {
+      return;
+    }
+
+    setOutfitFilters((current) => ({
+      ...current,
+      climate: weatherData.suggestedFilters
+    }));
+    setControlsOpen(true);
+    setOutfitFiltersOpen(true);
   }
 
   function toggleDraftTag(field, value, options) {
@@ -3645,6 +3804,16 @@ export default function App() {
               <span style={{ backgroundColor: outfitPalette[0].color }} />
             </button>
           ) : null}
+          <button
+            type="button"
+            className={`weather-tab ${weatherOpen ? "is-active" : ""}`}
+            onClick={() => setWeatherOpen((current) => !current)}
+            aria-label="Toggle current temperature"
+            aria-expanded={weatherOpen}
+            title="Current temperature"
+          >
+            {Number.isFinite(weatherData?.temperature) ? `${Math.round(weatherData.temperature)}°C` : "°C"}
+          </button>
         </div>
 
         {paletteOpen && outfitPalette.length ? (
@@ -3657,6 +3826,54 @@ export default function App() {
                 title={`${entry.label}: ${entry.color}`}
               />
             ))}
+          </div>
+        ) : null}
+
+        {weatherOpen ? (
+          <div className="weather-window" aria-label="Current weather">
+            <form
+              className="weather-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                refreshWeather();
+              }}
+            >
+              <label>
+                Location
+                <input
+                  value={weatherLocationDraft}
+                  onChange={(event) => setWeatherLocationDraft(event.target.value)}
+                  placeholder="Berlin"
+                />
+              </label>
+              <button type="submit" className="secondary-button" disabled={weatherLoading}>
+                {weatherLoading ? "Loading..." : "Update"}
+              </button>
+            </form>
+
+            {weatherData ? (
+              <div className="weather-summary">
+                <strong>{Math.round(weatherData.temperature)}°C</strong>
+                <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
+                {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
+                  <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
+                ) : null}
+                {weatherData.suggestedFilters?.length ? (
+                  <span>{weatherData.suggestedFilters.join(" + ")}</span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {weatherError ? <p className="weather-error">{weatherError}</p> : null}
+
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={applyWeatherFilters}
+              disabled={!weatherData?.suggestedFilters?.length}
+            >
+              Apply weather filter
+            </button>
           </div>
         ) : null}
 
