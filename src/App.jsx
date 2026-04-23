@@ -79,12 +79,14 @@ const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
 const garmentTypes = [
   "Headwear",
   "Top",
+  "Outerwear",
   "Bottom",
   "Footwear",
   "Dresses/Jumpsuits",
   "Accessory"
 ];
 const layerTypes = ["Outer", "Inner", "Both"];
+const weightOptions = ["Light", "Medium", "Heavy"];
 const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt"];
 const itemLists = ["Wardrobe", "Wishlist"];
 const defaultGenerationLists = {
@@ -98,42 +100,6 @@ const outfitFilterOptions = {
   climate: climateTagOptions,
   color: ["Light", "Dark", "Monochrome", "Colorful"]
 };
-const defaultOutfitFilterRules = {
-  style: {
-    Casual: [
-      "Cap",
-      "Beanie",
-      "T-Shirt",
-      "Knit",
-      "Sweatshirt",
-      "Hoodie",
-      "Jeans",
-      "Sneakers",
-      "Sandals"
-    ],
-    Formal: ["Blazer", "Derby"],
-    Athleisure: ["Sneakers", "Hoodie", "Sweatshirt", "T-Shirt"],
-    "Going Out": ["Blazer", "Derby", "Jewelry", "Glasses"]
-  },
-  climateAllow: {
-    Cold: ["Beanie", "Scarf", "Knit", "Sweatshirt", "Hoodie", "Jacket", "Coat", "Boots", "Trousers", "Jeans"],
-    Warm: ["Cap", "Casual Shirt", "Shirt", "T-Shirt", "Shorts", "Trousers", "Jeans", "Sneakers", "Sandals"],
-    Hot: ["Cap", "Casual Shirt", "Shirt", "T-Shirt", "Shorts", "Sneakers", "Sandals"],
-    Snow: ["Beanie", "Scarf", "Knit", "Sweatshirt", "Hoodie", "Jacket", "Coat", "Boots", "Trousers", "Jeans"],
-    Rain: ["Cap", "Jacket", "Coat", "Boots", "Trousers", "Jeans", "Sneakers"],
-    Indoor: ["Casual Shirt", "Shirt", "T-Shirt", "Knit", "Sweatshirt", "Hoodie", "Jeans", "Trousers", "Shorts", "Sneakers", "Derby"],
-    Transitional: ["Cap", "Casual Shirt", "Shirt", "T-Shirt", "Knit", "Jacket", "Blazer", "Trousers", "Jeans", "Sneakers", "Derby"]
-  },
-  climateBlock: {
-    Cold: ["Shorts", "Sandals"],
-    Warm: ["Beanie", "Scarf", "Coat", "Boots"],
-    Hot: ["Beanie", "Scarf", "Knit", "Sweatshirt", "Hoodie", "Coat", "Boots"],
-    Snow: ["Shorts", "Sandals"],
-    Rain: ["Shorts", "Sandals"],
-    Indoor: ["Coat", "Boots"],
-    Transitional: ["Shorts", "Coat"]
-  }
-};
 const emptyOutfitFilters = {
   style: [],
   climate: [],
@@ -145,87 +111,12 @@ const emptyWardrobeFilters = {
   garmentType: "",
   color: "",
   laundry: "",
+  weight: "",
   list: "",
   favorite: ""
 };
-const itemTypes = [
-  "Beanie",
-  "Cap",
-  "Casual Shirt",
-  "Shirt",
-  "T-Shirt",
-  "Knit",
-  "Sweatshirt",
-  "Hoodie",
-  "Jacket",
-  "Coat",
-  "Blazer",
-  "Vest",
-  "Jeans",
-  "Trousers",
-  "Shorts",
-  "Sneakers",
-  "Sandals",
-  "Boots",
-  "Derby",
-  "Dress",
-  "Jumpsuit",
-  "Bag",
-  "Scarf",
-  "Glasses",
-  "Jewelry",
-  "Belt",
-  "Other"
-];
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const nonStackableTopTypes = new Set(["sweatshirt", "jacket"]);
-const accessorySlotByItemType = {
-  Bag: "Bag",
-  Scarf: "Neck",
-  Glasses: "Glasses",
-  Jewelry: "LeftHand",
-  Belt: "Belt"
-};
-const garmentTypeByItemType = {
-  Beanie: "Headwear",
-  Cap: "Headwear",
-  "Casual Shirt": "Top",
-  Shirt: "Top",
-  "T-Shirt": "Top",
-  Knit: "Top",
-  Sweatshirt: "Top",
-  Hoodie: "Top",
-  Jacket: "Top",
-  Coat: "Top",
-  Blazer: "Top",
-  Vest: "Top",
-  Jeans: "Bottom",
-  Trousers: "Bottom",
-  Shorts: "Bottom",
-  Sneakers: "Footwear",
-  Sandals: "Footwear",
-  Boots: "Footwear",
-  Derby: "Footwear",
-  Dress: "Dresses/Jumpsuits",
-  Jumpsuit: "Dresses/Jumpsuits",
-  Bag: "Accessory",
-  Scarf: "Accessory",
-  Glasses: "Accessory",
-  Jewelry: "Accessory",
-  Belt: "Accessory"
-};
-const layerTypeByItemType = {
-  "Casual Shirt": "Inner",
-  Shirt: "Inner",
-  "T-Shirt": "Inner",
-  Jacket: "Outer",
-  Coat: "Outer",
-  Blazer: "Outer",
-  Sweatshirt: "Both",
-  Knit: "Both",
-  Hoodie: "Both",
-  Vest: "Both"
-};
 
 const emptyForm = {
   id: "",
@@ -244,10 +135,10 @@ const emptyForm = {
   layerType: "Both",
   accessorySlot: "",
   color: "",
+  weight: "",
   list: "Wardrobe",
   quantity: 1,
-  styleTags: [],
-  climateTags: []
+  styleTags: []
 };
 
 function normalizeList(list) {
@@ -287,51 +178,14 @@ function normalizeQuantity(value) {
   return Math.max(1, Math.round(parsed));
 }
 
+function normalizeWeight(value) {
+  return weightOptions.includes(value) ? value : "";
+}
+
 function normalizeTagList(value, options) {
   return Array.isArray(value)
     ? value.filter((tag, index) => options.includes(tag) && value.indexOf(tag) === index)
     : [];
-}
-
-function cloneOutfitFilterRules(rules = defaultOutfitFilterRules) {
-  return {
-    style: Object.fromEntries(styleTagOptions.map((style) => [style, [...(rules.style?.[style] ?? [])]])),
-    climateAllow: Object.fromEntries(climateTagOptions.map((climate) => [climate, [...(rules.climateAllow?.[climate] ?? [])]])),
-    climateBlock: Object.fromEntries(climateTagOptions.map((climate) => [climate, [...(rules.climateBlock?.[climate] ?? [])]]))
-  };
-}
-
-function normalizeRuleTypeList(value) {
-  const itemTypeByNormalized = Object.fromEntries(itemTypes.map((type) => [normalizeType(type), type]));
-  const selected = Array.isArray(value) ? value : [];
-  const normalized = selected
-    .map((type) => itemTypeByNormalized[normalizeType(type)])
-    .filter(Boolean);
-
-  return [...new Set(normalized)];
-}
-
-function normalizeOutfitFilterRules(rules) {
-  return {
-    style: Object.fromEntries(
-      styleTagOptions.map((style) => [
-        style,
-        normalizeRuleTypeList(rules?.style?.[style] ?? defaultOutfitFilterRules.style[style])
-      ])
-    ),
-    climateAllow: Object.fromEntries(
-      climateTagOptions.map((climate) => [
-        climate,
-        normalizeRuleTypeList(rules?.climateAllow?.[climate] ?? defaultOutfitFilterRules.climateAllow[climate])
-      ])
-    ),
-    climateBlock: Object.fromEntries(
-      climateTagOptions.map((climate) => [
-        climate,
-        normalizeRuleTypeList(rules?.climateBlock?.[climate] ?? defaultOutfitFilterRules.climateBlock[climate])
-      ])
-    )
-  };
 }
 
 function getItemImageStyle(item) {
@@ -385,7 +239,10 @@ function getPool(items, slot, excluded = {}, generationLists = defaultGeneration
     }
 
     if (slot === "TopOuter") {
-      return item.garmentType === "Top" && (item.layerType === "Outer" || item.layerType === "Both");
+      return (
+        (item.garmentType === "Top" || item.garmentType === "Outerwear") &&
+        (item.layerType === "Outer" || item.layerType === "Both")
+      );
     }
 
     if (accessorySlots.includes(slot)) {
@@ -422,43 +279,64 @@ const namedColorHex = {
   pink: "#c98098"
 };
 
-function ruleTypesInclude(types, type) {
-  const normalizedType = normalizeType(type);
-  return normalizeRuleTypeList(types).some((ruleType) => normalizeType(ruleType) === normalizedType);
+function inferStyleTags(item) {
+  return normalizeTagList(item.styleTags, styleTagOptions);
 }
 
-function inferStyleTags(item, outfitFilterRules = defaultOutfitFilterRules) {
-  return styleTagOptions.filter((style) => ruleTypesInclude(outfitFilterRules.style?.[style], item.type));
-}
+function inferClimateTags(item) {
+  const type = normalizeType(item.type);
+  const garmentType = item.garmentType;
+  const weight = normalizeWeight(item.weight);
 
-function inferClimateTags(item, outfitFilterRules = defaultOutfitFilterRules) {
   return climateTagOptions.filter((climate) => {
-    if (ruleTypesInclude(outfitFilterRules.climateBlock?.[climate], item.type)) {
-      return false;
+    if (climate === "Hot") {
+      return (
+        weight === "Light" ||
+        ["shorts", "sandals", "t-shirt", "shirt", "casual shirt"].includes(type)
+      ) && weight !== "Heavy" && garmentType !== "Outerwear" && !["coat", "boots"].includes(type);
     }
 
-    return ruleTypesInclude(outfitFilterRules.climateAllow?.[climate], item.type);
+    if (climate === "Warm") {
+      return (
+        weight === "Light" ||
+        weight === "Medium" ||
+        ["shorts", "sandals", "sneakers", "t-shirt", "shirt", "casual shirt", "trousers", "jeans"].includes(type)
+      ) && weight !== "Heavy" && !["coat", "boots", "beanie", "scarf"].includes(type);
+    }
+
+    if (climate === "Cold" || climate === "Snow") {
+      return (
+        weight === "Heavy" ||
+        garmentType === "Outerwear" ||
+        ["coat", "jacket", "knit", "sweatshirt", "hoodie", "boots", "beanie", "scarf"].includes(type)
+      ) && !["shorts", "sandals"].includes(type);
+    }
+
+    if (climate === "Rain") {
+      return garmentType === "Outerwear" || ["coat", "jacket", "boots", "cap"].includes(type);
+    }
+
+    if (climate === "Indoor") {
+      return garmentType !== "Outerwear" && weight !== "Heavy" && !["coat", "boots", "beanie", "scarf"].includes(type);
+    }
+
+    if (climate === "Transitional") {
+      return (
+        weight === "Medium" ||
+        ["jacket", "knit", "shirt", "casual shirt", "trousers", "jeans", "sneakers", "blazer"].includes(type)
+      ) && weight !== "Heavy" && !["shorts", "coat"].includes(type);
+    }
+
+    return false;
   });
 }
 
-function getItemStyleTags(item, outfitFilterRules = defaultOutfitFilterRules) {
-  return [...new Set([...inferStyleTags(item, outfitFilterRules), ...normalizeTagList(item.styleTags, styleTagOptions)])];
+function getItemStyleTags(item) {
+  return inferStyleTags(item);
 }
 
-function getItemClimateTags(item, outfitFilterRules = defaultOutfitFilterRules) {
-  return [...new Set([...inferClimateTags(item, outfitFilterRules), ...normalizeTagList(item.climateTags, climateTagOptions)])];
-}
-
-function getFilterMatchCount(items, group, value, outfitFilterRules = defaultOutfitFilterRules) {
-  return items.filter((item) => {
-    if (isWishlistItem(item)) {
-      return false;
-    }
-
-    return group === "style"
-      ? getItemStyleTags(item, outfitFilterRules).includes(value)
-      : getItemClimateTags(item, outfitFilterRules).includes(value);
-  }).length;
+function getItemClimateTags(item) {
+  return inferClimateTags(item);
 }
 
 function hasActiveOutfitFilters(outfitFilters) {
@@ -568,31 +446,30 @@ function matchesItemColorFilters(item, selectedColors) {
 
 function matchesOutfitFilters(
   item,
-  outfitFilters = emptyOutfitFilters,
-  outfitFilterRules = defaultOutfitFilterRules
+  outfitFilters = emptyOutfitFilters
 ) {
   const selectedStyles = outfitFilters.style ?? [];
   const selectedClimates = outfitFilters.climate ?? [];
   const selectedColors = outfitFilters.color ?? [];
 
   return (
-    (!selectedStyles.length || selectedStyles.some((style) => getItemStyleTags(item, outfitFilterRules).includes(style))) &&
-    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item, outfitFilterRules).includes(climate))) &&
+    (!selectedStyles.length || selectedStyles.some((style) => getItemStyleTags(item).includes(style))) &&
+    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item).includes(climate))) &&
     matchesItemColorFilters(item, selectedColors)
   );
 }
 
-function applyOutfitFiltersToPool(pool, outfitFilters, outfitFilterRules = defaultOutfitFilterRules) {
+function applyOutfitFiltersToPool(pool, outfitFilters) {
   if (!hasActiveOutfitFilters(outfitFilters)) {
     return pool;
   }
 
-  const filtered = pool.filter((item) => matchesOutfitFilters(item, outfitFilters, outfitFilterRules));
+  const filtered = pool.filter((item) => matchesOutfitFilters(item, outfitFilters));
   return filtered.length ? filtered : pool;
 }
 
 function isNonStackableTopType(item) {
-  return item.garmentType === "Top" && nonStackableTopTypes.has(normalizeType(item.type));
+  return (item.garmentType === "Top" || item.garmentType === "Outerwear") && nonStackableTopTypes.has(normalizeType(item.type));
 }
 
 function getOtherTopSlot(slot) {
@@ -630,8 +507,7 @@ function buildNextOutfit(
   layering,
   excluded = {},
   generationLists = defaultGenerationLists,
-  outfitFilters = emptyOutfitFilters,
-  outfitFilterRules = defaultOutfitFilterRules
+  outfitFilters = emptyOutfitFilters
 ) {
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
@@ -641,7 +517,10 @@ function buildNextOutfit(
     if (locked[slot]) {
       if (slot === "TopInner" || slot === "TopOuter") {
         const lockedItem = itemsById[nextOutfit[slot]];
-        if (lockedItem?.garmentType === "Top" && lockedItem.layerType === "Both") {
+        if (
+          (lockedItem?.garmentType === "Top" || lockedItem?.garmentType === "Outerwear") &&
+          lockedItem.layerType === "Both"
+        ) {
           usedTopBoth = true;
         }
       }
@@ -664,7 +543,7 @@ function buildNextOutfit(
         pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
       }
 
-      pool = applyOutfitFiltersToPool(pool, outfitFilters, outfitFilterRules);
+      pool = applyOutfitFiltersToPool(pool, outfitFilters);
 
       const nextItem = pickRandom(pool);
       nextOutfit[slot] = nextItem?.id ?? null;
@@ -676,7 +555,7 @@ function buildNextOutfit(
       return;
     }
 
-    nextOutfit[slot] = pickRandom(applyOutfitFiltersToPool(pool, outfitFilters, outfitFilterRules))?.id ?? null;
+    nextOutfit[slot] = pickRandom(applyOutfitFiltersToPool(pool, outfitFilters))?.id ?? null;
   });
 
   return nextOutfit;
@@ -693,7 +572,7 @@ function slugPart(value) {
 function buildBaseItemId(item) {
   const segments = [item.garmentType];
 
-  if (item.garmentType === "Top") {
+  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
     segments.push(item.layerType);
   }
 
@@ -799,6 +678,7 @@ function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
     (ignored.has("type") || matchesMetadataFilter(item.type, filters.type)) &&
     (ignored.has("garmentType") || matchesMetadataFilter(item.garmentType, filters.garmentType)) &&
     (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
+    (ignored.has("weight") || matchesMetadataFilter(item.weight, filters.weight)) &&
     (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list) &&
     (ignored.has("favorite") ||
       !filters.favorite ||
@@ -910,6 +790,14 @@ function getDefaultMetadataCorrection(item) {
   return defaultMetadataCorrectionById[item.id] ?? defaultMetadataCorrections[getImageStem(item.imageUrl)];
 }
 
+function normalizeGarmentType(item) {
+  if (item.garmentType === "Top" && item.layerType === "Outer") {
+    return "Outerwear";
+  }
+
+  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Top";
+}
+
 function normalizeItem(item) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
@@ -917,7 +805,7 @@ function normalizeItem(item) {
   const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
   const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
 
-  return {
+  const normalizedItem = {
     ...emptyForm,
     ...item,
     ...correction,
@@ -929,11 +817,15 @@ function normalizeItem(item) {
     imageOffsetY: normalizeImageOffset(item.imageOffsetY),
     favorite: Boolean(item.favorite),
     quantity: normalizeQuantity(item.quantity),
+    garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
+    weight: normalizeWeight(item.weight),
     styleTags: normalizeTagList(item.styleTags, styleTagOptions),
-    climateTags: normalizeTagList(item.climateTags, climateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
+  delete normalizedItem.climateTags;
+
+  return normalizedItem;
 }
 
 function itemNeedsRetailMigration(originalItem, normalizedItem) {
@@ -961,12 +853,18 @@ function itemNeedsQuantityMigration(originalItem, normalizedItem) {
   return originalItem.quantity === undefined || normalizeQuantity(originalItem.quantity) !== normalizedItem.quantity;
 }
 
+function itemNeedsWeightMigration(originalItem, normalizedItem) {
+  return originalItem.weight === undefined || normalizeWeight(originalItem.weight) !== normalizedItem.weight;
+}
+
+function itemNeedsGarmentTypeMigration(originalItem, normalizedItem) {
+  return originalItem.garmentType !== normalizedItem.garmentType;
+}
+
 function itemNeedsTagMigration(originalItem, normalizedItem) {
   return (
     !Array.isArray(originalItem.styleTags) ||
-    !Array.isArray(originalItem.climateTags) ||
-    normalizeTagList(originalItem.styleTags, styleTagOptions).length !== normalizedItem.styleTags.length ||
-    normalizeTagList(originalItem.climateTags, climateTagOptions).length !== normalizedItem.climateTags.length
+    normalizeTagList(originalItem.styleTags, styleTagOptions).length !== normalizedItem.styleTags.length
   );
 }
 
@@ -977,7 +875,7 @@ function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
     return false;
   }
 
-  return Object.entries(correction).some(([key, value]) => originalItem[key] !== value);
+  return Object.keys(correction).some((key) => originalItem[key] !== normalizedItem[key]);
 }
 
 function formatCurrency(value) {
@@ -1066,7 +964,7 @@ function buildWardrobeDescription(item) {
     parts.push(normalizedTypeLabel);
   }
 
-  if (item.garmentType === "Top") {
+  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
     parts.push(item.layerType);
   }
 
@@ -1086,7 +984,7 @@ function buildWardrobeDescription(item) {
 }
 
 function getWorthCategory(item) {
-  if (item.garmentType === "Top") {
+  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
     return "Tops";
   }
 
@@ -1405,7 +1303,6 @@ export default function App() {
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
-  const [outfitFilterRules, setOutfitFilterRules] = useState(() => cloneOutfitFilterRules());
   const [controlsOpen, setControlsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -1509,6 +1406,7 @@ export default function App() {
     ["Type", wardrobeFilters.type],
     ["Garment", wardrobeFilters.garmentType],
     ["Color", wardrobeFilters.color],
+    ["Weight", wardrobeFilters.weight],
     ["List", wardrobeFilters.list],
     ["Exclude", wardrobeFilters.laundry],
     ["Favorite", wardrobeFilters.favorite]
@@ -1687,6 +1585,8 @@ export default function App() {
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
+          itemNeedsWeightMigration(storedItems[index], item) ||
+          itemNeedsGarmentTypeMigration(storedItems[index], item) ||
           itemNeedsTagMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item)
       );
@@ -1711,7 +1611,6 @@ export default function App() {
         setSavedOutfits((storedAppState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
         setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
-        setOutfitFilterRules(normalizeOutfitFilterRules(storedAppState.outfitFilterRules));
         setWeatherSettings(normalizeWeatherSettings(storedAppState.weatherSettings));
         setWeatherLocationDraft(storedAppState.weatherSettings?.locationName ?? "");
         setWeatherData(storedAppState.weatherData ?? null);
@@ -1723,12 +1622,11 @@ export default function App() {
         setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
         setLocked(defaultState.locked ?? {});
         setExcluded(defaultState.excluded ?? {});
-        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, defaultOutfitFilterRules));
+        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits((defaultState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
         setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
-        setOutfitFilterRules(normalizeOutfitFilterRules(defaultState.outfitFilterRules));
         setWeatherSettings(normalizeWeatherSettings(defaultState.weatherSettings));
         setWeatherLocationDraft(defaultState.weatherSettings?.locationName ?? "");
         setWeatherData(defaultState.weatherData ?? null);
@@ -1760,12 +1658,11 @@ export default function App() {
       savedOutfits,
       generationLists,
       outfitFilters,
-      outfitFilterRules,
       weatherSettings,
       weatherData,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, outfitFilterRules, weatherSettings, weatherData, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -1789,9 +1686,9 @@ export default function App() {
         }
       });
 
-      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, outfitFilterRules);
+      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters);
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, outfitFilters, outfitFilterRules, loading]);
+  }, [items, itemsById, locked, layering, excluded, generationLists, outfitFilters, loading]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
@@ -1899,7 +1796,7 @@ export default function App() {
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters, outfitFilterRules));
+    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters));
   }
 
   function handleReroll(slot) {
@@ -1931,7 +1828,7 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
     }
 
-    return applyOutfitFiltersToPool(pool, outfitFilters, outfitFilterRules);
+    return applyOutfitFiltersToPool(pool, outfitFilters);
   }
 
   function getSlotPickerOptions(slot) {
@@ -2056,6 +1953,8 @@ export default function App() {
         itemNeedsImageOffsetMigration(nextItems[index], item) ||
         itemNeedsFavoriteMigration(nextItems[index], item) ||
         itemNeedsQuantityMigration(nextItems[index], item) ||
+        itemNeedsWeightMigration(nextItems[index], item) ||
+        itemNeedsGarmentTypeMigration(nextItems[index], item) ||
         itemNeedsTagMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item)
     );
@@ -2069,12 +1968,11 @@ export default function App() {
     setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
     setLocked(nextAppState?.locked ?? {});
     setExcluded(nextAppState?.excluded ?? {});
-    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, defaultOutfitFilterRules));
+    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
     setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
-    setOutfitFilterRules(normalizeOutfitFilterRules(nextAppState?.outfitFilterRules));
     setWeatherSettings(normalizeWeatherSettings(nextAppState?.weatherSettings));
     setWeatherLocationDraft(nextAppState?.weatherSettings?.locationName ?? "");
     setWeatherData(nextAppState?.weatherData ?? null);
@@ -2316,8 +2214,7 @@ export default function App() {
 
     return applyOutfitFiltersToPool(
       pool.filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]),
-      outfitFilters,
-      outfitFilterRules
+      outfitFilters
     );
   }
 
@@ -2408,6 +2305,10 @@ export default function App() {
       return item.accessorySlot || null;
     }
 
+    if (item.garmentType === "Outerwear") {
+      return "TopOuter";
+    }
+
     if (item.garmentType !== "Top") {
       return null;
     }
@@ -2484,7 +2385,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, outfitFilterRules);
+        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters);
       });
 
       return nextExcluded;
@@ -2566,58 +2467,10 @@ export default function App() {
     });
   }
 
-  function toggleOutfitFilterRule(section, group, type) {
-    setOutfitFilterRules((current) => {
-      const normalizedCurrent = normalizeOutfitFilterRules(current);
-      const selectedTypes = normalizedCurrent[section][group] ?? [];
-      const isSelected = selectedTypes.includes(type);
-
-      return {
-        ...normalizedCurrent,
-        [section]: {
-          ...normalizedCurrent[section],
-          [group]: isSelected
-            ? selectedTypes.filter((selectedType) => selectedType !== type)
-            : [...selectedTypes, type]
-        }
-      };
-    });
-  }
-
-  function resetOutfitFilterRules() {
-    setOutfitFilterRules(cloneOutfitFilterRules());
-  }
-
   function toggleGenerationList(list) {
     setGenerationLists((current) => ({
       ...current,
       [list]: !current[list]
-    }));
-  }
-
-  function updateType(nextType) {
-    const normalizedNextType = normalizeItemType(nextType);
-    const inferredGarmentType = garmentTypeByItemType[normalizedNextType];
-    const resolvedGarmentType = inferredGarmentType ?? draft.garmentType;
-    const inferredLayerType = layerTypeByItemType[normalizedNextType];
-    const inferredAccessorySlot = accessorySlotByItemType[normalizedNextType];
-
-    setDraft((current) => ({
-      ...current,
-      type: normalizedNextType,
-      garmentType: inferredGarmentType ?? current.garmentType,
-      layerType:
-        resolvedGarmentType === "Top"
-          ? inferredLayerType ?? "Inner"
-          : "Both",
-      accessorySlot:
-        resolvedGarmentType === "Accessory"
-          ? inferredAccessorySlot ?? current.accessorySlot
-          : "",
-      size:
-        resolvedGarmentType === "Accessory" && !current.size.trim()
-          ? "OS"
-          : current.size
     }));
   }
 
@@ -2630,6 +2483,7 @@ export default function App() {
     const trimmedType = draft.type.trim();
     const trimmedColor = draft.color.trim();
     const trimmedSize = draft.size.trim();
+    const normalizedWeight = normalizeWeight(draft.weight);
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
     const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
     const normalizedImageScale = normalizeImageScale(draft.imageScale);
@@ -2667,14 +2521,14 @@ export default function App() {
       brand: trimmedBrand,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
+      weight: normalizedWeight,
       favorite: Boolean(draft.favorite),
       value: normalizedValue,
       retailValue: normalizedRetailValue,
       size: trimmedSize,
       list: normalizeList(draft.list),
       quantity: normalizedQuantity,
-      styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
-      climateTags: normalizeTagList(draft.climateTags, climateTagOptions)
+      styleTags: normalizeTagList(draft.styleTags, styleTagOptions)
     };
 
     const nextItem = {
@@ -2696,6 +2550,7 @@ export default function App() {
             ),
       name: trimmedName
     };
+    delete nextItem.climateTags;
 
     await saveItem(nextItem);
 
@@ -3387,19 +3242,6 @@ export default function App() {
       ? "Add wardrobe item"
       : "Edit wardrobe item"
     : "Item editor";
-  const visibleOutfitFilterRules = normalizeOutfitFilterRules(outfitFilterRules);
-  const styleRuleMatchCounts = Object.fromEntries(
-    styleTagOptions.map((style) => [
-      style,
-      getFilterMatchCount(items, "style", style, visibleOutfitFilterRules)
-    ])
-  );
-  const climateRuleMatchCounts = Object.fromEntries(
-    climateTagOptions.map((climate) => [
-      climate,
-      getFilterMatchCount(items, "climate", climate, visibleOutfitFilterRules)
-    ])
-  );
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
@@ -3462,17 +3304,11 @@ export default function App() {
 
       <label>
         Type
-        <select
+        <input
           value={draft.type}
-          onChange={(event) => updateType(event.target.value)}
-        >
-          <option value="">Select type</option>
-          {itemTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
+          onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}
+          placeholder="Shirt, jacket, trousers..."
+        />
       </label>
 
       <label>
@@ -3483,7 +3319,7 @@ export default function App() {
             setDraft((current) => ({
               ...current,
               garmentType: event.target.value,
-              layerType: event.target.value === "Top" ? current.layerType : "Both",
+              layerType: event.target.value === "Top" || event.target.value === "Outerwear" ? current.layerType : "Both",
               accessorySlot: event.target.value === "Accessory" ? current.accessorySlot : "",
               size:
                 event.target.value === "Accessory" && !current.size.trim()
@@ -3500,7 +3336,7 @@ export default function App() {
         </select>
       </label>
 
-      {draft.garmentType === "Top" ? (
+      {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
         <label>
           Layer type
           <select
@@ -3571,6 +3407,21 @@ export default function App() {
           onChange={(event) => setDraft((current) => ({ ...current, size: event.target.value }))}
           placeholder="M"
         />
+      </label>
+
+      <label>
+        Weight
+        <select
+          value={draft.weight}
+          onChange={(event) => setDraft((current) => ({ ...current, weight: event.target.value }))}
+        >
+          <option value="">No weight</option>
+          {weightOptions.map((weight) => (
+            <option key={weight} value={weight}>
+              {weight}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label>
@@ -3645,27 +3496,6 @@ export default function App() {
                 type="button"
                 className={`list-toggle ${isSelected ? "is-active" : ""}`}
                 onClick={() => toggleDraftTag("styleTags", tag, styleTagOptions)}
-                aria-pressed={isSelected}
-              >
-                {tag}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="metadata-tag-group" aria-label="Climate metadata">
-        <p className="eyebrow">Climate tags</p>
-        <div className="metadata-tag-options">
-          {climateTagOptions.map((tag) => {
-            const isSelected = normalizeTagList(draft.climateTags, climateTagOptions).includes(tag);
-
-            return (
-              <button
-                key={tag}
-                type="button"
-                className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                onClick={() => toggleDraftTag("climateTags", tag, climateTagOptions)}
                 aria-pressed={isSelected}
               >
                 {tag}
@@ -4100,6 +3930,21 @@ export default function App() {
                 </select>
               </label>
               <label>
+                Weight
+                <select
+                  value={wardrobeFilters.weight}
+                  onChange={(event) =>
+                    setWardrobeFilters((current) => ({ ...current, weight: event.target.value }))
+                  }
+                >
+                  <option value="">All weights</option>
+                  <option value="__none__">No weight</option>
+                  {weightOptions.map((weight) => (
+                    <option key={weight} value={weight}>{weight}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 List
                 <select
                   value={wardrobeFilters.list}
@@ -4221,87 +4066,6 @@ export default function App() {
               <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
                 Reset to default
               </button>
-              <div className="filter-rules-editor">
-                <div className="filter-rules-header">
-                  <p className="eyebrow">Filter rules</p>
-                  <button type="button" className="secondary-button" onClick={resetOutfitFilterRules}>
-                    Reset filter rules
-                  </button>
-                </div>
-
-                <div className="filter-rules-section">
-                  <p className="eyebrow">Style</p>
-                  <p className="filter-rules-help">Use type rules for obvious matches. Use item tags for subjective pieces.</p>
-                  {styleTagOptions.map((style) => (
-                    <section key={style} className="filter-rule-group">
-                      <strong>{style} · {styleRuleMatchCounts[style]} matches</strong>
-                      <div className="filter-rule-options">
-                        {itemTypes.map((type) => {
-                          const isSelected = visibleOutfitFilterRules.style[style]?.includes(type);
-
-                          return (
-                            <button
-                              key={type}
-                              type="button"
-                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                              onClick={() => toggleOutfitFilterRule("style", style, type)}
-                              aria-pressed={isSelected}
-                            >
-                              {type}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-
-                <div className="filter-rules-section">
-                  <p className="eyebrow">Climate</p>
-                  <p className="filter-rules-help">Climate rules are type-based. Item tags can add exceptions.</p>
-                  {climateTagOptions.map((climate) => (
-                    <section key={climate} className="filter-rule-group">
-                      <strong>{climate} · {climateRuleMatchCounts[climate]} matches</strong>
-                      <span>Include</span>
-                      <div className="filter-rule-options">
-                        {itemTypes.map((type) => {
-                          const isSelected = visibleOutfitFilterRules.climateAllow[climate]?.includes(type);
-
-                          return (
-                            <button
-                              key={type}
-                              type="button"
-                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                              onClick={() => toggleOutfitFilterRule("climateAllow", climate, type)}
-                              aria-pressed={isSelected}
-                            >
-                              {type}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <span>Avoid</span>
-                      <div className="filter-rule-options">
-                        {itemTypes.map((type) => {
-                          const isSelected = visibleOutfitFilterRules.climateBlock[climate]?.includes(type);
-
-                          return (
-                            <button
-                              key={type}
-                              type="button"
-                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                              onClick={() => toggleOutfitFilterRule("climateBlock", climate, type)}
-                              aria-pressed={isSelected}
-                            >
-                              {type}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <input
@@ -4354,7 +4118,7 @@ export default function App() {
                       <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
                       <span className="wardrobe-description" title={buildWardrobeDescription(item)}>{buildWardrobeDescription(item)}</span>
                       <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)} · Retail ${formatCurrency(item.retailValue)}`}>
-                        {item.color || "No color"} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
+                        {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
                       </span>
                       <span title={normalizeList(item.list)}>
                         {normalizeList(item.list)}{normalizeQuantity(item.quantity) > 1 ? ` · Qty ${normalizeQuantity(item.quantity)}` : ""}{item.favorite ? " · Favorite" : ""}
