@@ -3693,7 +3693,10 @@ export default function App() {
         </div>
 
         {paletteOpen && outfitPalette.length ? (
-          <div className="outfit-palette" aria-label="Current outfit color palette">
+          <div
+            className={`outfit-palette ${controlsOpen && !activePanel ? "is-offset" : ""}`}
+            aria-label="Current outfit color palette"
+          >
             {outfitPalette.map((entry) => (
               <span
                 key={`${entry.color}-${entry.label}`}
@@ -3706,7 +3709,10 @@ export default function App() {
         ) : null}
 
         {weatherOpen ? (
-          <div className="weather-window" aria-label="Current weather">
+          <div
+            className={`weather-window ${controlsOpen && !activePanel ? "is-offset" : ""}`}
+            aria-label="Current weather"
+          >
             <form
               className="weather-form"
               onSubmit={(event) => {

@@ -153,6 +153,10 @@ button:disabled {
   backdrop-filter: blur(18px);
 }
 
+.outfit-palette.is-offset {
+  left: min(260px, calc(100vw - 16px));
+}
+
 .weather-window {
   position: fixed;
   left: 16px;
@@ -166,6 +170,10 @@ button:disabled {
   border-radius: var(--radius-panel);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
+}
+
+.weather-window.is-offset {
+  left: min(260px, calc(100vw - 296px));
 }
 
 .weather-form {
@@ -1928,10 +1936,18 @@ button:disabled {
     overflow: auto;
   }
 
+  .outfit-palette.is-offset {
+    left: max(10px, calc(100vw - 200px));
+  }
+
   .weather-window {
     left: 10px;
     bottom: calc(64px + env(safe-area-inset-bottom));
     width: min(300px, calc(100vw - 20px));
+  }
+
+  .weather-window.is-offset {
+    left: max(10px, calc(100vw - min(300px, calc(100vw - 20px)) - 10px));
   }
 
   .workspace-tabs {
