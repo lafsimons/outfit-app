@@ -94,16 +94,14 @@ const defaultGenerationLists = {
   Wishlist: false
 };
 const styleTagOptions = ["Casual", "Formal", "Athleisure", "Going Out"];
-const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Indoor", "Transitional"];
+const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 const outfitFilterOptions = {
   style: styleTagOptions,
-  climate: climateTagOptions,
-  color: ["Light", "Dark", "Monochrome", "Colorful"]
+  climate: climateTagOptions
 };
 const emptyOutfitFilters = {
   style: [],
-  climate: [],
-  color: []
+  climate: []
 };
 const emptyWardrobeFilters = {
   brand: "",
@@ -316,10 +314,6 @@ function inferClimateTags(item) {
       return garmentType === "Outerwear" || ["coat", "jacket", "boots", "cap"].includes(type);
     }
 
-    if (climate === "Indoor") {
-      return garmentType !== "Outerwear" && weight !== "Heavy" && !["coat", "boots", "beanie", "scarf"].includes(type);
-    }
-
     if (climate === "Transitional") {
       return (
         weight === "Medium" ||
@@ -340,7 +334,10 @@ function getItemClimateTags(item) {
 }
 
 function hasActiveOutfitFilters(outfitFilters) {
-  return Object.values(outfitFilters ?? {}).some((values) => Array.isArray(values) && values.length > 0);
+  return Object.keys(outfitFilterOptions).some((group) => {
+    const values = outfitFilters?.[group];
+    return Array.isArray(values) && values.length > 0;
+  });
 }
 
 function hexToRgb(hex) {
@@ -367,33 +364,6 @@ function rgbToHex({ r, g, b }) {
     .join("")}`;
 }
 
-function rgbToHsl({ r, g, b }) {
-  const red = r / 255;
-  const green = g / 255;
-  const blue = b / 255;
-  const max = Math.max(red, green, blue);
-  const min = Math.min(red, green, blue);
-  const lightness = (max + min) / 2;
-
-  if (max === min) {
-    return { h: 0, s: 0, l: lightness };
-  }
-
-  const delta = max - min;
-  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
-  let hue;
-
-  if (max === red) {
-    hue = (green - blue) / delta + (green < blue ? 6 : 0);
-  } else if (max === green) {
-    hue = (blue - red) / delta + 2;
-  } else {
-    hue = (red - green) / delta + 4;
-  }
-
-  return { h: hue * 60, s: saturation, l: lightness };
-}
-
 function getColorRgb(item) {
   const color = normalizeType(item.color);
   if (!color) {
@@ -404,58 +374,16 @@ function getColorRgb(item) {
   return namedMatch ? hexToRgb(namedMatch[1]) : null;
 }
 
-function getColorProfile(item) {
-  const rgb = getColorRgb(item);
-  if (!rgb) {
-    return null;
-  }
-
-  return rgbToHsl(rgb);
-}
-
-function matchesItemColorFilters(item, selectedColors) {
-  if (!selectedColors?.length) {
-    return true;
-  }
-
-  const profile = getColorProfile(item);
-  if (!profile) {
-    return true;
-  }
-
-  return selectedColors.some((filter) => {
-    if (filter === "Light") {
-      return profile.l >= 0.62;
-    }
-
-    if (filter === "Dark") {
-      return profile.l <= 0.42;
-    }
-
-    if (filter === "Monochrome") {
-      return profile.s <= 0.22;
-    }
-
-    if (filter === "Colorful") {
-      return profile.s >= 0.34;
-    }
-
-    return true;
-  });
-}
-
 function matchesOutfitFilters(
   item,
   outfitFilters = emptyOutfitFilters
 ) {
   const selectedStyles = outfitFilters.style ?? [];
   const selectedClimates = outfitFilters.climate ?? [];
-  const selectedColors = outfitFilters.color ?? [];
 
   return (
     (!selectedStyles.length || selectedStyles.some((style) => getItemStyleTags(item).includes(style))) &&
-    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item).includes(climate))) &&
-    matchesItemColorFilters(item, selectedColors)
+    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item).includes(climate)))
   );
 }
 
@@ -2321,6 +2249,7 @@ export default function App() {
   }
 
   function startCreate() {
+    closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
@@ -2334,6 +2263,7 @@ export default function App() {
   }
 
   function startEdit(item, options = {}) {
+    closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
@@ -2445,6 +2375,7 @@ export default function App() {
       return;
     }
 
+    closeUtilityWindows();
     setOutfitFilters((current) => ({
       ...current,
       climate: weatherData.suggestedFilters
@@ -2751,6 +2682,7 @@ export default function App() {
   }
 
   function openAccessoryPicker(slot) {
+    closeUtilityWindows();
     setActiveAccessorySlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -2765,6 +2697,7 @@ export default function App() {
   }
 
   function openOutfitSlotPicker(slot) {
+    closeUtilityWindows();
     setActiveOutfitSlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -2800,7 +2733,13 @@ export default function App() {
     setPickerAnchorSlot(null);
   }
 
+  function closeUtilityWindows() {
+    setPaletteOpen(false);
+    setWeatherOpen(false);
+  }
+
   function toggleWorkspacePanel(panel) {
+    closeUtilityWindows();
     setActivePanel((current) => {
       const nextPanel = current === panel ? null : panel;
       if (nextPanel) {
@@ -2832,6 +2771,7 @@ export default function App() {
   }
 
   function toggleControlsWindow() {
+    closeUtilityWindows();
     if (activePanel) {
       setActivePanel(null);
     }
@@ -2852,10 +2792,12 @@ export default function App() {
   }
 
   function toggleOutfitFiltersInControls() {
+    closeUtilityWindows();
     setOutfitFiltersOpen((current) => !current);
   }
 
   function openWardrobeFilters() {
+    closeUtilityWindows();
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
@@ -2863,6 +2805,7 @@ export default function App() {
   }
 
   function toggleWardrobeWorth() {
+    closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
@@ -2870,6 +2813,7 @@ export default function App() {
   }
 
   function toggleWardrobeSaved() {
+    closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
     setWardrobeManageOpen(false);
@@ -2877,6 +2821,7 @@ export default function App() {
   }
 
   function toggleWardrobeManage() {
+    closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
@@ -3626,7 +3571,15 @@ export default function App() {
             <button
               type="button"
               className={`palette-tab ${paletteOpen ? "is-active" : ""}`}
-              onClick={() => setPaletteOpen((current) => !current)}
+              onClick={() => {
+                setPaletteOpen((current) => {
+                  const nextOpen = !current;
+                  if (nextOpen) {
+                    setWeatherOpen(false);
+                  }
+                  return nextOpen;
+                });
+              }}
               aria-label="Toggle outfit color palette"
               aria-expanded={paletteOpen}
               title="Color palette"
@@ -3637,7 +3590,15 @@ export default function App() {
           <button
             type="button"
             className={`weather-tab ${weatherOpen ? "is-active" : ""}`}
-            onClick={() => setWeatherOpen((current) => !current)}
+            onClick={() => {
+              setWeatherOpen((current) => {
+                const nextOpen = !current;
+                if (nextOpen) {
+                  setPaletteOpen(false);
+                }
+                return nextOpen;
+              });
+            }}
             aria-label="Toggle current temperature"
             aria-expanded={weatherOpen}
             title="Current temperature"
@@ -4178,7 +4139,10 @@ export default function App() {
                     <button
                       type="button"
                       className="fitpic-image-button"
-                      onClick={() => setFitpicPreview(fitpic)}
+                      onClick={() => {
+                        closeUtilityWindows();
+                        setFitpicPreview(fitpic);
+                      }}
                     >
                       <img src={fitpic.imageData} alt={fitpic.name} />
                     </button>
