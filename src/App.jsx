@@ -230,7 +230,7 @@ function getPool(items, slot, excluded = {}, generationLists = defaultGeneration
 
     if (slot === "TopInner") {
       if (!layering) {
-        return item.garmentType === "Top";
+        return item.garmentType === "Top" || item.garmentType === "Outerwear";
       }
 
       return item.garmentType === "Top" && (item.layerType === "Inner" || item.layerType === "Both");
@@ -1325,7 +1325,6 @@ export default function App() {
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
   const [controlsOpen, setControlsOpen] = useState(false);
-  const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
@@ -2006,7 +2005,6 @@ export default function App() {
     setDraft(emptyForm);
     setActivePanel(null);
     setControlsOpen(true);
-    setOutfitFiltersOpen(false);
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
     setPickerAnchorSlot(null);
@@ -2476,7 +2474,6 @@ export default function App() {
       climate: weatherData.suggestedFilters
     }));
     setControlsOpen(true);
-    setOutfitFiltersOpen(true);
   }
 
   function toggleDraftTag(field, value, options) {
@@ -2839,7 +2836,6 @@ export default function App() {
       const nextPanel = current === panel ? null : panel;
       if (nextPanel) {
         setControlsOpen(false);
-        setOutfitFiltersOpen(false);
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
@@ -2878,17 +2874,11 @@ export default function App() {
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
-    setOutfitFiltersOpen(false);
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
     setControlsOpen((current) => !current);
-  }
-
-  function toggleOutfitFiltersInControls() {
-    closeUtilityWindows();
-    setOutfitFiltersOpen((current) => !current);
   }
 
   function openWardrobeFilters() {
@@ -3777,77 +3767,62 @@ export default function App() {
               </button>
             </div>
 
-            {!outfitFiltersOpen ? (
-              <>
-                <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
-                  Layering: {layering ? "On" : "Off"}
-                </button>
-                <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
-                  Accessories: {accessoriesEnabled ? "On" : "Off"}
-                </button>
-                <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-                  Save outfit
-                </button>
-                <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-                  Export outfit image
-                </button>
-
-                <div className="generation-list-controls" aria-label="Generation lists">
-                  {itemLists.map((list) => (
-                    <button
-                      key={list}
-                      type="button"
-                      className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
-                      onClick={() => toggleGenerationList(list)}
-                    >
-                      {list}: {generationLists[list] ? "Included" : "Off"}
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              className={`ghost-button ${outfitFiltersOpen ? "is-active" : ""}`}
-              onClick={toggleOutfitFiltersInControls}
-              aria-expanded={outfitFiltersOpen}
-            >
-              Outfit filter
+            <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
+              Layering: {layering ? "On" : "Off"}
+            </button>
+            <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
+              Accessories: {accessoriesEnabled ? "On" : "Off"}
+            </button>
+            <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
+              Save outfit
+            </button>
+            <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
+              Export outfit image
             </button>
 
-            {outfitFiltersOpen ? (
-              <div className="outfit-filters-panel" aria-label="Outfit filters">
-                <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-                  Clear outfit filters
+            <div className="generation-list-controls" aria-label="Generation lists">
+              {itemLists.map((list) => (
+                <button
+                  key={list}
+                  type="button"
+                  className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
+                  onClick={() => toggleGenerationList(list)}
+                >
+                  {list}: {generationLists[list] ? "Included" : "Off"}
                 </button>
+              ))}
+            </div>
 
-                <div className="outfit-filter-groups">
-                  {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                    <section key={group} className="outfit-filter-group">
-                      <p className="eyebrow">{group}</p>
-                      <div className="outfit-filter-options">
-                        {options.map((option) => {
-                          const isSelected = outfitFilters[group]?.includes(option);
+            <div className="outfit-filters-panel" aria-label="Outfit filters">
+              <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+                Clear outfit filters
+              </button>
 
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                              onClick={() => toggleOutfitFilter(group, option)}
-                              aria-pressed={isSelected}
-                            >
-                              {option}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                </div>
+              <div className="outfit-filter-groups">
+                {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                  <section key={group} className="outfit-filter-group">
+                    <p className="eyebrow">{group}</p>
+                    <div className="outfit-filter-options">
+                      {options.map((option) => {
+                        const isSelected = outfitFilters[group]?.includes(option);
+
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                            onClick={() => toggleOutfitFilter(group, option)}
+                            aria-pressed={isSelected}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
-            ) : null}
+            </div>
           </div>
         ) : null}
 
