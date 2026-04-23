@@ -142,7 +142,7 @@ button:disabled {
 .utility-windows {
   position: fixed;
   left: 16px;
-  bottom: calc(58px + env(safe-area-inset-bottom));
+  bottom: calc(70px + env(safe-area-inset-bottom));
   z-index: 31;
   display: flex;
   flex-wrap: wrap;
@@ -161,10 +161,10 @@ button:disabled {
   gap: 6px;
   width: max-content;
   max-width: calc(100vw - 32px);
-  padding: 5px 6px;
-  border: 1px solid var(--border-soft);
+  padding: 6px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-panel);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(18px);
   overflow-x: auto;
   overflow-y: hidden;
@@ -246,10 +246,10 @@ button:disabled {
   gap: 8px;
   width: min(230px, calc(100% - 48px));
   padding: 12px;
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border);
   border-radius: var(--radius-panel);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.1);
+  background: var(--surface);
+  box-shadow: none;
   backdrop-filter: blur(18px);
 }
 
@@ -318,17 +318,16 @@ button:disabled {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface-solid);
 }
 
 .weather-tab {
   width: auto;
-  min-width: 52px;
-  padding: 0 10px;
+  min-width: 42px;
+  padding: 0 8px;
   color: var(--text);
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 800;
-  letter-spacing: 0.02em;
 }
 
 .palette-tab.is-active,
@@ -1937,7 +1936,7 @@ button:disabled {
 
   .utility-windows {
     left: 10px;
-    bottom: calc(56px + env(safe-area-inset-bottom));
+    bottom: calc(64px + env(safe-area-inset-bottom));
     max-width: calc(100vw - 20px);
   }
 

@@ -3674,7 +3674,7 @@ export default function App() {
           </button>
         </div>
 
-        {((paletteOpen && outfitPalette.length) || weatherOpen) ? (
+        {(paletteOpen && outfitPalette.length) || weatherOpen ? (
           <div className={`utility-windows ${controlsOpen && !activePanel ? "is-offset" : ""}`}>
             {paletteOpen && outfitPalette.length ? (
               <div className="outfit-palette" aria-label="Current outfit color palette">
