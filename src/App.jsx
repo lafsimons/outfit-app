@@ -255,6 +255,55 @@ function normalizeType(type) {
   return type?.trim().toLowerCase() ?? "";
 }
 
+function getTypePresetKey(type) {
+  const normalized = normalizeType(type).replace(/[_\s]+/g, " ");
+
+  if (["t-shirt", "t shirt", "tshirt", "tee"].includes(normalized)) {
+    return "t-shirt";
+  }
+
+  if (normalized === "cap") {
+    return "cap";
+  }
+
+  if (["sneaker", "sneakers"].includes(normalized)) {
+    return "sneakers";
+  }
+
+  return "";
+}
+
+function applyTypePresetsToDraft(current, nextType) {
+  const previousPresetKey = getTypePresetKey(current.type);
+  const nextPresetKey = getTypePresetKey(nextType);
+  const nextDraft = {
+    ...current,
+    type: nextType
+  };
+
+  if (!nextPresetKey || nextPresetKey === previousPresetKey) {
+    return nextDraft;
+  }
+
+  if ((nextPresetKey === "t-shirt" || nextPresetKey === "sneakers") && !normalizeWeight(nextDraft.weight)) {
+    nextDraft.weight = "Light";
+  }
+
+  if (nextPresetKey === "cap" && !nextDraft.size.trim()) {
+    nextDraft.size = "OS";
+  }
+
+  if (nextPresetKey === "sneakers") {
+    const selectedTags = normalizeTagList(nextDraft.styleTags, styleTagOptions);
+    nextDraft.styleTags = ["Casual", "Athleisure", "Going Out"].reduce(
+      (tags, tag) => (tags.includes(tag) ? tags : [...tags, tag]),
+      selectedTags
+    );
+  }
+
+  return nextDraft;
+}
+
 const namedColorHex = {
   black: "#171717",
   gray: "#777777",
@@ -277,8 +326,27 @@ const namedColorHex = {
   pink: "#c98098"
 };
 
+const defaultStyleTypeRules = {
+  Casual: ["cap", "beanie", "t-shirt", "tshirt", "tee", "knit", "sweatshirt", "hoodie", "jeans", "sneakers", "sandal", "sandals", "slide", "slides"],
+  Formal: ["blazer", "derby"],
+  Athleisure: ["sneakers", "hoodie", "sweatshirt", "t-shirt", "tshirt", "tee"],
+  "Going Out": ["blazer", "derby", "jewelry", "glasses"]
+};
+
 function inferStyleTags(item) {
-  return normalizeTagList(item.styleTags, styleTagOptions);
+  const manualTags = normalizeTagList(item.styleTags, styleTagOptions);
+
+  if (manualTags.length) {
+    return manualTags;
+  }
+
+  const type = normalizeType(item.type);
+  const presetKey = getTypePresetKey(item.type);
+  const typeMatches = new Set([type, presetKey].filter(Boolean));
+
+  return styleTagOptions.filter((style) =>
+    defaultStyleTypeRules[style]?.some((allowedType) => typeMatches.has(allowedType))
+  );
 }
 
 function inferClimateTags(item) {
@@ -428,6 +496,50 @@ function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
   return pool.filter((item) => normalizeType(item.type) !== blockedType);
 }
 
+function isHeavyOuterwear(item) {
+  return item?.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy";
+}
+
+function isWarmWeatherConflictItem(item) {
+  const type = normalizeType(item?.type);
+
+  if (item?.garmentType === "Bottom") {
+    return type === "shorts";
+  }
+
+  if (item?.garmentType === "Footwear") {
+    return ["slide", "slides", "sandal", "sandals"].includes(type);
+  }
+
+  return false;
+}
+
+function isOutfitCompatible(outfit, itemsById) {
+  const selectedItems = visibleSlots
+    .map((slot) => itemsById[outfit[slot]])
+    .filter(Boolean);
+
+  return !selectedItems.some(isHeavyOuterwear) || !selectedItems.some(isWarmWeatherConflictItem);
+}
+
+function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
+  if (!pool.length || !["TopOuter", "Bottom", "Footwear"].includes(slot)) {
+    return pool;
+  }
+
+  const filtered = pool.filter((item) =>
+    isOutfitCompatible(
+      {
+        ...outfit,
+        [slot]: item.id
+      },
+      itemsById
+    )
+  );
+
+  return filtered.length ? filtered : pool;
+}
+
 function buildNextOutfit(
   items,
   currentOutfit,
@@ -440,6 +552,12 @@ function buildNextOutfit(
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
+
+  visibleSlots.forEach((slot) => {
+    if (!locked[slot]) {
+      nextOutfit[slot] = null;
+    }
+  });
 
   visibleSlots.forEach((slot) => {
     if (locked[slot]) {
@@ -472,6 +590,7 @@ function buildNextOutfit(
       }
 
       pool = applyOutfitFiltersToPool(pool, outfitFilters);
+      pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
 
       const nextItem = pickRandom(pool);
       nextOutfit[slot] = nextItem?.id ?? null;
@@ -483,7 +602,9 @@ function buildNextOutfit(
       return;
     }
 
-    nextOutfit[slot] = pickRandom(applyOutfitFiltersToPool(pool, outfitFilters))?.id ?? null;
+    pool = applyOutfitFiltersToPool(pool, outfitFilters);
+    pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
+    nextOutfit[slot] = pickRandom(pool)?.id ?? null;
   });
 
   return nextOutfit;
@@ -881,34 +1002,6 @@ function normalizeOutfitFilters(outfitFilters) {
         : []
     ])
   );
-}
-
-function buildWardrobeDescription(item) {
-  const parts = [item.garmentType];
-  const accessoryLabel = item.accessorySlot ? getAccessoryLabel(item.accessorySlot) : "";
-  const normalizedTypeLabel = item.type?.trim() ?? "";
-
-  if (normalizedTypeLabel) {
-    parts.push(normalizedTypeLabel);
-  }
-
-  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
-    parts.push(item.layerType);
-  }
-
-  if (
-    item.garmentType === "Accessory" &&
-    accessoryLabel &&
-    accessoryLabel.toLowerCase() !== normalizedTypeLabel.toLowerCase()
-  ) {
-    parts.push(accessoryLabel);
-  }
-
-  if (item.size) {
-    parts.push(item.size);
-  }
-
-  return parts.filter(Boolean).join(" · ");
 }
 
 function getWorthCategory(item) {
@@ -1756,7 +1849,8 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
     }
 
-    return applyOutfitFiltersToPool(pool, outfitFilters);
+    pool = applyOutfitFiltersToPool(pool, outfitFilters);
+    return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
   }
 
   function getSlotPickerOptions(slot) {
@@ -2140,10 +2234,11 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
     }
 
-    return applyOutfitFiltersToPool(
+    pool = applyOutfitFiltersToPool(
       pool.filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]),
       outfitFilters
     );
+    return filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
   }
 
   function toggleAccessories() {
@@ -3251,7 +3346,7 @@ export default function App() {
         Type
         <input
           value={draft.type}
-          onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value }))}
+          onChange={(event) => setDraft((current) => applyTypePresetsToDraft(current, event.target.value))}
           placeholder="Shirt, jacket, trousers..."
         />
       </label>
@@ -4077,7 +4172,6 @@ export default function App() {
 
                     <div className="wardrobe-meta">
                       <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                      <span className="wardrobe-description" title={buildWardrobeDescription(item)}>{buildWardrobeDescription(item)}</span>
                       <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)} · Retail ${formatCurrency(item.retailValue)}`}>
                         {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
                       </span>

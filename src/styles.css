@@ -2255,10 +2255,6 @@ button:disabled {
     max-height: 86px;
   }
 
-  .wardrobe-description {
-    display: none;
-  }
-
   .card-actions .ghost-button {
     padding: 4px 5px;
     font-size: 0.62rem;
