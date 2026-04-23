@@ -1266,6 +1266,7 @@ export default function App() {
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState("");
   const [outfitPalette, setOutfitPalette] = useState([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1714,7 +1715,6 @@ export default function App() {
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
-    setOutfitFiltersOpen(false);
     setFitpicPreview(null);
     setEditorFloatingOpen(false);
     setEditingId(null);
@@ -3500,18 +3500,6 @@ export default function App() {
             </div>
           </div>
 
-          {outfitPalette.length ? (
-            <div className="outfit-palette" aria-label="Current outfit color palette">
-              {outfitPalette.map((entry) => (
-                <span
-                  key={`${entry.color}-${entry.label}`}
-                  className="outfit-palette-swatch"
-                  style={{ backgroundColor: entry.color }}
-                  title={`${entry.label}: ${entry.color}`}
-                />
-              ))}
-            </div>
-          ) : null}
         </div>
 
         {activeOutfitSlot || activeAccessorySlot ? (
@@ -3546,7 +3534,32 @@ export default function App() {
               {label}
             </button>
           ))}
+          {outfitPalette.length ? (
+            <button
+              type="button"
+              className={`palette-tab ${paletteOpen ? "is-active" : ""}`}
+              onClick={() => setPaletteOpen((current) => !current)}
+              aria-label="Toggle outfit color palette"
+              aria-expanded={paletteOpen}
+              title="Color palette"
+            >
+              <span style={{ backgroundColor: outfitPalette[0].color }} />
+            </button>
+          ) : null}
         </div>
+
+        {paletteOpen && outfitPalette.length ? (
+          <div className="outfit-palette" aria-label="Current outfit color palette">
+            {outfitPalette.map((entry) => (
+              <span
+                key={`${entry.color}-${entry.label}`}
+                className="outfit-palette-swatch"
+                style={{ backgroundColor: entry.color }}
+                title={`${entry.label}: ${entry.color}`}
+              />
+            ))}
+          </div>
+        ) : null}
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">
@@ -3710,9 +3723,6 @@ export default function App() {
             ) : null}
 
             <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
-              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeFiltersOpen(false)}>
-                Close
-              </button>
               <label>
                 Brand
                 <select

@@ -140,15 +140,17 @@ button:disabled {
 }
 
 .outfit-palette {
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
-  z-index: 5;
+  position: fixed;
+  left: 16px;
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  z-index: 31;
   display: flex;
-  justify-content: center;
   gap: 6px;
-  pointer-events: none;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(18px);
 }
 
 .outfit-palette-swatch {
@@ -157,7 +159,6 @@ button:disabled {
   border: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: var(--radius-control);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.16);
-  pointer-events: auto;
 }
 
 .controls-toggle {
@@ -234,6 +235,28 @@ button:disabled {
   box-shadow: none;
   backdrop-filter: blur(18px);
   overflow-x: auto;
+}
+
+.palette-tab {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+}
+
+.palette-tab.is-active {
+  border-color: var(--primary);
+}
+
+.palette-tab span {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(0, 0, 0, 0.24);
+  border-radius: calc(var(--radius-control) - 2px);
 }
 
 .floating-backdrop {
@@ -787,7 +810,12 @@ button:disabled {
 .metadata-tag-options {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: 5px;
+}
+
+.metadata-tag-options .list-toggle {
+  padding: 5px 7px;
+  font-size: 0.68rem;
 }
 
 .outfit-slot,
@@ -1553,7 +1581,8 @@ button:disabled {
 .side-editor > *:last-child {
   flex: 1;
   min-height: 0;
-  overflow: visible;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .floating-item-editor {
@@ -1572,7 +1601,8 @@ button:disabled {
 .floating-item-editor > *:last-child {
   flex: 1;
   min-height: 0;
-  overflow: visible;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .editor-placeholder {
@@ -1819,6 +1849,13 @@ button:disabled {
     left: 12px;
     bottom: calc(72px + env(safe-area-inset-bottom));
     width: min(260px, calc(100vw - 24px));
+  }
+
+  .outfit-palette {
+    left: 10px;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 20px);
+    overflow: auto;
   }
 
   .workspace-tabs {
