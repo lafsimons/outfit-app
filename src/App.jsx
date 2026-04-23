@@ -103,21 +103,17 @@ const defaultOutfitFilterRules = {
     Casual: [
       "Cap",
       "Beanie",
-      "Casual Shirt",
-      "Shirt",
       "T-Shirt",
       "Knit",
       "Sweatshirt",
       "Hoodie",
-      "Jacket",
       "Jeans",
-      "Trousers",
       "Sneakers",
       "Sandals"
     ],
-    Formal: ["Shirt", "Blazer", "Coat", "Trousers", "Derby"],
-    Athleisure: ["Sneakers", "Hoodie", "Sweatshirt", "T-Shirt", "Jacket"],
-    "Going Out": ["Shirt", "Blazer", "Jacket", "Coat", "Trousers", "Derby", "Jewelry", "Glasses"]
+    Formal: ["Blazer", "Derby"],
+    Athleisure: ["Sneakers", "Hoodie", "Sweatshirt", "T-Shirt"],
+    "Going Out": ["Blazer", "Derby", "Jewelry", "Glasses"]
   },
   climateAllow: {
     Cold: ["Beanie", "Scarf", "Knit", "Sweatshirt", "Hoodie", "Jacket", "Coat", "Boots", "Trousers", "Jeans"],
@@ -451,6 +447,18 @@ function getItemStyleTags(item, outfitFilterRules = defaultOutfitFilterRules) {
 
 function getItemClimateTags(item, outfitFilterRules = defaultOutfitFilterRules) {
   return [...new Set([...inferClimateTags(item, outfitFilterRules), ...normalizeTagList(item.climateTags, climateTagOptions)])];
+}
+
+function getFilterMatchCount(items, group, value, outfitFilterRules = defaultOutfitFilterRules) {
+  return items.filter((item) => {
+    if (isWishlistItem(item)) {
+      return false;
+    }
+
+    return group === "style"
+      ? getItemStyleTags(item, outfitFilterRules).includes(value)
+      : getItemClimateTags(item, outfitFilterRules).includes(value);
+  }).length;
 }
 
 function hasActiveOutfitFilters(outfitFilters) {
@@ -3221,6 +3229,18 @@ export default function App() {
       : "Edit wardrobe item"
     : "Item editor";
   const visibleOutfitFilterRules = normalizeOutfitFilterRules(outfitFilterRules);
+  const styleRuleMatchCounts = Object.fromEntries(
+    styleTagOptions.map((style) => [
+      style,
+      getFilterMatchCount(items, "style", style, visibleOutfitFilterRules)
+    ])
+  );
+  const climateRuleMatchCounts = Object.fromEntries(
+    climateTagOptions.map((climate) => [
+      climate,
+      getFilterMatchCount(items, "climate", climate, visibleOutfitFilterRules)
+    ])
+  );
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
@@ -3994,9 +4014,10 @@ export default function App() {
 
                 <div className="filter-rules-section">
                   <p className="eyebrow">Style</p>
+                  <p className="filter-rules-help">Use type rules for obvious matches. Use item tags for subjective pieces.</p>
                   {styleTagOptions.map((style) => (
                     <section key={style} className="filter-rule-group">
-                      <strong>{style}</strong>
+                      <strong>{style} · {styleRuleMatchCounts[style]} matches</strong>
                       <div className="filter-rule-options">
                         {itemTypes.map((type) => {
                           const isSelected = visibleOutfitFilterRules.style[style]?.includes(type);
@@ -4020,9 +4041,10 @@ export default function App() {
 
                 <div className="filter-rules-section">
                   <p className="eyebrow">Climate</p>
+                  <p className="filter-rules-help">Climate rules are type-based. Item tags can add exceptions.</p>
                   {climateTagOptions.map((climate) => (
                     <section key={climate} className="filter-rule-group">
-                      <strong>{climate}</strong>
+                      <strong>{climate} · {climateRuleMatchCounts[climate]} matches</strong>
                       <span>Include</span>
                       <div className="filter-rule-options">
                         {itemTypes.map((type) => {

@@ -1092,6 +1092,13 @@ button:disabled {
   margin: 0;
 }
 
+.filter-rules-help {
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
 .filter-rule-group {
   padding: 8px;
   border: 1px solid var(--border-soft);
