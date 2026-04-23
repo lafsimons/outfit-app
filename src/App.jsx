@@ -1342,6 +1342,7 @@ export default function App() {
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
+  const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState("");
@@ -2349,6 +2350,7 @@ export default function App() {
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
+    setItemImageDragActive(false);
     setEditorFloatingOpen(false);
     setEditorReturnTarget("wardrobe");
     setEditingId("new");
@@ -2363,6 +2365,7 @@ export default function App() {
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
+    setItemImageDragActive(false);
     setEditorFloatingOpen(Boolean(options.floating));
     setEditorReturnTarget(options.returnTarget ?? "wardrobe");
     setEditingId(item.id);
@@ -2376,6 +2379,7 @@ export default function App() {
     setDraft(emptyForm);
     setImageUploadError("");
     setImageProcessing(false);
+    setItemImageDragActive(false);
   }
 
   function startFloatingEdit(item) {
@@ -2616,6 +2620,28 @@ export default function App() {
     }
   }
 
+  async function ingestItemImageFile(file, options = {}) {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type?.startsWith("image/")) {
+      setImageUploadError("Selected file is not an image.");
+      return;
+    }
+
+    try {
+      setImageUploadError("");
+      const imageUrl = await compressImageSource(file);
+      setDraft((current) => ({ ...current, imageUrl }));
+      if (options.ignoredExtraFiles) {
+        setImageUploadError("Using the first image only. Additional files were ignored.");
+      }
+    } catch (error) {
+      setImageUploadError(error?.message || "This image could not be processed.");
+    }
+  }
+
   async function handleItemImageUpload(event) {
     const [file] = event.target.files;
 
@@ -2624,14 +2650,60 @@ export default function App() {
     }
 
     try {
-      setImageUploadError("");
-      const imageUrl = await compressImageSource(file);
-      setDraft((current) => ({ ...current, imageUrl }));
-    } catch (error) {
-      setImageUploadError(error?.message || "This image could not be processed.");
+      await ingestItemImageFile(file);
     } finally {
       event.target.value = "";
     }
+  }
+
+  function handleItemImageDragEnter(event) {
+    event.preventDefault();
+    if (imageProcessing) {
+      return;
+    }
+    setItemImageDragActive(true);
+  }
+
+  function handleItemImageDragOver(event) {
+    event.preventDefault();
+    if (imageProcessing) {
+      return;
+    }
+    setItemImageDragActive(true);
+  }
+
+  function handleItemImageDragLeave(event) {
+    event.preventDefault();
+    if (event.currentTarget.contains(event.relatedTarget)) {
+      return;
+    }
+    setItemImageDragActive(false);
+  }
+
+  async function handleItemImageDrop(event) {
+    event.preventDefault();
+    setItemImageDragActive(false);
+
+    if (imageProcessing) {
+      return;
+    }
+
+    const droppedFiles = Array.from(event.dataTransfer?.files ?? []);
+
+    if (!droppedFiles.length) {
+      return;
+    }
+
+    const firstImageFile = droppedFiles.find((file) => file.type?.startsWith("image/"));
+
+    if (!firstImageFile) {
+      setImageUploadError("Selected file is not an image.");
+      return;
+    }
+
+    await ingestItemImageFile(firstImageFile, {
+      ignoredExtraFiles: droppedFiles.length > 1
+    });
   }
 
   function removeDraftImage() {
@@ -3273,7 +3345,13 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
-      <div className="item-image-upload">
+      <div
+        className={`item-image-upload ${itemImageDragActive ? "is-drag-active" : ""}`}
+        onDragEnter={handleItemImageDragEnter}
+        onDragOver={handleItemImageDragOver}
+        onDragLeave={handleItemImageDragLeave}
+        onDrop={handleItemImageDrop}
+      >
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
             <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
@@ -3325,7 +3403,7 @@ export default function App() {
           </label>
         </div>
         <p className="item-image-note">
-          Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
+          Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
         </p>
         {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
       </div>

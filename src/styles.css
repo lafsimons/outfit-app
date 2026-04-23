@@ -1798,6 +1798,11 @@ button:disabled {
   background: var(--surface-soft);
 }
 
+.item-image-upload.is-drag-active {
+  border-color: var(--primary);
+  background: rgba(255, 255, 255, 0.96);
+}
+
 .item-image-preview {
   min-height: 104px;
   display: grid;
@@ -1850,6 +1855,10 @@ button:disabled {
   margin: 0;
   font-size: 0.64rem;
   line-height: 1.35;
+}
+
+.item-image-upload.is-drag-active .item-image-preview {
+  border-color: var(--primary);
 }
 
 .item-image-note {
