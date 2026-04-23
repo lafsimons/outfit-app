@@ -2826,7 +2826,6 @@ export default function App() {
   }
 
   function closeUtilityWindows() {
-    setPaletteOpen(false);
     setWeatherOpen(false);
   }
 
@@ -3675,7 +3674,7 @@ export default function App() {
           </button>
         </div>
 
-        {paletteOpen || weatherOpen ? (
+        {((paletteOpen && outfitPalette.length) || weatherOpen) ? (
           <div className={`utility-windows ${controlsOpen && !activePanel ? "is-offset" : ""}`}>
             {paletteOpen && outfitPalette.length ? (
               <div className="outfit-palette" aria-label="Current outfit color palette">
