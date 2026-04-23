@@ -2831,10 +2831,10 @@ export default function App() {
   }
 
   function toggleWorkspacePanel(panel) {
-    closeUtilityWindows();
     setActivePanel((current) => {
       const nextPanel = current === panel ? null : panel;
       if (nextPanel) {
+        closeUtilityWindows();
         setControlsOpen(false);
       }
       setActiveOutfitSlot(null);

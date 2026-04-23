@@ -157,14 +157,17 @@ button:disabled {
 
 .outfit-palette {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
-  max-width: min(220px, calc(100vw - 32px));
+  width: max-content;
+  max-width: calc(100vw - 32px);
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(18px);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .weather-window {
