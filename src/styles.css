@@ -139,6 +139,27 @@ button:disabled {
   overflow: hidden;
 }
 
+.outfit-palette {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.outfit-palette-swatch {
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-control);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.16);
+  pointer-events: auto;
+}
+
 .controls-toggle {
   min-width: 126px;
 }
@@ -754,6 +775,21 @@ button:disabled {
   gap: 7px;
 }
 
+.metadata-tag-group {
+  display: grid;
+  gap: 7px;
+}
+
+.metadata-tag-group .eyebrow {
+  margin: 0;
+}
+
+.metadata-tag-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
 .outfit-slot,
 .wardrobe-card {
   border-radius: var(--radius-panel);
@@ -1124,7 +1160,7 @@ button:disabled {
   color: var(--primary-text);
 }
 
-.clear-laundry-button {
+.clear-excluded-button {
   align-self: end;
   justify-self: start;
   padding: 7px 10px;
@@ -2074,7 +2110,7 @@ button:disabled {
 
   .filter-close-button,
   .clear-filters-button,
-  .clear-laundry-button {
+  .clear-excluded-button {
     grid-column: 1 / -1;
   }
 

@@ -91,9 +91,11 @@ const defaultGenerationLists = {
   Wardrobe: true,
   Wishlist: false
 };
+const styleTagOptions = ["Casual", "Formal", "Athleisure", "Going Out"];
+const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Indoor", "Transitional"];
 const outfitFilterOptions = {
-  style: ["Casual", "Formal", "Athleisure", "Going Out"],
-  climate: ["Cold", "Warm", "Hot", "Snow", "Rain", "Indoor", "Transitional"],
+  style: styleTagOptions,
+  climate: climateTagOptions,
   color: ["Light", "Dark", "Monochrome", "Colorful"]
 };
 const emptyOutfitFilters = {
@@ -127,6 +129,7 @@ const itemTypes = [
   "Trousers",
   "Shorts",
   "Sneakers",
+  "Sandals",
   "Boots",
   "Derby",
   "Dress",
@@ -164,6 +167,7 @@ const garmentTypeByItemType = {
   Trousers: "Bottom",
   Shorts: "Bottom",
   Sneakers: "Footwear",
+  Sandals: "Footwear",
   Boots: "Footwear",
   Derby: "Footwear",
   Dress: "Dresses/Jumpsuits",
@@ -204,7 +208,10 @@ const emptyForm = {
   layerType: "Both",
   accessorySlot: "",
   color: "",
-  list: "Wardrobe"
+  list: "Wardrobe",
+  quantity: 1,
+  styleTags: [],
+  climateTags: []
 };
 
 function normalizeList(list) {
@@ -234,6 +241,20 @@ function normalizeImageOffset(value) {
     return 0;
   }
   return Math.min(50, Math.max(-50, Math.round(parsed)));
+}
+
+function normalizeQuantity(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+  return Math.max(1, Math.round(parsed));
+}
+
+function normalizeTagList(value, options) {
+  return Array.isArray(value)
+    ? value.filter((tag, index) => options.includes(tag) && value.indexOf(tag) === index)
+    : [];
 }
 
 function getItemImageStyle(item) {
@@ -302,6 +323,220 @@ function normalizeType(type) {
   return type?.trim().toLowerCase() ?? "";
 }
 
+const styleTypeRules = {
+  Casual: new Set([
+    "cap",
+    "beanie",
+    "casual shirt",
+    "shirt",
+    "t-shirt",
+    "knit",
+    "sweatshirt",
+    "hoodie",
+    "jacket",
+    "jeans",
+    "trousers",
+    "sneakers",
+    "sandals"
+  ]),
+  Formal: new Set(["shirt", "blazer", "coat", "trousers", "derby"]),
+  Athleisure: new Set(["sneakers", "hoodie", "sweatshirt", "t-shirt", "jacket"]),
+  "Going Out": new Set(["shirt", "blazer", "jacket", "coat", "trousers", "derby", "jewelry", "glasses"])
+};
+
+const climateAllowRules = {
+  Cold: new Set(["beanie", "scarf", "knit", "sweatshirt", "hoodie", "jacket", "coat", "boots", "trousers", "jeans"]),
+  Warm: new Set(["cap", "casual shirt", "shirt", "t-shirt", "shorts", "trousers", "jeans", "sneakers", "sandals"]),
+  Hot: new Set(["cap", "casual shirt", "shirt", "t-shirt", "shorts", "sneakers", "sandals"]),
+  Snow: new Set(["beanie", "scarf", "knit", "sweatshirt", "hoodie", "jacket", "coat", "boots", "trousers", "jeans"]),
+  Rain: new Set(["cap", "jacket", "coat", "boots", "trousers", "jeans", "sneakers"]),
+  Indoor: new Set(["casual shirt", "shirt", "t-shirt", "knit", "sweatshirt", "hoodie", "jeans", "trousers", "shorts", "sneakers", "derby"]),
+  Transitional: new Set(["cap", "casual shirt", "shirt", "t-shirt", "knit", "jacket", "blazer", "trousers", "jeans", "sneakers", "derby"])
+};
+
+const climateBlockRules = {
+  Cold: new Set(["shorts", "sandals"]),
+  Warm: new Set(["beanie", "scarf", "coat", "boots"]),
+  Hot: new Set(["beanie", "scarf", "knit", "sweatshirt", "hoodie", "coat", "boots"]),
+  Snow: new Set(["shorts", "sandals"]),
+  Rain: new Set(["shorts", "sandals"]),
+  Indoor: new Set(["coat", "boots"]),
+  Transitional: new Set(["shorts", "coat"])
+};
+
+const namedColorHex = {
+  black: "#171717",
+  gray: "#777777",
+  grey: "#777777",
+  charcoal: "#333333",
+  sumi: "#363432",
+  white: "#f1f0eb",
+  beige: "#cbb995",
+  cream: "#e8dcc5",
+  brown: "#6d4a2f",
+  indigo: "#263f6a",
+  blue: "#3f6da8",
+  navy: "#1e2e4d",
+  red: "#a43d35",
+  green: "#4d6f45",
+  olive: "#6b7147",
+  yellow: "#d7b44a",
+  orange: "#c66d35",
+  purple: "#6b4f8f",
+  pink: "#c98098"
+};
+
+function inferStyleTags(item) {
+  const type = normalizeType(item.type);
+  return styleTagOptions.filter((style) => styleTypeRules[style]?.has(type));
+}
+
+function inferClimateTags(item) {
+  const type = normalizeType(item.type);
+
+  return climateTagOptions.filter((climate) => {
+    if (climateBlockRules[climate]?.has(type)) {
+      return false;
+    }
+
+    return climateAllowRules[climate]?.has(type);
+  });
+}
+
+function getItemStyleTags(item) {
+  return [...new Set([...inferStyleTags(item), ...normalizeTagList(item.styleTags, styleTagOptions)])];
+}
+
+function getItemClimateTags(item) {
+  return [...new Set([...inferClimateTags(item), ...normalizeTagList(item.climateTags, climateTagOptions)])];
+}
+
+function hasActiveOutfitFilters(outfitFilters) {
+  return Object.values(outfitFilters ?? {}).some((values) => Array.isArray(values) && values.length > 0);
+}
+
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  if (clean.length !== 6) {
+    return null;
+  }
+
+  const value = Number.parseInt(clean, 16);
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b]
+    .map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function rgbToHsl({ r, g, b }) {
+  const red = r / 255;
+  const green = g / 255;
+  const blue = b / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+
+  if (max === min) {
+    return { h: 0, s: 0, l: lightness };
+  }
+
+  const delta = max - min;
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  let hue;
+
+  if (max === red) {
+    hue = (green - blue) / delta + (green < blue ? 6 : 0);
+  } else if (max === green) {
+    hue = (blue - red) / delta + 2;
+  } else {
+    hue = (red - green) / delta + 4;
+  }
+
+  return { h: hue * 60, s: saturation, l: lightness };
+}
+
+function getColorRgb(item) {
+  const color = normalizeType(item.color);
+  if (!color) {
+    return null;
+  }
+
+  const namedMatch = Object.entries(namedColorHex).find(([name]) => color.includes(name));
+  return namedMatch ? hexToRgb(namedMatch[1]) : null;
+}
+
+function getColorProfile(item) {
+  const rgb = getColorRgb(item);
+  if (!rgb) {
+    return null;
+  }
+
+  return rgbToHsl(rgb);
+}
+
+function matchesItemColorFilters(item, selectedColors) {
+  if (!selectedColors?.length) {
+    return true;
+  }
+
+  const profile = getColorProfile(item);
+  if (!profile) {
+    return true;
+  }
+
+  return selectedColors.some((filter) => {
+    if (filter === "Light") {
+      return profile.l >= 0.62;
+    }
+
+    if (filter === "Dark") {
+      return profile.l <= 0.42;
+    }
+
+    if (filter === "Monochrome") {
+      return profile.s <= 0.22;
+    }
+
+    if (filter === "Colorful") {
+      return profile.s >= 0.34;
+    }
+
+    return true;
+  });
+}
+
+function matchesOutfitFilters(item, outfitFilters = emptyOutfitFilters) {
+  const selectedStyles = outfitFilters.style ?? [];
+  const selectedClimates = outfitFilters.climate ?? [];
+  const selectedColors = outfitFilters.color ?? [];
+
+  return (
+    (!selectedStyles.length || selectedStyles.some((style) => getItemStyleTags(item).includes(style))) &&
+    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item).includes(climate))) &&
+    matchesItemColorFilters(item, selectedColors)
+  );
+}
+
+function applyOutfitFiltersToPool(pool, outfitFilters) {
+  if (!hasActiveOutfitFilters(outfitFilters)) {
+    return pool;
+  }
+
+  const filtered = pool.filter((item) => matchesOutfitFilters(item, outfitFilters));
+  return filtered.length ? filtered : pool;
+}
+
 function isNonStackableTopType(item) {
   return item.garmentType === "Top" && nonStackableTopTypes.has(normalizeType(item.type));
 }
@@ -334,7 +569,15 @@ function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
   return pool.filter((item) => normalizeType(item.type) !== blockedType);
 }
 
-function buildNextOutfit(items, currentOutfit, locked, layering, excluded = {}, generationLists = defaultGenerationLists) {
+function buildNextOutfit(
+  items,
+  currentOutfit,
+  locked,
+  layering,
+  excluded = {},
+  generationLists = defaultGenerationLists,
+  outfitFilters = emptyOutfitFilters
+) {
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
@@ -366,6 +609,8 @@ function buildNextOutfit(items, currentOutfit, locked, layering, excluded = {}, 
         pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
       }
 
+      pool = applyOutfitFiltersToPool(pool, outfitFilters);
+
       const nextItem = pickRandom(pool);
       nextOutfit[slot] = nextItem?.id ?? null;
 
@@ -376,7 +621,7 @@ function buildNextOutfit(items, currentOutfit, locked, layering, excluded = {}, 
       return;
     }
 
-    nextOutfit[slot] = pickRandom(pool)?.id ?? null;
+    nextOutfit[slot] = pickRandom(applyOutfitFiltersToPool(pool, outfitFilters))?.id ?? null;
   });
 
   return nextOutfit;
@@ -628,6 +873,9 @@ function normalizeItem(item) {
     imageOffsetX: normalizeImageOffset(item.imageOffsetX),
     imageOffsetY: normalizeImageOffset(item.imageOffsetY),
     favorite: Boolean(item.favorite),
+    quantity: normalizeQuantity(item.quantity),
+    styleTags: normalizeTagList(item.styleTags, styleTagOptions),
+    climateTags: normalizeTagList(item.climateTags, climateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
@@ -652,6 +900,19 @@ function itemNeedsImageOffsetMigration(originalItem, normalizedItem) {
 
 function itemNeedsFavoriteMigration(originalItem, normalizedItem) {
   return originalItem.favorite === undefined && normalizedItem.favorite === false;
+}
+
+function itemNeedsQuantityMigration(originalItem, normalizedItem) {
+  return originalItem.quantity === undefined || normalizeQuantity(originalItem.quantity) !== normalizedItem.quantity;
+}
+
+function itemNeedsTagMigration(originalItem, normalizedItem) {
+  return (
+    !Array.isArray(originalItem.styleTags) ||
+    !Array.isArray(originalItem.climateTags) ||
+    normalizeTagList(originalItem.styleTags, styleTagOptions).length !== normalizedItem.styleTags.length ||
+    normalizeTagList(originalItem.climateTags, climateTagOptions).length !== normalizedItem.climateTags.length
+  );
 }
 
 function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
@@ -807,6 +1068,93 @@ function loadImage(dataUrl) {
   });
 }
 
+function getFallbackPaletteColor(item) {
+  const rgb = getColorRgb(item);
+  return rgb ? rgbToHex(rgb) : "#8c8c8c";
+}
+
+function extractDominantColorsFromImage(image, maxColors = 3) {
+  const sampleSize = 96;
+  const scale = Math.min(1, sampleSize / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!context) {
+    return [];
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  context.clearRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const { data } = context.getImageData(0, 0, width, height);
+  const buckets = new Map();
+
+  for (let index = 0; index < data.length; index += 16) {
+    const alpha = data[index + 3];
+    if (alpha < 96) {
+      continue;
+    }
+
+    const r = data[index];
+    const g = data[index + 1];
+    const b = data[index + 2];
+    const brightness = (r + g + b) / 3;
+    const spread = Math.max(r, g, b) - Math.min(r, g, b);
+
+    if (brightness > 238 && spread < 18) {
+      continue;
+    }
+
+    const key = [r, g, b].map((value) => Math.round(value / 32) * 32).join(",");
+    const bucket = buckets.get(key) ?? { r: 0, g: 0, b: 0, count: 0 };
+    bucket.r += r;
+    bucket.g += g;
+    bucket.b += b;
+    bucket.count += 1;
+    buckets.set(key, bucket);
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, maxColors)
+    .map((bucket) =>
+      rgbToHex({
+        r: bucket.r / bucket.count,
+        g: bucket.g / bucket.count,
+        b: bucket.b / bucket.count
+      })
+    );
+}
+
+async function extractItemPalette(item) {
+  try {
+    const image = await loadImage(resolveImageUrl(item.imageUrl));
+    const colors = extractDominantColorsFromImage(image);
+    return colors.length ? colors : [getFallbackPaletteColor(item)];
+  } catch {
+    return [getFallbackPaletteColor(item)];
+  }
+}
+
+function mergePaletteColors(itemPalettes, maxColors = 7) {
+  const colors = itemPalettes.flatMap(({ item, colors }) =>
+    colors.map((color) => ({ color, label: buildDisplayName(item) }))
+  );
+  const merged = [];
+
+  colors.forEach((entry) => {
+    if (!merged.some((existing) => existing.color.toLowerCase() === entry.color.toLowerCase())) {
+      merged.push(entry);
+    }
+  });
+
+  return merged.slice(0, maxColors);
+}
+
 function canvasToDataUrl(canvas, type, quality) {
   const dataUrl = canvas.toDataURL(type, quality);
   return dataUrl.startsWith(`data:${type}`) ? dataUrl : "";
@@ -882,6 +1230,7 @@ export default function App() {
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const paletteCacheRef = useRef(new Map());
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [layering, setLayering] = useState(false);
@@ -916,11 +1265,27 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState("");
+  const [outfitPalette, setOutfitPalette] = useState([]);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
   );
+  const currentOutfitItems = useMemo(() => {
+    const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
+    const seen = new Set();
+
+    return slots
+      .map((slot) => itemsById[outfit[slot]])
+      .filter((item) => {
+        if (!item || seen.has(item.id)) {
+          return false;
+        }
+
+        seen.add(item.id);
+        return true;
+      });
+  }, [accessoriesEnabled, itemsById, outfit]);
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
       return [];
@@ -975,7 +1340,7 @@ export default function App() {
     ["Garment", wardrobeFilters.garmentType],
     ["Color", wardrobeFilters.color],
     ["List", wardrobeFilters.list],
-    ["Laundry", wardrobeFilters.laundry],
+    ["Exclude", wardrobeFilters.laundry],
     ["Favorite", wardrobeFilters.favorite]
   ]
     .filter(([, value]) => Boolean(value))
@@ -988,6 +1353,10 @@ export default function App() {
             ? value === "yes"
               ? "Yes"
               : "No"
+            : label === "Exclude"
+              ? value === "show"
+                ? "Show excluded"
+                : "Hide excluded"
             : value
     }));
 
@@ -1085,9 +1454,10 @@ export default function App() {
       .filter((item) => !isWishlistItem(item))
       .forEach((item) => {
         const category = getWorthCategory(item);
-        byCategory[category].count += 1;
-        byCategory[category].value += getNumericValue(item.value);
-        byCategory[category].retailValue += getNumericValue(item.retailValue);
+        const quantity = normalizeQuantity(item.quantity);
+        byCategory[category].count += quantity;
+        byCategory[category].value += getNumericValue(item.value) * quantity;
+        byCategory[category].retailValue += getNumericValue(item.retailValue) * quantity;
       });
 
     const rows = categories.map((category) => byCategory[category]);
@@ -1102,6 +1472,41 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
+    async function updateOutfitPalette() {
+      if (!currentOutfitItems.length) {
+        setOutfitPalette([]);
+        return;
+      }
+
+      const itemPalettes = await Promise.all(
+        currentOutfitItems.map(async (item) => {
+          const cacheKey = `${item.id}:${item.imageUrl}:${item.color}`;
+          if (!paletteCacheRef.current.has(cacheKey)) {
+            paletteCacheRef.current.set(cacheKey, await extractItemPalette(item));
+          }
+
+          return {
+            item,
+            colors: paletteCacheRef.current.get(cacheKey)
+          };
+        })
+      );
+
+      if (!cancelled) {
+        setOutfitPalette(mergePaletteColors(itemPalettes));
+      }
+    }
+
+    updateOutfitPalette();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOutfitItems]);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
       const normalizedItems = storedItems.map(normalizeItem);
@@ -1111,6 +1516,8 @@ export default function App() {
           itemNeedsImageScaleMigration(storedItems[index], item) ||
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
+          itemNeedsQuantityMigration(storedItems[index], item) ||
+          itemNeedsTagMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item)
       );
 
@@ -1142,7 +1549,7 @@ export default function App() {
         setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
         setLocked(defaultState.locked ?? {});
         setExcluded(defaultState.excluded ?? {});
-        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists));
+        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits((defaultState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
@@ -1201,9 +1608,9 @@ export default function App() {
         }
       });
 
-      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists);
+      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters);
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, loading]);
+  }, [items, itemsById, locked, layering, excluded, generationLists, outfitFilters, loading]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
@@ -1312,7 +1719,7 @@ export default function App() {
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists));
+    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters));
   }
 
   function handleReroll(slot) {
@@ -1344,7 +1751,7 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
     }
 
-    return pool;
+    return applyOutfitFiltersToPool(pool, outfitFilters);
   }
 
   function getSlotPickerOptions(slot) {
@@ -1468,6 +1875,8 @@ export default function App() {
         itemNeedsImageScaleMigration(nextItems[index], item) ||
         itemNeedsImageOffsetMigration(nextItems[index], item) ||
         itemNeedsFavoriteMigration(nextItems[index], item) ||
+        itemNeedsQuantityMigration(nextItems[index], item) ||
+        itemNeedsTagMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item)
     );
 
@@ -1480,7 +1889,7 @@ export default function App() {
     setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
     setLocked(nextAppState?.locked ?? {});
     setExcluded(nextAppState?.excluded ?? {});
-    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists));
+    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
@@ -1619,12 +2028,14 @@ export default function App() {
   }
 
   async function handleExportWardrobeImage() {
-    if (!visibleWardrobeItems.length) {
+    const exportItems = visibleWardrobeItems.filter((item) => !excluded[item.id]);
+
+    if (!exportItems.length) {
       window.alert("There are no filtered wardrobe pieces to export.");
       return;
     }
 
-    const shuffledItems = [...visibleWardrobeItems].sort(() => Math.random() - 0.5);
+    const shuffledItems = [...exportItems].sort(() => Math.random() - 0.5);
     const cellSize = 190;
     const columns = Math.max(1, Math.ceil(Math.sqrt(shuffledItems.length * 1.18)));
     const rows = Math.ceil(shuffledItems.length / columns);
@@ -1885,14 +2296,14 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists);
+        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters);
       });
 
       return nextExcluded;
     });
   }
 
-  function clearLaundry() {
+  function clearExcluded() {
     setExcluded({});
   }
 
@@ -1916,6 +2327,20 @@ export default function App() {
 
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
+  }
+
+  function toggleDraftTag(field, value, options) {
+    setDraft((current) => {
+      const selectedValues = normalizeTagList(current[field], options);
+      const isSelected = selectedValues.includes(value);
+
+      return {
+        ...current,
+        [field]: isSelected
+          ? selectedValues.filter((selectedValue) => selectedValue !== value)
+          : [...selectedValues, value]
+      };
+    });
   }
 
   function toggleGenerationList(list) {
@@ -1965,6 +2390,7 @@ export default function App() {
     const normalizedImageScale = normalizeImageScale(draft.imageScale);
     const normalizedImageOffsetX = normalizeImageOffset(draft.imageOffsetX);
     const normalizedImageOffsetY = normalizeImageOffset(draft.imageOffsetY);
+    const normalizedQuantity = normalizeQuantity(draft.quantity);
 
     if (!trimmedImageUrl) {
       setImageUploadError("Choose an image or enter an image URL before saving.");
@@ -2000,7 +2426,10 @@ export default function App() {
       value: normalizedValue,
       retailValue: normalizedRetailValue,
       size: trimmedSize,
-      list: normalizeList(draft.list)
+      list: normalizeList(draft.list),
+      quantity: normalizedQuantity,
+      styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
+      climateTags: normalizeTagList(draft.climateTags, climateTagOptions)
     };
 
     const nextItem = {
@@ -2901,6 +3330,22 @@ export default function App() {
       </label>
 
       <label>
+        Quantity
+        <input
+          inputMode="numeric"
+          min="1"
+          value={draft.quantity}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              quantity: event.target.value.replace(/[^\d]/g, "")
+            }))
+          }
+          placeholder="1"
+        />
+      </label>
+
+      <label>
         Value
         <input
           inputMode="numeric"
@@ -2929,6 +3374,48 @@ export default function App() {
           placeholder="280"
         />
       </label>
+
+      <section className="metadata-tag-group" aria-label="Style metadata">
+        <p className="eyebrow">Style tags</p>
+        <div className="metadata-tag-options">
+          {styleTagOptions.map((tag) => {
+            const isSelected = normalizeTagList(draft.styleTags, styleTagOptions).includes(tag);
+
+            return (
+              <button
+                key={tag}
+                type="button"
+                className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                onClick={() => toggleDraftTag("styleTags", tag, styleTagOptions)}
+                aria-pressed={isSelected}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="metadata-tag-group" aria-label="Climate metadata">
+        <p className="eyebrow">Climate tags</p>
+        <div className="metadata-tag-options">
+          {climateTagOptions.map((tag) => {
+            const isSelected = normalizeTagList(draft.climateTags, climateTagOptions).includes(tag);
+
+            return (
+              <button
+                key={tag}
+                type="button"
+                className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                onClick={() => toggleDraftTag("climateTags", tag, climateTagOptions)}
+                aria-pressed={isSelected}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       <label className="checkbox-field">
         <input
@@ -3013,6 +3500,18 @@ export default function App() {
             </div>
           </div>
 
+          {outfitPalette.length ? (
+            <div className="outfit-palette" aria-label="Current outfit color palette">
+              {outfitPalette.map((entry) => (
+                <span
+                  key={`${entry.color}-${entry.label}`}
+                  className="outfit-palette-swatch"
+                  style={{ backgroundColor: entry.color }}
+                  title={`${entry.label}: ${entry.color}`}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {activeOutfitSlot || activeAccessorySlot ? (
@@ -3063,31 +3562,35 @@ export default function App() {
               </button>
             </div>
 
-            <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
-              Layering: {layering ? "On" : "Off"}
-            </button>
-            <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
-              Accessories: {accessoriesEnabled ? "On" : "Off"}
-            </button>
-            <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-              Save outfit
-            </button>
-            <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-              Export outfit image
-            </button>
-
-            <div className="generation-list-controls" aria-label="Generation lists">
-              {itemLists.map((list) => (
-                <button
-                  key={list}
-                  type="button"
-                  className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
-                  onClick={() => toggleGenerationList(list)}
-                >
-                  {list}: {generationLists[list] ? "Included" : "Off"}
+            {!outfitFiltersOpen ? (
+              <>
+                <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
+                  Layering: {layering ? "On" : "Off"}
                 </button>
-              ))}
-            </div>
+                <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
+                  Accessories: {accessoriesEnabled ? "On" : "Off"}
+                </button>
+                <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
+                  Save outfit
+                </button>
+                <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
+                  Export outfit image
+                </button>
+
+                <div className="generation-list-controls" aria-label="Generation lists">
+                  {itemLists.map((list) => (
+                    <button
+                      key={list}
+                      type="button"
+                      className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
+                      onClick={() => toggleGenerationList(list)}
+                    >
+                      {list}: {generationLists[list] ? "Included" : "Off"}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
 
             <button
               type="button"
@@ -3298,7 +3801,7 @@ export default function App() {
                 </select>
               </label>
               <label>
-                Laundry
+                Exclude
                 <select
                   value={wardrobeFilters.laundry}
                   onChange={(event) =>
@@ -3306,8 +3809,8 @@ export default function App() {
                   }
                 >
                   <option value="">All</option>
-                  <option value="show">Show laundry</option>
-                  <option value="hide">Hide laundry</option>
+                  <option value="show">Show excluded</option>
+                  <option value="hide">Hide excluded</option>
                 </select>
               </label>
               <label>
@@ -3327,8 +3830,8 @@ export default function App() {
                   <option value="oldest">Oldest</option>
                 </select>
               </label>
-              <button type="button" className="secondary-button clear-laundry-button" onClick={clearLaundry}>
-                Clear laundry
+              <button type="button" className="secondary-button clear-excluded-button" onClick={clearExcluded}>
+                Clear excluded
               </button>
             </div>
 
@@ -3447,7 +3950,7 @@ export default function App() {
                         {item.color || "No color"} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
                       </span>
                       <span title={normalizeList(item.list)}>
-                        {normalizeList(item.list)}{item.favorite ? " · Favorite" : ""}
+                        {normalizeList(item.list)}{normalizeQuantity(item.quantity) > 1 ? ` · Qty ${normalizeQuantity(item.quantity)}` : ""}{item.favorite ? " · Favorite" : ""}
                       </span>
                     </div>
 
