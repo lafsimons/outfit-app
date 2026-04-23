@@ -2862,7 +2862,6 @@ export default function App() {
   }
 
   function toggleControlsWindow() {
-    closeUtilityWindows();
     if (activePanel) {
       setActivePanel(null);
     }
@@ -3656,15 +3655,7 @@ export default function App() {
             <button
               type="button"
               className={`palette-tab ${paletteOpen ? "is-active" : ""}`}
-              onClick={() => {
-                setPaletteOpen((current) => {
-                  const nextOpen = !current;
-                  if (nextOpen) {
-                    setWeatherOpen(false);
-                  }
-                  return nextOpen;
-                });
-              }}
+              onClick={() => setPaletteOpen((current) => !current)}
               aria-label="Toggle outfit color palette"
               aria-expanded={paletteOpen}
               title="Color palette"
@@ -3675,15 +3666,7 @@ export default function App() {
           <button
             type="button"
             className={`weather-tab ${weatherOpen ? "is-active" : ""}`}
-            onClick={() => {
-              setWeatherOpen((current) => {
-                const nextOpen = !current;
-                if (nextOpen) {
-                  setPaletteOpen(false);
-                }
-                return nextOpen;
-              });
-            }}
+            onClick={() => setWeatherOpen((current) => !current)}
             aria-label="Toggle current temperature"
             aria-expanded={weatherOpen}
             title="Current temperature"
@@ -3692,70 +3675,68 @@ export default function App() {
           </button>
         </div>
 
-        {paletteOpen && outfitPalette.length ? (
-          <div
-            className={`outfit-palette ${controlsOpen && !activePanel ? "is-offset" : ""}`}
-            aria-label="Current outfit color palette"
-          >
-            {outfitPalette.map((entry) => (
-              <span
-                key={`${entry.color}-${entry.label}`}
-                className="outfit-palette-swatch"
-                style={{ backgroundColor: entry.color }}
-                title={`${entry.label}: ${entry.color}`}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {weatherOpen ? (
-          <div
-            className={`weather-window ${controlsOpen && !activePanel ? "is-offset" : ""}`}
-            aria-label="Current weather"
-          >
-            <form
-              className="weather-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                refreshWeather();
-              }}
-            >
-              <label>
-                Location
-                <input
-                  value={weatherLocationDraft}
-                  onChange={(event) => setWeatherLocationDraft(event.target.value)}
-                  placeholder="Berlin"
-                />
-              </label>
-              <button type="submit" className="secondary-button" disabled={weatherLoading}>
-                {weatherLoading ? "Loading..." : "Update"}
-              </button>
-            </form>
-
-            {weatherData ? (
-              <div className="weather-summary">
-                <strong>{Math.round(weatherData.temperature)}°C</strong>
-                <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
-                {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
-                  <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
-                ) : null}
-                {weatherData.suggestedFilters?.length ? (
-                  <span>{weatherData.suggestedFilters.join(" + ")}</span>
-                ) : null}
+        {paletteOpen || weatherOpen ? (
+          <div className={`utility-windows ${controlsOpen && !activePanel ? "is-offset" : ""}`}>
+            {paletteOpen && outfitPalette.length ? (
+              <div className="outfit-palette" aria-label="Current outfit color palette">
+                {outfitPalette.map((entry) => (
+                  <span
+                    key={`${entry.color}-${entry.label}`}
+                    className="outfit-palette-swatch"
+                    style={{ backgroundColor: entry.color }}
+                    title={`${entry.label}: ${entry.color}`}
+                  />
+                ))}
               </div>
             ) : null}
 
-            {weatherError ? <p className="weather-error">{weatherError}</p> : null}
+            {weatherOpen ? (
+              <div className="weather-window" aria-label="Current weather">
+                <form
+                  className="weather-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    refreshWeather();
+                  }}
+                >
+                  <label>
+                    Location
+                    <input
+                      value={weatherLocationDraft}
+                      onChange={(event) => setWeatherLocationDraft(event.target.value)}
+                      placeholder="Berlin"
+                    />
+                  </label>
+                  <button type="submit" className="secondary-button" disabled={weatherLoading}>
+                    {weatherLoading ? "Loading..." : "Update"}
+                  </button>
+                </form>
 
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={applyWeatherFilters}
-              disabled={!weatherData?.suggestedFilters?.length}
-            >
-              Apply weather filter
-            </button>
+                {weatherData ? (
+                  <div className="weather-summary">
+                    <strong>{Math.round(weatherData.temperature)}°C</strong>
+                    <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
+                    {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
+                      <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
+                    ) : null}
+                    {weatherData.suggestedFilters?.length ? (
+                      <span>{weatherData.suggestedFilters.join(" + ")}</span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {weatherError ? <p className="weather-error">{weatherError}</p> : null}
+
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={applyWeatherFilters}
+                  disabled={!weatherData?.suggestedFilters?.length}
+                >
+                  Apply weather filter
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

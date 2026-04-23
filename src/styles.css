@@ -139,13 +139,27 @@ button:disabled {
   overflow: hidden;
 }
 
-.outfit-palette {
+.utility-windows {
   position: fixed;
   left: 16px;
   bottom: calc(70px + env(safe-area-inset-bottom));
   z-index: 31;
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  max-width: calc(100vw - 32px);
+}
+
+.utility-windows.is-offset {
+  left: min(260px, calc(100vw - 32px));
+}
+
+.outfit-palette {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  max-width: min(220px, calc(100vw - 32px));
   padding: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
@@ -153,15 +167,7 @@ button:disabled {
   backdrop-filter: blur(18px);
 }
 
-.outfit-palette.is-offset {
-  left: min(260px, calc(100vw - 16px));
-}
-
 .weather-window {
-  position: fixed;
-  left: 16px;
-  bottom: calc(70px + env(safe-area-inset-bottom));
-  z-index: 31;
   display: grid;
   gap: 8px;
   width: min(280px, calc(100vw - 32px));
@@ -170,10 +176,6 @@ button:disabled {
   border-radius: var(--radius-panel);
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(18px);
-}
-
-.weather-window.is-offset {
-  left: min(260px, calc(100vw - 296px));
 }
 
 .weather-form {
@@ -1929,25 +1931,23 @@ button:disabled {
     width: min(260px, calc(100vw - 24px));
   }
 
-  .outfit-palette {
+  .utility-windows {
     left: 10px;
     bottom: calc(64px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 20px);
+  }
+
+  .utility-windows.is-offset {
+    left: max(10px, calc(100vw - 220px));
+  }
+
+  .outfit-palette {
     max-width: calc(100vw - 20px);
     overflow: auto;
   }
 
-  .outfit-palette.is-offset {
-    left: max(10px, calc(100vw - 200px));
-  }
-
   .weather-window {
-    left: 10px;
-    bottom: calc(64px + env(safe-area-inset-bottom));
     width: min(300px, calc(100vw - 20px));
-  }
-
-  .weather-window.is-offset {
-    left: max(10px, calc(100vw - min(300px, calc(100vw - 20px)) - 10px));
   }
 
   .workspace-tabs {
