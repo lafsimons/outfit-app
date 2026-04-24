@@ -354,6 +354,43 @@ button:disabled {
   border-color: var(--primary);
 }
 
+.controls-outfit-filters {
+  display: grid;
+  gap: 8px;
+}
+
+.controls-outfit-filters-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.controls-outfit-filters-toggle span:last-child {
+  min-width: 0;
+  color: var(--muted-strong);
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.controls-outfit-filters-toggle.is-active {
+  border-color: var(--primary);
+}
+
 .generation-list-controls {
   display: grid;
   gap: 6px;

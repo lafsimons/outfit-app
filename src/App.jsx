@@ -1368,6 +1368,7 @@ export default function App() {
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
+  const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
   const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
   const [weatherData, setWeatherData] = useState(null);
@@ -1393,6 +1394,10 @@ export default function App() {
         return true;
       });
   }, [accessoriesEnabled, itemsById, outfit]);
+  const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
+    (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
+    0
+  );
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
       return [];
@@ -3891,35 +3896,53 @@ export default function App() {
                 ) : null}
               </div>
 
-              <div className="outfit-filters-panel" aria-label="Outfit filters">
-                <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-                  Clear outfit filters
+              <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
+                <button
+                  type="button"
+                  className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
+                  onClick={() => setOutfitFiltersOpen((current) => !current)}
+                  aria-expanded={outfitFiltersOpen}
+                >
+                  <span>Outfit filters</span>
+                  <span>
+                    {hasActiveOutfitFilters(outfitFilters)
+                      ? `${activeOutfitFilterCount} active`
+                      : "None"}
+                  </span>
                 </button>
 
-                <div className="outfit-filter-groups">
-                  {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                    <section key={group} className="outfit-filter-group">
-                      <p className="eyebrow">{group}</p>
-                      <div className="outfit-filter-options">
-                        {options.map((option) => {
-                          const isSelected = outfitFilters[group]?.includes(option);
+                {outfitFiltersOpen ? (
+                  <div className="outfit-filters-panel">
+                    <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+                      Clear outfit filters
+                    </button>
 
-                          return (
-                            <button
-                              key={option}
-                              type="button"
-                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                              onClick={() => toggleOutfitFilter(group, option)}
-                              aria-pressed={isSelected}
-                            >
-                              {option}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </section>
-                  ))}
-                </div>
+                    <div className="outfit-filter-groups">
+                      {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                        <section key={group} className="outfit-filter-group">
+                          <p className="eyebrow">{group}</p>
+                          <div className="outfit-filter-options">
+                            {options.map((option) => {
+                              const isSelected = outfitFilters[group]?.includes(option);
+
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                  onClick={() => toggleOutfitFilter(group, option)}
+                                  aria-pressed={isSelected}
+                                >
+                                  {option}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
 
