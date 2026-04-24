@@ -101,7 +101,7 @@ const defaultGenerationLists = {
   Wardrobe: true,
   Wishlist: true
 };
-const styleTagOptions = ["Casual", "Formal", "Athleisure", "Going Out"];
+const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
 const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 const outfitFilterOptions = {
   climate: climateTagOptions,
@@ -203,50 +203,56 @@ const typeDefaultsByKey = {
   cap: {
     garmentType: "Headwear",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual", "Athleisure"]
   },
   beanie: {
     garmentType: "Headwear",
     size: "OS",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure"]
   },
   hat: {
     garmentType: "Headwear",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual", "Smart Casual"]
   },
   "t-shirt": {
     garmentType: "Top",
     layerType: "Inner",
     weight: "Light",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual"]
   },
   "ls t-shirt": {
     garmentType: "Top",
     layerType: "Inner",
     weight: "Medium",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual"]
   },
   shirt: {
     garmentType: "Top",
     layerType: "Inner",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Smart Casual", "Formal"]
   },
   "casual shirt": {
     garmentType: "Top",
     layerType: "Inner",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   "wool shirt": {
     garmentType: "Top",
     layerType: "Both",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Smart Casual"]
   },
   sweatshirt: {
     garmentType: "Top",
     layerType: "Both",
     weight: "Medium",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual", "Athleisure"]
   },
   hoodie: {
     garmentType: "Top",
@@ -257,52 +263,62 @@ const typeDefaultsByKey = {
   knit: {
     garmentType: "Top",
     layerType: "Both",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
   },
   "knit sweater": {
     garmentType: "Top",
     layerType: "Both",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
   },
   "knit vest": {
     garmentType: "Top",
     layerType: "Both",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Smart Casual", "Formal"]
   },
   jacket: {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual"]
   },
   "twill jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
   },
   "denim jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual"]
   },
   "fleece jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure"]
   },
   "shell jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Athleisure"]
   },
   "wool jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Heavy"
+    weight: "Heavy",
+    styleTags: ["Smart Casual", "Formal"]
   },
   "wool coat": {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Heavy"
+    weight: "Heavy",
+    styleTags: ["Formal", "Smart Casual"]
   },
   blazer: {
     garmentType: "Outerwear",
@@ -313,43 +329,48 @@ const typeDefaultsByKey = {
   coat: {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Heavy"
+    weight: "Heavy",
+    styleTags: ["Formal"]
   },
   trousers: {
     garmentType: "Bottom",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Smart Casual", "Formal"]
   },
   jeans: {
     garmentType: "Bottom",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual"]
   },
   shorts: {
     garmentType: "Bottom",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   sneakers: {
     garmentType: "Footwear",
     weight: "Light",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual", "Athleisure"]
   },
   "canvas sneakers": {
     garmentType: "Footwear",
     weight: "Light",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual"]
   },
   "leather sneakers": {
     garmentType: "Footwear",
     weight: "Medium",
-    styleTags: ["Casual", "Athleisure", "Going Out"]
+    styleTags: ["Casual", "Smart Casual"]
   },
   derby: {
     garmentType: "Footwear",
     weight: "Medium",
-    styleTags: ["Formal"]
+    styleTags: ["Formal", "Smart Casual"]
   },
   boots: {
     garmentType: "Footwear",
-    weight: "Heavy"
+    weight: "Heavy",
+    styleTags: ["Casual", "Smart Casual"]
   },
   sandals: {
     garmentType: "Footwear",
@@ -357,61 +378,71 @@ const typeDefaultsByKey = {
   },
   slides: {
     garmentType: "Footwear",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual", "Athleisure"]
   },
   bag: {
     garmentType: "Accessory",
     accessorySlot: "Bag",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   belt: {
     garmentType: "Accessory",
     accessorySlot: "Belt",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual", "Smart Casual"]
   },
   glasses: {
     garmentType: "Accessory",
     accessorySlot: "Glasses",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   jewelry: {
     garmentType: "Accessory",
     accessorySlot: "LeftHand",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Smart Casual"]
   },
   watch: {
     garmentType: "Accessory",
     accessorySlot: "LeftHand",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Smart Casual", "Formal"]
   },
   "sun glasses": {
     garmentType: "Accessory",
     accessorySlot: "Glasses",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   suspender: {
     garmentType: "Accessory",
     accessorySlot: "Belt",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Formal"]
   },
   socks: {
     garmentType: "Accessory",
     accessorySlot: "",
     size: "OS",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   scarf: {
     garmentType: "Accessory",
     accessorySlot: "Neck",
     size: "OS",
-    weight: "Medium"
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
   },
   dress: {
     garmentType: "Dresses/Jumpsuits"
@@ -690,13 +721,6 @@ const namedColorHex = {
   pink: "#c98098"
 };
 
-const defaultStyleTypeRules = {
-  Casual: ["cap", "beanie", "t-shirt", "tshirt", "tee", "knit", "sweatshirt", "hoodie", "jeans", "sneakers", "sandal", "sandals", "slide", "slides"],
-  Formal: ["blazer", "derby"],
-  Athleisure: ["sneakers", "hoodie", "sweatshirt", "t-shirt", "tshirt", "tee"],
-  "Going Out": ["blazer", "derby", "jewelry", "glasses"]
-};
-
 function inferStyleTags(item) {
   const manualTags = normalizeTagList(item.styleTags, styleTagOptions);
 
@@ -704,13 +728,7 @@ function inferStyleTags(item) {
     return manualTags;
   }
 
-  const type = normalizeType(item.type);
-  const presetKey = getTypePresetKey(item.type);
-  const typeMatches = new Set([type, presetKey].filter(Boolean));
-
-  return styleTagOptions.filter((style) =>
-    defaultStyleTypeRules[style]?.some((allowedType) => typeMatches.has(allowedType))
-  );
+  return normalizeTagList(resolveTypeDefaults(item.type).styleTags, styleTagOptions);
 }
 
 function inferClimateTags(item) {
