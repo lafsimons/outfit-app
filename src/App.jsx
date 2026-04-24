@@ -4048,6 +4048,13 @@ export default function App() {
             ) : null}
 
             <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
+              <button
+                type="button"
+                className="ghost-button filter-close-button"
+                onClick={() => setWardrobeFiltersOpen(false)}
+              >
+                Close
+              </button>
               <label>
                 Brand
                 <select
