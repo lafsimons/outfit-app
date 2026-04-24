@@ -3588,7 +3588,7 @@ export default function App() {
       </label>
 
       <label>
-        Value
+        Paid value
         <input
           inputMode="numeric"
           value={draft.value}
@@ -4238,8 +4238,8 @@ export default function App() {
 
                     <div className="wardrobe-meta">
                       <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                      <span title={item.color || "No color"}>
-                        {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""}
+                      <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)}`}>
+                        {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""} · Paid {formatCurrency(item.value)}
                       </span>
                     </div>
 

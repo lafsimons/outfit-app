@@ -1099,6 +1099,7 @@ button:disabled {
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 12px;
   align-items: start;
+  align-content: start;
   justify-content: start;
   flex: 1;
   min-height: 0;
@@ -1241,7 +1242,7 @@ button:disabled {
 
 .card-actions {
   flex-wrap: wrap;
-  align-self: end;
+  align-self: start;
 }
 
 .card-actions .ghost-button {
