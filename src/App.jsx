@@ -161,6 +161,7 @@ const defaultTypeSuggestions = [
   "Socks",
   "Beanie",
   "Cap",
+  "Sport Cap",
   "Hat",
   "Sneakers",
   "Canvas Sneakers",
@@ -172,8 +173,11 @@ const defaultTypeSuggestions = [
   "Trousers",
   "Pants",
   "Shorts",
+  "Sport Shorts",
   "T-Shirt",
+  "Sport T-Shirt",
   "LS T-Shirt",
+  "Sport LS T-Shirt",
   "Shirt",
   "Wool Shirt",
   "Sweatshirt",
@@ -185,7 +189,8 @@ const defaultTypeSuggestions = [
   "Fleece Jacket",
   "Shell Jacket",
   "Wool Jacket",
-  "Wool Coat"
+  "Wool Coat",
+  "Cotton Coat"
 ];
 const advancedTrackedFields = [
   "name",
@@ -209,6 +214,12 @@ const typeDefaultsByKey = {
     weight: "Light",
     styleTags: ["Casual", "Athleisure"]
   },
+  "sport cap": {
+    garmentType: "Headwear",
+    size: "OS",
+    weight: "Light",
+    styleTags: ["Athleisure"]
+  },
   beanie: {
     garmentType: "Headwear",
     size: "OS",
@@ -227,11 +238,23 @@ const typeDefaultsByKey = {
     weight: "Light",
     styleTags: ["Casual"]
   },
+  "sport t-shirt": {
+    garmentType: "Top",
+    layerType: "Inner",
+    weight: "Light",
+    styleTags: ["Athleisure"]
+  },
   "ls t-shirt": {
     garmentType: "Top",
     layerType: "Inner",
     weight: "Medium",
     styleTags: ["Casual"]
+  },
+  "sport ls t-shirt": {
+    garmentType: "Top",
+    layerType: "Inner",
+    weight: "Medium",
+    styleTags: ["Athleisure"]
   },
   shirt: {
     garmentType: "Top",
@@ -332,8 +355,14 @@ const typeDefaultsByKey = {
   coat: {
     garmentType: "Outerwear",
     layerType: "Outer",
-    weight: "Heavy",
-    styleTags: ["Formal"]
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
+  },
+  "cotton coat": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium",
+    styleTags: ["Casual", "Smart Casual"]
   },
   trousers: {
     garmentType: "Bottom",
@@ -349,6 +378,11 @@ const typeDefaultsByKey = {
     garmentType: "Bottom",
     weight: "Light",
     styleTags: ["Casual"]
+  },
+  "sport shorts": {
+    garmentType: "Bottom",
+    weight: "Light",
+    styleTags: ["Athleisure"]
   },
   sneakers: {
     garmentType: "Footwear",
@@ -1017,6 +1051,7 @@ function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData)
 
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
   const itemStyles = getItemStyleTags(item);
+  const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
 
   if (!itemStyles.length) {
     return 0;
@@ -1028,7 +1063,7 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
     if (selectedStyles.some((style) => itemStyles.includes(style))) {
       score += 4;
     } else {
-      score -= 1.5;
+      score -= isAthleisureOnly ? 4 : 1.5;
     }
   }
 
@@ -1036,7 +1071,7 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
     const overlapCount = itemStyles.filter((style) => preferredStyles.has(style)).length;
     score += overlapCount * 2;
     if (!overlapCount && itemStyles.length) {
-      score -= 1;
+      score -= isAthleisureOnly && !preferredStyles.has("Athleisure") ? 3 : 1;
     }
   }
 
