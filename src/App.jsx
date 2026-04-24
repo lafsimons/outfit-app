@@ -1367,6 +1367,7 @@ export default function App() {
   const [wardrobeSort, setWardrobeSort] = useState("");
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [dockExpanded, setDockExpanded] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
@@ -2939,6 +2940,9 @@ export default function App() {
       if (nextPanel) {
         closeUtilityWindows();
         setControlsOpen(false);
+        setDockExpanded(true);
+      } else if (!controlsOpen) {
+        setDockExpanded(false);
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
@@ -2957,6 +2961,9 @@ export default function App() {
 
   function closeWorkspacePanel() {
     setActivePanel(null);
+    if (!controlsOpen) {
+      setDockExpanded(false);
+    }
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
@@ -2980,7 +2987,11 @@ export default function App() {
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setControlsOpen((current) => !current);
+    setControlsOpen((current) => {
+      const nextOpen = !current;
+      setDockExpanded(nextOpen || activePanel === "wardrobe" || activePanel === "fitpics");
+      return nextOpen;
+    });
   }
 
   function openWardrobeFilters() {
@@ -3746,20 +3757,23 @@ export default function App() {
           >
             CONTROLS
           </button>
-          {[
-            ["wardrobe", "Wardrobe"],
-            ["fitpics", "Fitpics"]
-          ].map(([panel, label]) => (
-            <button
-              key={panel}
-              type="button"
-              className={`workspace-tab ${activePanel === panel ? "is-active" : ""}`}
-              onClick={() => toggleWorkspacePanel(panel)}
-              aria-pressed={activePanel === panel}
-            >
-              {label}
-            </button>
-          ))}
+          <div className={`workspace-tab-group ${dockExpanded ? "is-expanded" : ""}`}>
+            {[
+              ["wardrobe", "Wardrobe"],
+              ["fitpics", "Fitpics"]
+            ].map(([panel, label]) => (
+              <button
+                key={panel}
+                type="button"
+                className={`workspace-tab ${activePanel === panel ? "is-active" : ""}`}
+                onClick={() => toggleWorkspacePanel(panel)}
+                aria-pressed={activePanel === panel}
+                tabIndex={dockExpanded ? 0 : -1}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {outfitPalette.length ? (
             paletteOpen ? (
               <button
