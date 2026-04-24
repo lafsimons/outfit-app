@@ -118,7 +118,7 @@ const emptyWardrobeFilters = {
   color: "",
   laundry: "",
   weight: "",
-  list: "",
+  list: "Wishlist",
   favorite: ""
 };
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
