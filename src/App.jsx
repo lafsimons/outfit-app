@@ -4238,11 +4238,8 @@ export default function App() {
 
                     <div className="wardrobe-meta">
                       <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                      <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)} · Retail ${formatCurrency(item.retailValue)}`}>
-                        {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""} · Paid {formatCurrency(item.value)} · Retail {formatCurrency(item.retailValue)}
-                      </span>
-                      <span title={normalizeList(item.list)}>
-                        {normalizeList(item.list)}{normalizeQuantity(item.quantity) > 1 ? ` · Qty ${normalizeQuantity(item.quantity)}` : ""}{item.favorite ? " · Favorite" : ""}
+                      <span title={item.color || "No color"}>
+                        {item.color || "No color"}{item.weight ? ` · ${item.weight}` : ""}
                       </span>
                     </div>
 
