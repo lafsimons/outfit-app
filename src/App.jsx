@@ -99,7 +99,7 @@ const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt
 const itemLists = ["Wardrobe", "Wishlist"];
 const defaultGenerationLists = {
   Wardrobe: true,
-  Wishlist: false
+  Wishlist: true
 };
 const styleTagOptions = ["Casual", "Formal", "Athleisure", "Going Out"];
 const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
@@ -118,7 +118,7 @@ const emptyWardrobeFilters = {
   color: "",
   laundry: "",
   weight: "",
-  list: "Wishlist",
+  list: "",
   favorite: ""
 };
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];

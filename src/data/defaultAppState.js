@@ -20,7 +20,7 @@ const defaultAppState = {
   savedOutfits: [],
   generationLists: {
     Wardrobe: true,
-    Wishlist: false
+    Wishlist: true
   },
   outfitFilters: {
     style: [],
