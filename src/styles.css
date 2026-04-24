@@ -1905,6 +1905,7 @@ button:disabled {
   display: grid;
   gap: 12px;
   align-items: start;
+  align-content: start;
 }
 
 .editor-core-fields,
@@ -1974,6 +1975,13 @@ button:disabled {
   gap: 8px;
 }
 
+.editor-label-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
 .field-status-badge {
   display: inline-flex;
   align-items: center;
@@ -1988,6 +1996,12 @@ button:disabled {
   text-transform: uppercase;
 }
 
+.editor-inline-reset {
+  padding: 3px 7px;
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
 .editor-form .metadata-tag-group > .editor-label-row,
 .editor-form .checkbox-field > .editor-label-row {
   width: 100%;
@@ -1995,14 +2009,6 @@ button:disabled {
 
 .editor-form .checkbox-field > .editor-label-row {
   justify-content: flex-start;
-}
-
-.editor-form .checkbox-field > .editor-label-row .field-status-badge {
-  margin-left: auto;
-}
-
-.editor-form .metadata-tag-group > .editor-label-row .field-status-badge {
-  margin-left: auto;
 }
 
 .editor-form .metadata-tag-group > .editor-label-row span:first-child,

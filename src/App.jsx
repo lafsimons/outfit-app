@@ -2937,11 +2937,41 @@ export default function App() {
     setDraft((current) => ({ ...current, [field]: value }));
   }
 
+  function resetAdvancedField(field) {
+    const nextValue = Array.isArray(resolvedTypeDefaults[field])
+      ? [...resolvedTypeDefaults[field]]
+      : resolvedTypeDefaults[field];
+
+    setDraft((current) => {
+      const nextDraft = {
+        ...current,
+        [field]: nextValue
+      };
+
+      if (["garmentType", "layerType", "accessorySlot", "size"].includes(field)) {
+        return applyGarmentRules(nextDraft, resolvedTypeDefaults);
+      }
+
+      return nextDraft;
+    });
+  }
+
   function renderAdvancedLabel(label, field) {
     return (
       <span className="editor-label-row">
         <span>{label}</span>
-        {advancedOverrideSet.has(field) ? <span className="field-status-badge">Custom</span> : null}
+        {advancedOverrideSet.has(field) ? (
+          <span className="editor-label-actions">
+            <span className="field-status-badge">Custom</span>
+            <button
+              type="button"
+              className="ghost-button editor-inline-reset"
+              onClick={() => resetAdvancedField(field)}
+            >
+              Reset
+            </button>
+          </span>
+        ) : null}
       </span>
     );
   }
