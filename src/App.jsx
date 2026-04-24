@@ -102,6 +102,7 @@ const defaultGenerationLists = {
   Wishlist: true
 };
 const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
+const ITEM_DEFAULTS_MIGRATION_VERSION = 2;
 const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 const outfitFilterOptions = {
   climate: climateTagOptions,
@@ -111,6 +112,8 @@ const emptyOutfitFilters = {
   style: [],
   climate: []
 };
+const generationModes = ["guided", "random"];
+const defaultGenerationMode = "guided";
 const emptyWardrobeFilters = {
   brand: "",
   type: "",
@@ -533,6 +536,25 @@ function pickRandom(items) {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function pickWeightedRandom(entries) {
+  const totalWeight = entries.reduce((sum, entry) => sum + Math.max(0, entry.weight), 0);
+
+  if (!totalWeight) {
+    return pickRandom(entries.map((entry) => entry.item));
+  }
+
+  let remaining = Math.random() * totalWeight;
+
+  for (const entry of entries) {
+    remaining -= Math.max(0, entry.weight);
+    if (remaining <= 0) {
+      return entry.item;
+    }
+  }
+
+  return entries.at(-1)?.item ?? null;
+}
+
 function isEligibleForGeneration(item, excluded = {}, generationLists = defaultGenerationLists) {
   return !excluded[item.id] && generationLists[normalizeList(item.list)] !== false;
 }
@@ -656,6 +678,31 @@ function resolveTypeDefaults(type) {
     weight: normalizeWeight(defaults.weight),
     styleTags: normalizeTagList(defaults.styleTags, styleTagOptions)
   };
+}
+
+function hasTypeDefaults(type) {
+  return Boolean(getTypePresetKey(type));
+}
+
+function applyMappedStyleWeightDefaults(item) {
+  if (!hasTypeDefaults(item.type)) {
+    return item;
+  }
+
+  const defaults = resolveTypeDefaults(item.type);
+
+  return {
+    ...item,
+    weight: defaults.weight,
+    styleTags: [...defaults.styleTags]
+  };
+}
+
+function itemNeedsStyleWeightMappingMigration(originalItem, nextItem) {
+  return (
+    normalizeWeight(originalItem.weight) !== nextItem.weight ||
+    !areEditorValuesEqual(normalizeTagList(originalItem.styleTags, styleTagOptions), nextItem.styleTags)
+  );
 }
 
 function getAdvancedOverrideFields(item, defaults) {
@@ -846,6 +893,179 @@ function applyOutfitFiltersToPool(pool, outfitFilters) {
   return filtered.length ? filtered : pool;
 }
 
+function normalizeGenerationMode(mode) {
+  return generationModes.includes(mode) ? mode : defaultGenerationMode;
+}
+
+function getGenerationClimatePreferences(outfitFilters, weatherData) {
+  if (Array.isArray(outfitFilters?.climate) && outfitFilters.climate.length) {
+    return outfitFilters.climate;
+  }
+
+  return Array.isArray(weatherData?.suggestedFilters) ? weatherData.suggestedFilters : [];
+}
+
+function getPickedOutfitItems(outfit, itemsById) {
+  return visibleSlots.map((slot) => itemsById[outfit[slot]]).filter(Boolean);
+}
+
+function getDominantStyleTags(items) {
+  const counts = new Map();
+
+  items.forEach((item) => {
+    getItemStyleTags(item).forEach((style) => {
+      counts.set(style, (counts.get(style) ?? 0) + 1);
+    });
+  });
+
+  const maxCount = Math.max(0, ...counts.values());
+  return new Set(
+    [...counts.entries()]
+      .filter(([, count]) => count === maxCount && count > 0)
+      .map(([style]) => style)
+  );
+}
+
+function getClimateScore(item, slot, climatePreferences) {
+  if (!climatePreferences.length) {
+    return 0;
+  }
+
+  const presetKey = getTypePresetKey(item.type);
+  const typeMatches = new Set([normalizeType(item.type), presetKey].filter(Boolean));
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  let score = 0;
+
+  climatePreferences.forEach((climate) => {
+    if (climate === "Hot") {
+      if (slot === "TopInner") {
+        if (hasType("t-shirt", "shirt")) score += 3;
+        else if (hasType("ls t-shirt")) score += 1;
+        else if (hasType("sweatshirt", "knit sweater", "hoodie", "wool shirt")) score -= 2;
+      } else if (slot === "Bottom") {
+        if (hasType("shorts", "trousers")) score += 2;
+        else if (hasType("jeans")) score += 1;
+      } else if (slot === "Footwear") {
+        if (hasType("sneakers", "canvas sneakers")) score += 2;
+        else if (hasType("slides", "sandals")) score += 1;
+        else if (hasType("boots")) score -= 2;
+      } else if (slot === "TopOuter") {
+        if (item.garmentType === "Outerwear") score -= normalizeWeight(item.weight) === "Heavy" ? 4 : 2;
+      }
+    }
+
+    if (climate === "Warm") {
+      if (hasType("t-shirt", "shirt", "sneakers", "canvas sneakers", "trousers", "shorts")) score += 1;
+      if (item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") score -= 2;
+    }
+
+    if (climate === "Cold" || climate === "Snow") {
+      if (slot === "TopInner") {
+        if (hasType("knit sweater", "sweatshirt", "hoodie")) score += 3;
+        else if (hasType("shirt", "wool shirt")) score += 1;
+        else if (hasType("t-shirt")) score -= 2;
+      } else if (slot === "TopOuter") {
+        if (hasType("wool coat", "wool jacket")) score += 4;
+        else if (hasType("jacket", "twill jacket", "denim jacket", "fleece jacket")) score += 2;
+        else if (item.garmentType === "Outerwear") score += 1;
+        else score -= 4;
+      } else if (slot === "Footwear") {
+        if (hasType("boots")) score += 3;
+        else if (hasType("leather sneakers")) score += 1;
+        else if (hasType("canvas sneakers")) score -= 1;
+      }
+    }
+
+    if (climate === "Rain") {
+      if (slot === "TopOuter" && item.garmentType === "Outerwear") score += 2;
+      if (slot === "Footwear" && hasType("boots")) score += 2;
+    }
+
+    if (climate === "Transitional") {
+      if (hasType("jacket", "twill jacket", "shirt", "trousers", "jeans", "sneakers", "blazer")) score += 1;
+      if (normalizeWeight(item.weight) === "Heavy") score -= 1;
+    }
+  });
+
+  return score;
+}
+
+function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
+  const itemStyles = getItemStyleTags(item);
+
+  if (!itemStyles.length) {
+    return 0;
+  }
+
+  let score = 0;
+
+  if (selectedStyles.length) {
+    if (selectedStyles.some((style) => itemStyles.includes(style))) {
+      score += 3;
+    } else {
+      score -= 2;
+    }
+  }
+
+  if (preferredStyles.size) {
+    const overlapCount = itemStyles.filter((style) => preferredStyles.has(style)).length;
+    score += overlapCount * 2;
+    if (!overlapCount && itemStyles.length) {
+      score -= 1;
+    }
+  }
+
+  return score;
+}
+
+function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData) {
+  const pickedItems = getPickedOutfitItems(outfit, itemsById);
+  const selectedStyles = outfitFilters.style ?? [];
+  const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
+  const preferredStyles = getDominantStyleTags(pickedItems);
+  let score = 1;
+
+  score += getClimateScore(item, slot, climatePreferences);
+  score += getStyleCoherenceScore(item, selectedStyles, preferredStyles);
+
+  if (slot === "TopOuter") {
+    if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
+      score += item.garmentType === "Outerwear" ? 3 : -4;
+    }
+
+    if (climatePreferences.includes("Hot")) {
+      score += item.garmentType === "Outerwear" ? -3 : 0;
+    }
+  }
+
+  if ((slot === "TopInner" || slot === "Bottom" || slot === "Footwear") && selectedStyles.length) {
+    score += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? 1 : 0;
+  }
+
+  if (item.favorite) {
+    score += 0.5;
+  }
+
+  return Math.max(0.2, score);
+}
+
+function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode) {
+  if (!pool.length) {
+    return null;
+  }
+
+  if (normalizeGenerationMode(generationMode) === "random") {
+    return pickRandom(pool);
+  }
+
+  return pickWeightedRandom(
+    pool.map((item) => ({
+      item,
+      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData)
+    }))
+  );
+}
+
 function isNonStackableTopType(item) {
   return (item.garmentType === "Top" || item.garmentType === "Outerwear") && nonStackableTopTypes.has(normalizeType(item.type));
 }
@@ -929,7 +1149,9 @@ function buildNextOutfit(
   layering,
   excluded = {},
   generationLists = defaultGenerationLists,
-  outfitFilters = emptyOutfitFilters
+  outfitFilters = emptyOutfitFilters,
+  weatherData = null,
+  generationMode = defaultGenerationMode
 ) {
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
@@ -974,7 +1196,7 @@ function buildNextOutfit(
       pool = applyOutfitFiltersToPool(pool, outfitFilters);
       pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
 
-      const nextItem = pickRandom(pool);
+      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode);
       nextOutfit[slot] = nextItem?.id ?? null;
 
       if (nextItem?.layerType === "Both") {
@@ -986,7 +1208,7 @@ function buildNextOutfit(
 
     pool = applyOutfitFiltersToPool(pool, outfitFilters);
     pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
-    nextOutfit[slot] = pickRandom(pool)?.id ?? null;
+    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode)?.id ?? null;
   });
 
   return nextOutfit;
@@ -1724,6 +1946,7 @@ export default function App() {
   const [savedOutfits, setSavedOutfits] = useState([]);
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
+  const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
@@ -2032,17 +2255,23 @@ export default function App() {
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
       const normalizedItems = storedItems.map(normalizeItem);
-      const migratedItems = normalizedItems.filter(
+      const shouldApplyStyleWeightMigration =
+        (storedAppState?.itemDefaultsMigrationVersion ?? 0) < ITEM_DEFAULTS_MIGRATION_VERSION;
+      const effectiveItems = shouldApplyStyleWeightMigration
+        ? normalizedItems.map(applyMappedStyleWeightDefaults)
+        : normalizedItems;
+      const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
           itemNeedsImageScaleMigration(storedItems[index], item) ||
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
-          itemNeedsWeightMigration(storedItems[index], item) ||
+          (!shouldApplyStyleWeightMigration && itemNeedsWeightMigration(storedItems[index], item)) ||
           itemNeedsGarmentTypeMigration(storedItems[index], item) ||
-          itemNeedsTagMigration(storedItems[index], item) ||
-          itemNeedsDefaultMetadataMigration(storedItems[index], item)
+          (!shouldApplyStyleWeightMigration && itemNeedsTagMigration(storedItems[index], item)) ||
+          itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
+          (shouldApplyStyleWeightMigration && itemNeedsStyleWeightMappingMigration(storedItems[index], item))
       );
 
       if (cancelled) {
@@ -2053,7 +2282,7 @@ export default function App() {
         await Promise.all(migratedItems.map((item) => saveItem(item)));
       }
 
-      setItems(normalizedItems);
+      setItems(effectiveItems);
 
       if (storedAppState) {
         setLayering(Boolean(storedAppState.layering));
@@ -2064,6 +2293,7 @@ export default function App() {
         setIgnoredImportImages(storedAppState.ignoredImportImages ?? []);
         setSavedOutfits((storedAppState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
+        setGenerationMode(normalizeGenerationMode(storedAppState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
         setWeatherSettings(normalizeWeatherSettings(storedAppState.weatherSettings));
         setWeatherLocationDraft(storedAppState.weatherSettings?.locationName ?? "");
@@ -2076,10 +2306,11 @@ export default function App() {
         setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
         setLocked(defaultState.locked ?? {});
         setExcluded(defaultState.excluded ?? {});
-        setOutfit(defaultState.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
+        setOutfit(defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode));
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits((defaultState.savedOutfits ?? []).map(normalizeSavedOutfit));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
+        setGenerationMode(normalizeGenerationMode(defaultState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
         setWeatherSettings(normalizeWeatherSettings(defaultState.weatherSettings));
         setWeatherLocationDraft(defaultState.weatherSettings?.locationName ?? "");
@@ -2103,6 +2334,7 @@ export default function App() {
     }
 
     saveAppState({
+      itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
       layering,
       accessoriesEnabled,
       locked,
@@ -2111,12 +2343,13 @@ export default function App() {
       ignoredImportImages,
       savedOutfits,
       generationLists,
+      generationMode,
       outfitFilters,
       weatherSettings,
       weatherData,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -2140,9 +2373,9 @@ export default function App() {
         }
       });
 
-      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters);
+      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode);
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, outfitFilters, loading]);
+  }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, loading]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
@@ -2250,7 +2483,7 @@ export default function App() {
     setEditorFloatingOpen(false);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters));
+    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode));
   }
 
   function handleReroll(slot) {
@@ -2260,7 +2493,7 @@ export default function App() {
 
     const pool = getSlotOptions(slot).filter((item) => item.id !== outfit[slot]);
 
-    const nextItem = pickRandom(pool);
+    const nextItem = pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode);
 
     setOutfit((current) => ({
       ...current,
@@ -2423,10 +2656,11 @@ export default function App() {
     setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
     setLocked(nextAppState?.locked ?? {});
     setExcluded(nextAppState?.excluded ?? {});
-    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters));
+    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode));
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits((nextAppState?.savedOutfits ?? []).map(normalizeSavedOutfit));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
+    setGenerationMode(normalizeGenerationMode(nextAppState?.generationMode));
     setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
     setWeatherSettings(normalizeWeatherSettings(nextAppState?.weatherSettings));
     setWeatherLocationDraft(nextAppState?.weatherSettings?.locationName ?? "");
@@ -2854,7 +3088,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters);
+        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode);
       });
 
       return nextExcluded;
@@ -4282,6 +4516,15 @@ export default function App() {
               </button>
               <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
                 Accessories: {accessoriesEnabled ? "On" : "Off"}
+              </button>
+              <button
+                type="button"
+                className={`secondary-button ${generationMode === "guided" ? "is-active" : ""}`}
+                onClick={() =>
+                  setGenerationMode((current) => (current === "guided" ? "random" : "guided"))
+                }
+              >
+                Generation: {generationMode === "guided" ? "Guided" : "Random"}
               </button>
             </div>
 

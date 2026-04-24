@@ -22,6 +22,7 @@ const defaultAppState = {
     Wardrobe: true,
     Wishlist: true
   },
+  generationMode: "guided",
   outfitFilters: {
     style: [],
     climate: [],
