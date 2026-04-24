@@ -146,6 +146,141 @@ const emptyForm = {
   quantity: 1,
   styleTags: []
 };
+const typeDerivedFields = ["garmentType", "layerType", "accessorySlot", "weight", "size", "list", "styleTags"];
+const advancedTrackedFields = [
+  "name",
+  "brand",
+  "size",
+  "weight",
+  "list",
+  "quantity",
+  "value",
+  "retailValue",
+  "styleTags",
+  "favorite",
+  "garmentType",
+  "layerType",
+  "accessorySlot"
+];
+const typeDefaultsByKey = {
+  cap: {
+    garmentType: "Headwear",
+    size: "OS"
+  },
+  beanie: {
+    garmentType: "Headwear",
+    size: "OS",
+    weight: "Medium"
+  },
+  "t-shirt": {
+    garmentType: "Top",
+    layerType: "Inner",
+    weight: "Light",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
+  shirt: {
+    garmentType: "Top",
+    layerType: "Inner"
+  },
+  "casual shirt": {
+    garmentType: "Top",
+    layerType: "Inner"
+  },
+  sweatshirt: {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
+  hoodie: {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure"]
+  },
+  knit: {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Medium"
+  },
+  jacket: {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium"
+  },
+  blazer: {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium",
+    styleTags: ["Formal"]
+  },
+  coat: {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Heavy"
+  },
+  trousers: {
+    garmentType: "Bottom"
+  },
+  jeans: {
+    garmentType: "Bottom"
+  },
+  shorts: {
+    garmentType: "Bottom",
+    weight: "Light"
+  },
+  sneakers: {
+    garmentType: "Footwear",
+    weight: "Light",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
+  derby: {
+    garmentType: "Footwear",
+    styleTags: ["Formal"]
+  },
+  boots: {
+    garmentType: "Footwear",
+    weight: "Heavy"
+  },
+  sandals: {
+    garmentType: "Footwear",
+    weight: "Light"
+  },
+  slides: {
+    garmentType: "Footwear",
+    weight: "Light"
+  },
+  bag: {
+    garmentType: "Accessory",
+    accessorySlot: "Bag",
+    size: "OS"
+  },
+  belt: {
+    garmentType: "Accessory",
+    accessorySlot: "Belt",
+    size: "OS"
+  },
+  glasses: {
+    garmentType: "Accessory",
+    accessorySlot: "Glasses",
+    size: "OS"
+  },
+  scarf: {
+    garmentType: "Accessory",
+    accessorySlot: "Neck",
+    size: "OS",
+    weight: "Medium"
+  },
+  dress: {
+    garmentType: "Dresses/Jumpsuits"
+  },
+  dresses: {
+    garmentType: "Dresses/Jumpsuits"
+  },
+  jumpsuit: {
+    garmentType: "Dresses/Jumpsuits"
+  }
+};
 
 function normalizeList(list) {
   return itemLists.includes(list) ? list : "Wardrobe";
@@ -192,6 +327,17 @@ function normalizeTagList(value, options) {
   return Array.isArray(value)
     ? value.filter((tag, index) => options.includes(tag) && value.indexOf(tag) === index)
     : [];
+}
+
+function areEditorValuesEqual(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    const leftList = (Array.isArray(left) ? left : []).slice().sort();
+    const rightList = (Array.isArray(right) ? right : []).slice().sort();
+
+    return leftList.length === rightList.length && leftList.every((value, index) => value === rightList[index]);
+  }
+
+  return left === right;
 }
 
 function getItemImageStyle(item) {
@@ -270,46 +416,86 @@ function getTypePresetKey(type) {
     return "t-shirt";
   }
 
-  if (normalized === "cap") {
-    return "cap";
-  }
-
   if (["sneaker", "sneakers"].includes(normalized)) {
     return "sneakers";
   }
 
-  return "";
+  if (["sandal", "sandals"].includes(normalized)) {
+    return "sandals";
+  }
+
+  if (["slide", "slides"].includes(normalized)) {
+    return "slides";
+  }
+
+  if (["boot", "boots"].includes(normalized)) {
+    return "boots";
+  }
+
+  if (["derby", "derbies"].includes(normalized)) {
+    return "derby";
+  }
+
+  if (normalized === "cap") {
+    return "cap";
+  }
+
+  return typeDefaultsByKey[normalized] ? normalized : "";
 }
 
-function applyTypePresetsToDraft(current, nextType) {
-  const previousPresetKey = getTypePresetKey(current.type);
-  const nextPresetKey = getTypePresetKey(nextType);
+function resolveTypeDefaults(type) {
+  const normalizedItemTypeValue = normalizeItemType(type?.trim() ?? "");
+  const presetKey = getTypePresetKey(normalizedItemTypeValue);
+  const defaults = presetKey ? typeDefaultsByKey[presetKey] ?? {} : {};
+
+  return {
+    ...emptyForm,
+    type: normalizedItemTypeValue,
+    ...defaults,
+    weight: normalizeWeight(defaults.weight),
+    styleTags: normalizeTagList(defaults.styleTags, styleTagOptions)
+  };
+}
+
+function getAdvancedOverrideFields(item, defaults) {
+  return advancedTrackedFields.filter((field) => !areEditorValuesEqual(item[field], defaults[field]));
+}
+
+function applyGarmentRules(nextDraft, defaults) {
+  const resolvedDraft = { ...nextDraft };
+
+  if (resolvedDraft.garmentType !== "Top" && resolvedDraft.garmentType !== "Outerwear") {
+    resolvedDraft.layerType = "Both";
+  } else if (!layerTypes.includes(resolvedDraft.layerType)) {
+    resolvedDraft.layerType = defaults.layerType;
+  }
+
+  if (resolvedDraft.garmentType !== "Accessory") {
+    resolvedDraft.accessorySlot = "";
+  } else if (!resolvedDraft.accessorySlot) {
+    resolvedDraft.accessorySlot = defaults.accessorySlot;
+  }
+
+  if (resolvedDraft.garmentType === "Accessory" && !resolvedDraft.size.trim()) {
+    resolvedDraft.size = defaults.size || "OS";
+  }
+
+  return resolvedDraft;
+}
+
+function applyTypeDefaultsToDraft(current, nextType) {
+  const currentDefaults = resolveTypeDefaults(current.type);
+  const nextDefaults = resolveTypeDefaults(nextType);
   const nextDraft = {
     ...current,
-    type: nextType
+    type: nextDefaults.type
   };
 
-  if (!nextPresetKey || nextPresetKey === previousPresetKey) {
-    return nextDraft;
-  }
+  typeDerivedFields.forEach((field) => {
+    nextDraft[field] = areEditorValuesEqual(current[field], currentDefaults[field]) ? nextDefaults[field] : current[field];
+  });
 
-  if ((nextPresetKey === "t-shirt" || nextPresetKey === "sneakers") && !normalizeWeight(nextDraft.weight)) {
-    nextDraft.weight = "Light";
-  }
-
-  if (nextPresetKey === "cap" && !nextDraft.size.trim()) {
-    nextDraft.size = "OS";
-  }
-
-  if (nextPresetKey === "sneakers") {
-    const selectedTags = normalizeTagList(nextDraft.styleTags, styleTagOptions);
-    nextDraft.styleTags = ["Casual", "Athleisure", "Going Out"].reduce(
-      (tags, tag) => (tags.includes(tag) ? tags : [...tags, tag]),
-      selectedTags
-    );
-  }
-
-  return nextDraft;
+  return applyGarmentRules(nextDraft, nextDefaults);
 }
 
 const namedColorHex = {
@@ -1366,6 +1552,7 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [editorFloatingOpen, setEditorFloatingOpen] = useState(false);
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
+  const [editorAdvancedOpen, setEditorAdvancedOpen] = useState(false);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
@@ -1439,6 +1626,12 @@ export default function App() {
 
     return getAccessoryOptions(activeAccessorySlot);
   }, [activeAccessorySlot, items, excluded, generationLists]);
+  const resolvedTypeDefaults = useMemo(() => resolveTypeDefaults(draft.type), [draft.type]);
+  const advancedOverrideFields = useMemo(
+    () => getAdvancedOverrideFields(draft, resolvedTypeDefaults),
+    [draft, resolvedTypeDefaults]
+  );
+  const advancedOverrideSet = useMemo(() => new Set(advancedOverrideFields), [advancedOverrideFields]);
   const generatedIdPreview = useMemo(
     () =>
       hasNamingMetadata(draft)
@@ -2411,11 +2604,18 @@ export default function App() {
     setItemImageDragActive(false);
     setEditorFloatingOpen(false);
     setEditorReturnTarget("wardrobe");
+    setEditorAdvancedOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
   }
 
   function startEdit(item, options = {}) {
+    const normalizedItem = normalizeItem(item);
+    const shouldOpenAdvanced = getAdvancedOverrideFields(
+      normalizedItem,
+      resolveTypeDefaults(normalizedItem.type)
+    ).length > 0;
+
     closeUtilityWindows();
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
@@ -2426,14 +2626,16 @@ export default function App() {
     setItemImageDragActive(false);
     setEditorFloatingOpen(Boolean(options.floating));
     setEditorReturnTarget(options.returnTarget ?? "wardrobe");
+    setEditorAdvancedOpen(shouldOpenAdvanced);
     setEditingId(item.id);
-    setDraft(normalizeItem(item));
+    setDraft(normalizedItem);
   }
 
   function cancelEdit() {
     setEditingId(null);
     setEditorFloatingOpen(false);
     setEditorReturnTarget(null);
+    setEditorAdvancedOpen(false);
     setDraft(emptyForm);
     setImageUploadError("");
     setImageProcessing(false);
@@ -2567,6 +2769,19 @@ export default function App() {
     }));
   }
 
+  function setAdvancedField(field, value) {
+    setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function renderAdvancedLabel(label, field) {
+    return (
+      <span className="editor-label-row">
+        <span>{label}</span>
+        {advancedOverrideSet.has(field) ? <span className="field-status-badge">Custom</span> : null}
+      </span>
+    );
+  }
+
   async function submitItem(event) {
     event.preventDefault();
 
@@ -2585,6 +2800,7 @@ export default function App() {
     const normalizedQuantity = normalizeQuantity(draft.quantity);
 
     if (!trimmedImageUrl) {
+      setEditorAdvancedOpen(true);
       setImageUploadError("Choose an image or enter an image URL before saving.");
       return;
     }
@@ -3421,280 +3637,270 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
-      <div
-        className={`item-image-upload ${itemImageDragActive ? "is-drag-active" : ""}`}
-        onDragEnter={handleItemImageDragEnter}
-        onDragOver={handleItemImageDragOver}
-        onDragLeave={handleItemImageDragLeave}
-        onDrop={handleItemImageDrop}
-      >
-        <div className="item-image-preview">
-          {draft.imageUrl.trim() ? (
-            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
-          ) : (
-            <span>No image selected</span>
-          )}
+      <div className="editor-core-fields">
+        <label>
+          Type
+          <input
+            value={draft.type}
+            onChange={(event) => setDraft((current) => applyTypeDefaultsToDraft(current, event.target.value))}
+            placeholder="Shirt, jacket, trousers..."
+          />
+        </label>
+
+        <div className="editor-derived-field">
+          <span className="editor-label-row">
+            <span>Garment</span>
+            {advancedOverrideSet.has("garmentType") ? <span className="field-status-badge">Custom</span> : null}
+          </span>
+          <strong>{draft.garmentType || resolvedTypeDefaults.garmentType || "Top"}</strong>
+          <span>
+            {advancedOverrideSet.has("garmentType")
+              ? "Overridden in Advanced"
+              : "Auto-derived from type"}
+          </span>
         </div>
-        <div className="item-image-actions">
-          <label className="upload-button">
-            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
-          </label>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={removeDraftBackground}
-            disabled={!canRemoveDraftBackground || imageProcessing}
-          >
-            {imageProcessing ? "Removing..." : "Remove background"}
-          </button>
-          {draft.imageUrl.trim() ? (
-            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
-              Remove image
-            </button>
-          ) : null}
-          <label className="image-size-field">
-            Image size
-            <div className="image-scale-control">
-              <input
-                type="range"
-                min="50"
-                max="180"
-                step="5"
-                value={normalizeImageScale(draft.imageScale)}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, imageScale: Number(event.target.value) }))
-                }
-              />
-              <input
-                inputMode="numeric"
-                value={normalizeImageScale(draft.imageScale)}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, imageScale: normalizeImageScale(event.target.value) }))
-                }
-                aria-label="Image size percentage"
-              />
-              <span>%</span>
-            </div>
-          </label>
-        </div>
-        <p className="item-image-note">
-          Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
-        </p>
-        {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
+
+        <label>
+          Color
+          <input
+            value={draft.color}
+            onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))}
+            placeholder="Black"
+          />
+        </label>
       </div>
 
-      <label>
-        Type
-        <input
-          value={draft.type}
-          onChange={(event) => setDraft((current) => applyTypePresetsToDraft(current, event.target.value))}
-          placeholder="Shirt, jacket, trousers..."
-        />
-      </label>
-
-      <label>
-        Garment type
-        <select
-          value={draft.garmentType}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              garmentType: event.target.value,
-              layerType: event.target.value === "Top" || event.target.value === "Outerwear" ? current.layerType : "Both",
-              accessorySlot: event.target.value === "Accessory" ? current.accessorySlot : "",
-              size:
-                event.target.value === "Accessory" && !current.size.trim()
-                  ? "OS"
-                  : current.size
-            }))
-          }
+      <div className="editor-advanced-toggle-row">
+        <button
+          type="button"
+          className={`ghost-button editor-advanced-toggle ${editorAdvancedOpen ? "is-active" : ""}`}
+          onClick={() => setEditorAdvancedOpen((current) => !current)}
+          aria-expanded={editorAdvancedOpen}
         >
-          {garmentTypes.map((type) => (
-            <option key={type} value={type}>
-              {type}
-            </option>
-          ))}
-        </select>
-      </label>
+          {editorAdvancedOpen ? "Hide advanced" : "Advanced"}
+        </button>
+        <span className="editor-advanced-summary">
+          {advancedOverrideFields.length
+            ? `${advancedOverrideFields.length} custom field${advancedOverrideFields.length === 1 ? "" : "s"}`
+            : "Defaults active"}
+        </span>
+      </div>
 
-      {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
-        <label>
-          Layer type
-          <select
-            value={draft.layerType}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, layerType: event.target.value }))
-            }
+      {editorAdvancedOpen ? (
+        <div className="editor-advanced-panel">
+          <div
+            className={`item-image-upload ${itemImageDragActive ? "is-drag-active" : ""}`}
+            onDragEnter={handleItemImageDragEnter}
+            onDragOver={handleItemImageDragOver}
+            onDragLeave={handleItemImageDragLeave}
+            onDrop={handleItemImageDrop}
           >
-            {layerTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      {draft.garmentType === "Accessory" ? (
-        <label>
-          Accessory slot
-          <select
-            value={draft.accessorySlot}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, accessorySlot: event.target.value }))
-            }
-          >
-            <option value="">Select slot</option>
-            {accessorySlots.map((slot) => (
-              <option key={slot} value={slot}>
-                {getAccessoryLabel(slot)}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-
-      <label>
-        Brand
-        <input
-          value={draft.brand}
-          onChange={(event) => setDraft((current) => ({ ...current, brand: event.target.value }))}
-          placeholder="Brand"
-        />
-      </label>
-
-      <label>
-        Name
-        <input
-          value={draft.name}
-          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-          placeholder="Grey wool beanie"
-        />
-      </label>
-
-      <label>
-        Color
-        <input
-          value={draft.color}
-          onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))}
-          placeholder="Black"
-        />
-      </label>
-
-      <label>
-        Size
-        <input
-          value={draft.size}
-          onChange={(event) => setDraft((current) => ({ ...current, size: event.target.value }))}
-          placeholder="M"
-        />
-      </label>
-
-      <label>
-        Weight
-        <select
-          value={draft.weight}
-          onChange={(event) => setDraft((current) => ({ ...current, weight: event.target.value }))}
-        >
-          <option value="">No weight</option>
-          {weightOptions.map((weight) => (
-            <option key={weight} value={weight}>
-              {weight}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        List
-        <select
-          value={draft.list}
-          onChange={(event) => setDraft((current) => ({ ...current, list: event.target.value }))}
-        >
-          {itemLists.map((list) => (
-            <option key={list} value={list}>
-              {list}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label>
-        Quantity
-        <input
-          inputMode="numeric"
-          min="1"
-          value={draft.quantity}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              quantity: event.target.value.replace(/[^\d]/g, "")
-            }))
-          }
-          placeholder="1"
-        />
-      </label>
-
-      <label>
-        Paid value
-        <input
-          inputMode="numeric"
-          value={draft.value}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              value: event.target.value.replace(/[^\d]/g, "")
-            }))
-          }
-          placeholder="120"
-        />
-      </label>
-
-      <label>
-        Retail value
-        <input
-          inputMode="numeric"
-          value={draft.retailValue}
-          onChange={(event) =>
-            setDraft((current) => ({
-              ...current,
-              retailValue: event.target.value.replace(/[^\d]/g, "")
-            }))
-          }
-          placeholder="280"
-        />
-      </label>
-
-      <section className="metadata-tag-group" aria-label="Style metadata">
-        <p className="eyebrow">Style tags</p>
-        <div className="metadata-tag-options">
-          {styleTagOptions.map((tag) => {
-            const isSelected = normalizeTagList(draft.styleTags, styleTagOptions).includes(tag);
-
-            return (
+            <div className="item-image-preview">
+              {draft.imageUrl.trim() ? (
+                <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
+              ) : (
+                <span>No image selected</span>
+              )}
+            </div>
+            <div className="item-image-actions">
+              <label className="upload-button">
+                {draft.imageUrl.trim() ? "Change image" : "Choose image"}
+                <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
+              </label>
               <button
-                key={tag}
                 type="button"
-                className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                onClick={() => toggleDraftTag("styleTags", tag, styleTagOptions)}
-                aria-pressed={isSelected}
+                className="secondary-button"
+                onClick={removeDraftBackground}
+                disabled={!canRemoveDraftBackground || imageProcessing}
               >
-                {tag}
+                {imageProcessing ? "Removing..." : "Remove background"}
               </button>
-            );
-          })}
-        </div>
-      </section>
+              {draft.imageUrl.trim() ? (
+                <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
+                  Remove image
+                </button>
+              ) : null}
+              <label className="image-size-field">
+                Image size
+                <div className="image-scale-control">
+                  <input
+                    type="range"
+                    min="50"
+                    max="180"
+                    step="5"
+                    value={normalizeImageScale(draft.imageScale)}
+                    onChange={(event) => setAdvancedField("imageScale", Number(event.target.value))}
+                  />
+                  <input
+                    inputMode="numeric"
+                    value={normalizeImageScale(draft.imageScale)}
+                    onChange={(event) => setAdvancedField("imageScale", normalizeImageScale(event.target.value))}
+                    aria-label="Image size percentage"
+                  />
+                  <span>%</span>
+                </div>
+              </label>
+            </div>
+            <p className="item-image-note">
+              Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
+            </p>
+            {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
+          </div>
 
-      <label className="checkbox-field">
-        <input
-          type="checkbox"
-          checked={Boolean(draft.favorite)}
-          onChange={(event) => setDraft((current) => ({ ...current, favorite: event.target.checked }))}
-        />
-        Favorite
-      </label>
+          <label>
+            {renderAdvancedLabel("Garment type", "garmentType")}
+            <select
+              value={draft.garmentType}
+              onChange={(event) =>
+                setDraft((current) =>
+                  applyGarmentRules(
+                    { ...current, garmentType: event.target.value },
+                    resolveTypeDefaults(current.type)
+                  )
+                )
+              }
+            >
+              {garmentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
+            <label>
+              {renderAdvancedLabel("Layer type", "layerType")}
+              <select
+                value={draft.layerType}
+                onChange={(event) => setAdvancedField("layerType", event.target.value)}
+              >
+                {layerTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {draft.garmentType === "Accessory" ? (
+            <label>
+              {renderAdvancedLabel("Accessory slot", "accessorySlot")}
+              <select
+                value={draft.accessorySlot}
+                onChange={(event) => setAdvancedField("accessorySlot", event.target.value)}
+              >
+                <option value="">Select slot</option>
+                {accessorySlots.map((slot) => (
+                  <option key={slot} value={slot}>
+                    {getAccessoryLabel(slot)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <label>
+            {renderAdvancedLabel("Brand", "brand")}
+            <input value={draft.brand} onChange={(event) => setAdvancedField("brand", event.target.value)} placeholder="Brand" />
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Name", "name")}
+            <input value={draft.name} onChange={(event) => setAdvancedField("name", event.target.value)} placeholder="Grey wool beanie" />
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Size", "size")}
+            <input value={draft.size} onChange={(event) => setAdvancedField("size", event.target.value)} placeholder="M" />
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Weight", "weight")}
+            <select value={draft.weight} onChange={(event) => setAdvancedField("weight", event.target.value)}>
+              <option value="">No weight</option>
+              {weightOptions.map((weight) => (
+                <option key={weight} value={weight}>
+                  {weight}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            {renderAdvancedLabel("List", "list")}
+            <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
+              {itemLists.map((list) => (
+                <option key={list} value={list}>
+                  {list}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Quantity", "quantity")}
+            <input
+              inputMode="numeric"
+              min="1"
+              value={draft.quantity}
+              onChange={(event) => setAdvancedField("quantity", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="1"
+            />
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Paid value", "value")}
+            <input
+              inputMode="numeric"
+              value={draft.value}
+              onChange={(event) => setAdvancedField("value", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="120"
+            />
+          </label>
+
+          <label>
+            {renderAdvancedLabel("Retail value", "retailValue")}
+            <input
+              inputMode="numeric"
+              value={draft.retailValue}
+              onChange={(event) => setAdvancedField("retailValue", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="280"
+            />
+          </label>
+
+          <section className="metadata-tag-group" aria-label="Style metadata">
+            {renderAdvancedLabel("Style tags", "styleTags")}
+            <div className="metadata-tag-options">
+              {styleTagOptions.map((tag) => {
+                const isSelected = normalizeTagList(draft.styleTags, styleTagOptions).includes(tag);
+
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                    onClick={() => toggleDraftTag("styleTags", tag, styleTagOptions)}
+                    aria-pressed={isSelected}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={Boolean(draft.favorite)}
+              onChange={(event) => setAdvancedField("favorite", event.target.checked)}
+            />
+            {renderAdvancedLabel("Favorite", "favorite")}
+          </label>
+        </div>
+      ) : null}
 
       <div className="id-preview">
         <span>Generated item ID</span>
