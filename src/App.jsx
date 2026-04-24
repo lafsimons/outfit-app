@@ -1895,7 +1895,7 @@ function getWeatherClimateFilters(temperature, code) {
   const filters = [];
 
   if (Number.isFinite(temperature)) {
-    if (temperature >= 24) {
+    if (temperature >= 21) {
       filters.push("Hot");
     } else if (temperature >= 16) {
       filters.push("Warm");
