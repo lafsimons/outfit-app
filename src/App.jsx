@@ -1253,6 +1253,35 @@ function getWeatherClimateFilters(temperature, code) {
   return [...new Set(filters)];
 }
 
+async function fetchWeatherForecast(latitude, longitude) {
+  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
+  weatherUrl.searchParams.set("latitude", latitude);
+  weatherUrl.searchParams.set("longitude", longitude);
+  weatherUrl.searchParams.set("current", "temperature_2m,weather_code");
+  weatherUrl.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
+  weatherUrl.searchParams.set("timezone", "auto");
+  weatherUrl.searchParams.set("forecast_days", "1");
+
+  const weatherResponse = await fetch(weatherUrl);
+  if (!weatherResponse.ok) {
+    throw new Error("Weather could not be loaded.");
+  }
+
+  const weatherData = await weatherResponse.json();
+  const temperature = weatherData.current?.temperature_2m;
+  const code = weatherData.current?.weather_code;
+
+  return {
+    temperature,
+    code,
+    condition: getWeatherConditionLabel(code),
+    high: weatherData.daily?.temperature_2m_max?.[0],
+    low: weatherData.daily?.temperature_2m_min?.[0],
+    suggestedFilters: getWeatherClimateFilters(temperature, code),
+    updatedAt: new Date().toISOString()
+  };
+}
+
 async function fetchWeatherForLocation(query) {
   const searchUrl = new URL("https://geocoding-api.open-meteo.com/v1/search");
   searchUrl.searchParams.set("name", query);
@@ -1271,22 +1300,7 @@ async function fetchWeatherForLocation(query) {
     throw new Error("Location was not found.");
   }
 
-  const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
-  weatherUrl.searchParams.set("latitude", location.latitude);
-  weatherUrl.searchParams.set("longitude", location.longitude);
-  weatherUrl.searchParams.set("current", "temperature_2m,weather_code");
-  weatherUrl.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
-  weatherUrl.searchParams.set("timezone", "auto");
-  weatherUrl.searchParams.set("forecast_days", "1");
-
-  const weatherResponse = await fetch(weatherUrl);
-  if (!weatherResponse.ok) {
-    throw new Error("Weather could not be loaded.");
-  }
-
-  const weatherData = await weatherResponse.json();
-  const temperature = weatherData.current?.temperature_2m;
-  const code = weatherData.current?.weather_code;
+  const weather = await fetchWeatherForecast(location.latitude, location.longitude);
 
   return {
     settings: {
@@ -1294,15 +1308,20 @@ async function fetchWeatherForLocation(query) {
       latitude: location.latitude,
       longitude: location.longitude
     },
-    weather: {
-      temperature,
-      code,
-      condition: getWeatherConditionLabel(code),
-      high: weatherData.daily?.temperature_2m_max?.[0],
-      low: weatherData.daily?.temperature_2m_min?.[0],
-      suggestedFilters: getWeatherClimateFilters(temperature, code),
-      updatedAt: new Date().toISOString()
-    }
+    weather
+  };
+}
+
+async function fetchWeatherForSavedLocation(settings) {
+  const normalizedSettings = normalizeWeatherSettings(settings);
+
+  if (!Number.isFinite(normalizedSettings.latitude) || !Number.isFinite(normalizedSettings.longitude)) {
+    throw new Error("Location was not found.");
+  }
+
+  return {
+    settings: normalizedSettings,
+    weather: await fetchWeatherForecast(normalizedSettings.latitude, normalizedSettings.longitude)
   };
 }
 
@@ -2456,7 +2475,15 @@ export default function App() {
     try {
       setWeatherLoading(true);
       setWeatherError("");
-      const nextWeather = await fetchWeatherForLocation(query);
+      const currentWeatherSettings = normalizeWeatherSettings(weatherSettings);
+      const shouldUseSavedLocation =
+        currentWeatherSettings.locationName &&
+        query === currentWeatherSettings.locationName &&
+        Number.isFinite(currentWeatherSettings.latitude) &&
+        Number.isFinite(currentWeatherSettings.longitude);
+      const nextWeather = shouldUseSavedLocation
+        ? await fetchWeatherForSavedLocation(currentWeatherSettings)
+        : await fetchWeatherForLocation(query);
       setWeatherSettings(nextWeather.settings);
       setWeatherLocationDraft(nextWeather.settings.locationName);
       setWeatherData(nextWeather.weather);
