@@ -3755,18 +3755,6 @@ export default function App() {
               {label}
             </button>
           ))}
-          {outfitPalette.length ? (
-            <button
-              type="button"
-              className={`palette-tab ${paletteOpen ? "is-active" : ""}`}
-              onClick={() => setPaletteOpen((current) => !current)}
-              aria-label="Toggle outfit color palette"
-              aria-expanded={paletteOpen}
-              title="Color palette"
-            >
-              <span style={{ backgroundColor: outfitPalette[0].color }} />
-            </button>
-          ) : null}
           <button
             type="button"
             className={`weather-tab ${weatherOpen ? "is-active" : ""}`}
@@ -3777,12 +3765,15 @@ export default function App() {
           >
             {Number.isFinite(weatherData?.temperature) ? `${Math.round(weatherData.temperature)}°C` : "°C"}
           </button>
-        </div>
-
-        {(paletteOpen && outfitPalette.length) || weatherOpen ? (
-          <div className={`utility-windows ${controlsOpen && !activePanel ? "is-offset" : ""}`}>
-            {paletteOpen && outfitPalette.length ? (
-              <div className="outfit-palette" aria-label="Current outfit color palette">
+          {outfitPalette.length ? (
+            paletteOpen ? (
+              <button
+                type="button"
+                className="outfit-palette-inline"
+                onClick={() => setPaletteOpen(false)}
+                aria-label="Hide outfit color palette"
+                title="Hide color palette"
+              >
                 {outfitPalette.map((entry) => (
                   <span
                     key={`${entry.color}-${entry.label}`}
@@ -3791,9 +3782,24 @@ export default function App() {
                     title={`${entry.label}: ${entry.color}`}
                   />
                 ))}
-              </div>
-            ) : null}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="palette-tab"
+                onClick={() => setPaletteOpen(true)}
+                aria-label="Toggle outfit color palette"
+                aria-expanded={paletteOpen}
+                title="Color palette"
+              >
+                <span style={{ backgroundColor: outfitPalette[0].color }} />
+              </button>
+            )
+          ) : null}
+        </div>
 
+        {weatherOpen ? (
+          <div className={`utility-windows ${controlsOpen && !activePanel ? "is-offset" : ""}`}>
             {weatherOpen ? (
               <div className="weather-window" aria-label="Current weather">
                 <form

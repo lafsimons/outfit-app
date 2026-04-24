@@ -172,6 +172,21 @@ button:disabled {
   overflow-y: hidden;
 }
 
+.outfit-palette-inline {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+  max-width: min(220px, calc(100vw - 150px));
+  padding: 0 8px;
+  height: 30px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .weather-window {
   display: grid;
   gap: 8px;
@@ -342,6 +357,13 @@ button:disabled {
   height: 18px;
   border: 1px solid rgba(0, 0, 0, 0.24);
   border-radius: calc(var(--radius-control) - 2px);
+}
+
+.outfit-palette-inline .outfit-palette-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  box-shadow: none;
 }
 
 .floating-backdrop {
@@ -1962,6 +1984,10 @@ button:disabled {
   .outfit-palette {
     max-width: calc(100vw - 20px);
     overflow: auto;
+  }
+
+  .outfit-palette-inline {
+    max-width: min(170px, calc(100vw - 130px));
   }
 
   .weather-window {
