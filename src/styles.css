@@ -425,20 +425,6 @@ button:disabled {
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
-  max-width: 0;
-  opacity: 0;
-  overflow: hidden;
-  transform: translateX(-6px);
-  transition:
-    max-width 180ms ease,
-    opacity 160ms ease,
-    transform 180ms ease;
-}
-
-.workspace-tab-group.is-expanded {
-  max-width: 220px;
-  opacity: 1;
-  transform: translateX(0);
 }
 
 .palette-tab {
@@ -2080,8 +2066,21 @@ button:disabled {
     width: min(260px, calc(100vw - 24px));
   }
 
+  .workspace-tab-group {
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transform: translateX(-6px);
+    transition:
+      max-width 180ms ease,
+      opacity 160ms ease,
+      transform 180ms ease;
+  }
+
   .workspace-tab-group.is-expanded {
     max-width: 200px;
+    opacity: 1;
+    transform: translateX(0);
   }
 
   .utility-windows {

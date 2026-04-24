@@ -75,6 +75,14 @@ function resolveImageUrl(imageUrl) {
   return imageUrlByFilename[filename] ?? imageUrlByFilename[stripViteHash(filename)] ?? imageUrl;
 }
 
+function getIsMobileViewport() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return window.matchMedia("(max-width: 960px)").matches;
+}
+
 const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
 const garmentTypes = [
   "Headwear",
@@ -1367,7 +1375,8 @@ export default function App() {
   const [wardrobeSort, setWardrobeSort] = useState("");
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [dockExpanded, setDockExpanded] = useState(false);
+  const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
+  const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
@@ -1380,6 +1389,30 @@ export default function App() {
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
   );
+  const isDockExpanded = isMobileViewport ? dockExpanded : true;
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(max-width: 960px)");
+    const handleChange = (event) => {
+      setIsMobileViewport(event.matches);
+      setDockExpanded(event.matches ? controlsOpen || activePanel === "wardrobe" || activePanel === "fitpics" : true);
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, [activePanel, controlsOpen]);
+
   const currentOutfitItems = useMemo(() => {
     const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
     const seen = new Set();
@@ -2940,9 +2973,9 @@ export default function App() {
       if (nextPanel) {
         closeUtilityWindows();
         setControlsOpen(false);
-        setDockExpanded(true);
+        setDockExpanded(isMobileViewport);
       } else if (!controlsOpen) {
-        setDockExpanded(false);
+        setDockExpanded(isMobileViewport ? false : true);
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
@@ -2962,7 +2995,7 @@ export default function App() {
   function closeWorkspacePanel() {
     setActivePanel(null);
     if (!controlsOpen) {
-      setDockExpanded(false);
+      setDockExpanded(isMobileViewport ? false : true);
     }
     setWardrobeFiltersOpen(false);
     setWardrobeWorthOpen(false);
@@ -2989,7 +3022,7 @@ export default function App() {
     setEditorReturnTarget(null);
     setControlsOpen((current) => {
       const nextOpen = !current;
-      setDockExpanded(nextOpen || activePanel === "wardrobe" || activePanel === "fitpics");
+      setDockExpanded(isMobileViewport ? nextOpen || activePanel === "wardrobe" || activePanel === "fitpics" : true);
       return nextOpen;
     });
   }
@@ -3746,7 +3779,7 @@ export default function App() {
         ) : null}
 
         <div
-          className={`workspace-tabs ${dockExpanded ? "is-dock-expanded" : ""} ${paletteOpen ? "is-palette-open" : ""}`}
+          className={`workspace-tabs ${isDockExpanded ? "is-dock-expanded" : ""} ${paletteOpen ? "is-palette-open" : ""}`}
           aria-label="Workspace sections"
         >
           <button type="button" className="workspace-tab is-active" onClick={handleGenerate}>
@@ -3760,7 +3793,7 @@ export default function App() {
           >
             CONTROLS
           </button>
-          <div className={`workspace-tab-group ${dockExpanded ? "is-expanded" : ""}`}>
+          <div className={`workspace-tab-group ${isDockExpanded ? "is-expanded" : ""}`}>
             {[
               ["wardrobe", "Wardrobe"],
               ["fitpics", "Fitpics"]
@@ -3771,7 +3804,7 @@ export default function App() {
                 className={`workspace-tab ${activePanel === panel ? "is-active" : ""}`}
                 onClick={() => toggleWorkspacePanel(panel)}
                 aria-pressed={activePanel === panel}
-                tabIndex={dockExpanded ? 0 : -1}
+                tabIndex={isDockExpanded ? 0 : -1}
               >
                 {label}
               </button>
