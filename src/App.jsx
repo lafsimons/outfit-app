@@ -3032,7 +3032,7 @@ export default function App() {
     setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
-    setWardrobeFiltersOpen(true);
+    setWardrobeFiltersOpen((current) => !current);
   }
 
   function toggleWardrobeWorth() {
@@ -4023,9 +4023,9 @@ export default function App() {
             <div className="wardrobe-header-actions">
               <button
                 type="button"
-                className={`secondary-button filter-button ${hasActiveWardrobeFilters ? "is-active" : ""}`}
+                className={`secondary-button filter-button ${wardrobeFiltersOpen || hasActiveWardrobeFilters ? "is-active" : ""}`}
                 onClick={openWardrobeFilters}
-                aria-pressed={hasActiveWardrobeFilters}
+                aria-pressed={wardrobeFiltersOpen}
                 title={
                   hasActiveWardrobeFilters
                     ? `${activeWardrobeFilterCount} active filter${activeWardrobeFilterCount === 1 ? "" : "s"}`
