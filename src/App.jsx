@@ -96,8 +96,8 @@ const defaultGenerationLists = {
 const styleTagOptions = ["Casual", "Formal", "Athleisure", "Going Out"];
 const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 const outfitFilterOptions = {
-  style: styleTagOptions,
-  climate: climateTagOptions
+  climate: climateTagOptions,
+  style: styleTagOptions
 };
 const emptyOutfitFilters = {
   style: [],
