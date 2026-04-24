@@ -3802,127 +3802,134 @@ export default function App() {
               </button>
             </div>
 
-            <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
-              Layering: {layering ? "On" : "Off"}
-            </button>
-            <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
-              Accessories: {accessoriesEnabled ? "On" : "Off"}
-            </button>
-            <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-              Save outfit
-            </button>
-            <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-              Export outfit image
-            </button>
-
-            <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
-              <button
-                type="button"
-                className={`controls-weather-toggle ${weatherOpen ? "is-active" : ""}`}
-                onClick={() => setWeatherOpen((current) => !current)}
-                aria-expanded={weatherOpen}
-              >
-                <span>Weather</span>
-                <span>
-                  {Number.isFinite(weatherData?.temperature)
-                    ? `${Math.round(weatherData.temperature)}°C`
-                    : weatherSettings.locationName
-                      ? weatherSettings.locationName
-                      : "Set location"}
-                </span>
+            <div className="controls-group controls-group-top">
+              <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
+                Layering: {layering ? "On" : "Off"}
               </button>
+              <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
+                Accessories: {accessoriesEnabled ? "On" : "Off"}
+              </button>
+            </div>
 
-              {weatherOpen ? (
-                <div className="weather-window weather-window-controls" aria-label="Current weather">
-                  <form
-                    className="weather-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      refreshWeather();
-                    }}
-                  >
-                    <label>
-                      Location
-                      <input
-                        value={weatherLocationDraft}
-                        onChange={(event) => setWeatherLocationDraft(event.target.value)}
-                        placeholder="Berlin"
-                      />
-                    </label>
-                    <button type="submit" className="secondary-button" disabled={weatherLoading}>
-                      {weatherLoading ? "Loading..." : "Update"}
-                    </button>
-                  </form>
-
-                  {weatherData ? (
-                    <div className="weather-summary">
-                      <strong>{Math.round(weatherData.temperature)}°C</strong>
-                      <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
-                      {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
-                        <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
-                      ) : null}
-                      {weatherData.suggestedFilters?.length ? (
-                        <span>{weatherData.suggestedFilters.join(" + ")}</span>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  {weatherError ? <p className="weather-error">{weatherError}</p> : null}
-
+            <div className="controls-group controls-group-middle">
+              <div className="generation-list-controls" aria-label="Generation lists">
+                {itemLists.map((list) => (
                   <button
+                    key={list}
                     type="button"
-                    className="ghost-button"
-                    onClick={applyWeatherFilters}
-                    disabled={!weatherData?.suggestedFilters?.length}
+                    className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
+                    onClick={() => toggleGenerationList(list)}
                   >
-                    Apply weather filter
+                    {list}: {generationLists[list] ? "Included" : "Off"}
                   </button>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="generation-list-controls" aria-label="Generation lists">
-              {itemLists.map((list) => (
-                <button
-                  key={list}
-                  type="button"
-                  className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
-                  onClick={() => toggleGenerationList(list)}
-                >
-                  {list}: {generationLists[list] ? "Included" : "Off"}
-                </button>
-              ))}
-            </div>
-
-            <div className="outfit-filters-panel" aria-label="Outfit filters">
-              <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-                Clear outfit filters
-              </button>
-
-              <div className="outfit-filter-groups">
-                {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                  <section key={group} className="outfit-filter-group">
-                    <p className="eyebrow">{group}</p>
-                    <div className="outfit-filter-options">
-                      {options.map((option) => {
-                        const isSelected = outfitFilters[group]?.includes(option);
-
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                            onClick={() => toggleOutfitFilter(group, option)}
-                            aria-pressed={isSelected}
-                          >
-                            {option}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
                 ))}
               </div>
+
+              <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
+                <button
+                  type="button"
+                  className={`controls-weather-toggle ${weatherOpen ? "is-active" : ""}`}
+                  onClick={() => setWeatherOpen((current) => !current)}
+                  aria-expanded={weatherOpen}
+                >
+                  <span>Weather</span>
+                  <span>
+                    {Number.isFinite(weatherData?.temperature)
+                      ? `${Math.round(weatherData.temperature)}°C`
+                      : weatherSettings.locationName
+                        ? weatherSettings.locationName
+                        : "Set location"}
+                  </span>
+                </button>
+
+                {weatherOpen ? (
+                  <div className="weather-window weather-window-controls" aria-label="Current weather">
+                    <form
+                      className="weather-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        refreshWeather();
+                      }}
+                    >
+                      <label>
+                        Location
+                        <input
+                          value={weatherLocationDraft}
+                          onChange={(event) => setWeatherLocationDraft(event.target.value)}
+                          placeholder="Berlin"
+                        />
+                      </label>
+                      <button type="submit" className="secondary-button" disabled={weatherLoading}>
+                        {weatherLoading ? "Loading..." : "Update"}
+                      </button>
+                    </form>
+
+                    {weatherData ? (
+                      <div className="weather-summary">
+                        <strong>{Math.round(weatherData.temperature)}°C</strong>
+                        <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
+                        {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
+                          <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
+                        ) : null}
+                        {weatherData.suggestedFilters?.length ? (
+                          <span>{weatherData.suggestedFilters.join(" + ")}</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {weatherError ? <p className="weather-error">{weatherError}</p> : null}
+
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={applyWeatherFilters}
+                      disabled={!weatherData?.suggestedFilters?.length}
+                    >
+                      Apply weather filter
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="outfit-filters-panel" aria-label="Outfit filters">
+                <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
+                  Clear outfit filters
+                </button>
+
+                <div className="outfit-filter-groups">
+                  {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                    <section key={group} className="outfit-filter-group">
+                      <p className="eyebrow">{group}</p>
+                      <div className="outfit-filter-options">
+                        {options.map((option) => {
+                          const isSelected = outfitFilters[group]?.includes(option);
+
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                              onClick={() => toggleOutfitFilter(group, option)}
+                              aria-pressed={isSelected}
+                            >
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="controls-group controls-group-bottom">
+              <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
+                Save outfit
+              </button>
+              <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
+                Export outfit image
+              </button>
             </div>
           </div>
         ) : null}

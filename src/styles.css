@@ -307,6 +307,16 @@ button:disabled {
   width: 100%;
 }
 
+.controls-group {
+  display: grid;
+  gap: 8px;
+}
+
+.controls-group + .controls-group {
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
 .controls-weather {
   display: grid;
   gap: 8px;
