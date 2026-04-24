@@ -871,28 +871,6 @@ function getColorRgb(item) {
   return namedMatch ? hexToRgb(namedMatch[1]) : null;
 }
 
-function matchesOutfitFilters(
-  item,
-  outfitFilters = emptyOutfitFilters
-) {
-  const selectedStyles = outfitFilters.style ?? [];
-  const selectedClimates = outfitFilters.climate ?? [];
-
-  return (
-    (!selectedStyles.length || selectedStyles.some((style) => getItemStyleTags(item).includes(style))) &&
-    (!selectedClimates.length || selectedClimates.some((climate) => getItemClimateTags(item).includes(climate)))
-  );
-}
-
-function applyOutfitFiltersToPool(pool, outfitFilters) {
-  if (!hasActiveOutfitFilters(outfitFilters)) {
-    return pool;
-  }
-
-  const filtered = pool.filter((item) => matchesOutfitFilters(item, outfitFilters));
-  return filtered.length ? filtered : pool;
-}
-
 function normalizeGenerationMode(mode) {
   return generationModes.includes(mode) ? mode : defaultGenerationMode;
 }
@@ -924,6 +902,10 @@ function getDominantStyleTags(items) {
       .filter(([, count]) => count === maxCount && count > 0)
       .map(([style]) => style)
   );
+}
+
+function inferClimateSuitability(item) {
+  return inferClimateTags(item);
 }
 
 function getClimateScore(item, slot, climatePreferences) {
@@ -990,6 +972,49 @@ function getClimateScore(item, slot, climatePreferences) {
   return score;
 }
 
+function passesHardContextRules(item, slot, outfitFilters, weatherData) {
+  const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
+  const selectedStyles = outfitFilters.style ?? [];
+  const presetKey = getTypePresetKey(item.type);
+  const typeMatches = new Set([normalizeType(item.type), presetKey].filter(Boolean));
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+
+  if (climatePreferences.includes("Hot")) {
+    if (slot === "TopOuter" && item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") {
+      return false;
+    }
+
+    if (hasType("wool coat")) {
+      return false;
+    }
+  }
+
+  if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
+    if (hasType("shorts", "slides", "sandals")) {
+      return false;
+    }
+  }
+
+  if (climatePreferences.includes("Rain")) {
+    if (hasType("slides", "sandals")) {
+      return false;
+    }
+  }
+
+  if (selectedStyles.includes("Formal")) {
+    if (hasType("slides", "hoodie", "fleece jacket", "shell jacket")) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData) {
+  const filtered = pool.filter((item) => passesHardContextRules(item, slot, outfitFilters, weatherData));
+  return filtered.length ? filtered : pool;
+}
+
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
   const itemStyles = getItemStyleTags(item);
 
@@ -1001,9 +1026,9 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
 
   if (selectedStyles.length) {
     if (selectedStyles.some((style) => itemStyles.includes(style))) {
-      score += 3;
+      score += 4;
     } else {
-      score -= 2;
+      score -= 1.5;
     }
   }
 
@@ -1193,7 +1218,7 @@ function buildNextOutfit(
         pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
       }
 
-      pool = applyOutfitFiltersToPool(pool, outfitFilters);
+      pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
       pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
 
       const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode);
@@ -1206,7 +1231,7 @@ function buildNextOutfit(
       return;
     }
 
-    pool = applyOutfitFiltersToPool(pool, outfitFilters);
+    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
     pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
     nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode)?.id ?? null;
   });
@@ -2515,7 +2540,7 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
     }
 
-    pool = applyOutfitFiltersToPool(pool, outfitFilters);
+    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
     return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
   }
 
@@ -2900,9 +2925,11 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
     }
 
-    pool = applyOutfitFiltersToPool(
+    pool = applyContextValidityRulesToPool(
       pool.filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]),
-      outfitFilters
+      slot,
+      outfitFilters,
+      weatherData
     );
     return filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
   }
