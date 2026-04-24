@@ -198,6 +198,15 @@ button:disabled {
   backdrop-filter: blur(18px);
 }
 
+.weather-window-controls {
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .weather-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -298,6 +307,43 @@ button:disabled {
   width: 100%;
 }
 
+.controls-weather {
+  display: grid;
+  gap: 8px;
+}
+
+.controls-weather-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.controls-weather-toggle span:last-child {
+  min-width: 0;
+  color: var(--muted-strong);
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.controls-weather-toggle.is-active {
+  border-color: var(--primary);
+}
+
 .generation-list-controls {
   display: grid;
   gap: 6px;
@@ -326,8 +372,7 @@ button:disabled {
   overflow-x: auto;
 }
 
-.palette-tab,
-.weather-tab {
+.palette-tab {
   width: 30px;
   height: 30px;
   display: grid;
@@ -338,17 +383,7 @@ button:disabled {
   background: var(--surface-solid);
 }
 
-.weather-tab {
-  width: auto;
-  min-width: 42px;
-  padding: 0 8px;
-  color: var(--text);
-  font-size: 0.74rem;
-  font-weight: 800;
-}
-
-.palette-tab.is-active,
-.weather-tab.is-active {
+.palette-tab.is-active {
   border-color: var(--primary);
 }
 
