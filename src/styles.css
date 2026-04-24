@@ -1287,6 +1287,11 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.wardrobe-panel > .panel-header {
+  position: relative;
+  z-index: 35;
+}
+
 .filter-close-button {
   display: inline-grid;
 }
