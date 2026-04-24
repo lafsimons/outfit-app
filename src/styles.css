@@ -175,8 +175,10 @@ button:disabled {
 .outfit-palette-inline {
   display: flex;
   flex-wrap: nowrap;
+  flex: 0 1 auto;
   gap: 6px;
   align-items: center;
+  min-width: 0;
   max-width: min(220px, calc(100vw - 150px));
   padding: 0 8px;
   height: 30px;
@@ -421,6 +423,7 @@ button:disabled {
 
 .workspace-tab-group {
   display: flex;
+  flex: 0 0 auto;
   gap: 6px;
   max-width: 0;
   opacity: 0;
@@ -2073,7 +2076,7 @@ button:disabled {
   }
 
   .workspace-tab-group.is-expanded {
-    max-width: 180px;
+    max-width: 200px;
   }
 
   .utility-windows {
@@ -2092,7 +2095,11 @@ button:disabled {
   }
 
   .outfit-palette-inline {
-    max-width: min(170px, calc(100vw - 130px));
+    max-width: min(220px, calc(100vw - 110px));
+  }
+
+  .workspace-tabs.is-dock-expanded.is-palette-open .outfit-palette-inline {
+    max-width: min(120px, calc(100vw - 250px));
   }
 
   .weather-window {

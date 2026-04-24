@@ -3745,7 +3745,10 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="workspace-tabs" aria-label="Workspace sections">
+        <div
+          className={`workspace-tabs ${dockExpanded ? "is-dock-expanded" : ""} ${paletteOpen ? "is-palette-open" : ""}`}
+          aria-label="Workspace sections"
+        >
           <button type="button" className="workspace-tab is-active" onClick={handleGenerate}>
             Generate
           </button>
