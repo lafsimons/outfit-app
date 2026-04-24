@@ -147,6 +147,43 @@ const emptyForm = {
   styleTags: []
 };
 const typeDerivedFields = ["garmentType", "layerType", "accessorySlot", "weight", "size", "list", "styleTags"];
+const defaultTypeSuggestions = [
+  "Bag",
+  "Belt",
+  "Jewelry",
+  "Watch",
+  "Glasses",
+  "Sun Glasses",
+  "Suspender",
+  "Socks",
+  "Beanie",
+  "Cap",
+  "Hat",
+  "Sneakers",
+  "Canvas Sneakers",
+  "Leather Sneakers",
+  "Boots",
+  "Derby",
+  "Slides",
+  "Jeans",
+  "Trousers",
+  "Pants",
+  "Shorts",
+  "T-Shirt",
+  "LS T-Shirt",
+  "Shirt",
+  "Wool Shirt",
+  "Sweatshirt",
+  "Knit Sweater",
+  "Knit Vest",
+  "Jacket",
+  "Twill Jacket",
+  "Denim Jacket",
+  "Fleece Jacket",
+  "Shell Jacket",
+  "Wool Jacket",
+  "Wool Coat"
+];
 const advancedTrackedFields = [
   "name",
   "brand",
@@ -165,12 +202,18 @@ const advancedTrackedFields = [
 const typeDefaultsByKey = {
   cap: {
     garmentType: "Headwear",
-    size: "OS"
+    size: "OS",
+    weight: "Light"
   },
   beanie: {
     garmentType: "Headwear",
     size: "OS",
     weight: "Medium"
+  },
+  hat: {
+    garmentType: "Headwear",
+    size: "OS",
+    weight: "Light"
   },
   "t-shirt": {
     garmentType: "Top",
@@ -178,13 +221,26 @@ const typeDefaultsByKey = {
     weight: "Light",
     styleTags: ["Casual", "Athleisure", "Going Out"]
   },
+  "ls t-shirt": {
+    garmentType: "Top",
+    layerType: "Inner",
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
   shirt: {
     garmentType: "Top",
-    layerType: "Inner"
+    layerType: "Inner",
+    weight: "Light"
   },
   "casual shirt": {
     garmentType: "Top",
-    layerType: "Inner"
+    layerType: "Inner",
+    weight: "Light"
+  },
+  "wool shirt": {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Medium"
   },
   sweatshirt: {
     garmentType: "Top",
@@ -203,10 +259,50 @@ const typeDefaultsByKey = {
     layerType: "Both",
     weight: "Medium"
   },
+  "knit sweater": {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Medium"
+  },
+  "knit vest": {
+    garmentType: "Top",
+    layerType: "Both",
+    weight: "Light"
+  },
   jacket: {
     garmentType: "Outerwear",
     layerType: "Outer",
     weight: "Medium"
+  },
+  "twill jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium"
+  },
+  "denim jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium"
+  },
+  "fleece jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Medium"
+  },
+  "shell jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Light"
+  },
+  "wool jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Heavy"
+  },
+  "wool coat": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
+    weight: "Heavy"
   },
   blazer: {
     garmentType: "Outerwear",
@@ -220,10 +316,12 @@ const typeDefaultsByKey = {
     weight: "Heavy"
   },
   trousers: {
-    garmentType: "Bottom"
+    garmentType: "Bottom",
+    weight: "Medium"
   },
   jeans: {
-    garmentType: "Bottom"
+    garmentType: "Bottom",
+    weight: "Medium"
   },
   shorts: {
     garmentType: "Bottom",
@@ -234,8 +332,19 @@ const typeDefaultsByKey = {
     weight: "Light",
     styleTags: ["Casual", "Athleisure", "Going Out"]
   },
+  "canvas sneakers": {
+    garmentType: "Footwear",
+    weight: "Light",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
+  "leather sneakers": {
+    garmentType: "Footwear",
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure", "Going Out"]
+  },
   derby: {
     garmentType: "Footwear",
+    weight: "Medium",
     styleTags: ["Formal"]
   },
   boots: {
@@ -253,17 +362,50 @@ const typeDefaultsByKey = {
   bag: {
     garmentType: "Accessory",
     accessorySlot: "Bag",
-    size: "OS"
+    size: "OS",
+    weight: "Light"
   },
   belt: {
     garmentType: "Accessory",
     accessorySlot: "Belt",
-    size: "OS"
+    size: "OS",
+    weight: "Light"
   },
   glasses: {
     garmentType: "Accessory",
     accessorySlot: "Glasses",
-    size: "OS"
+    size: "OS",
+    weight: "Light"
+  },
+  jewelry: {
+    garmentType: "Accessory",
+    accessorySlot: "LeftHand",
+    size: "OS",
+    weight: "Light"
+  },
+  watch: {
+    garmentType: "Accessory",
+    accessorySlot: "LeftHand",
+    size: "OS",
+    weight: "Light"
+  },
+  "sun glasses": {
+    garmentType: "Accessory",
+    accessorySlot: "Glasses",
+    size: "OS",
+    weight: "Light"
+  },
+  suspender: {
+    garmentType: "Accessory",
+    accessorySlot: "Belt",
+    size: "OS",
+    weight: "Light"
+  },
+  socks: {
+    garmentType: "Accessory",
+    accessorySlot: "",
+    size: "OS",
+    weight: "Light"
   },
   scarf: {
     garmentType: "Accessory",
@@ -416,6 +558,30 @@ function getTypePresetKey(type) {
     return "t-shirt";
   }
 
+  if (["ls t-shirt", "ls t shirt", "longsleeve", "long sleeve t-shirt", "long sleeve tee", "ls tee"].includes(normalized)) {
+    return "ls t-shirt";
+  }
+
+  if (["pants"].includes(normalized)) {
+    return "trousers";
+  }
+
+  if (["denim", "denim pants"].includes(normalized)) {
+    return "jeans";
+  }
+
+  if (["sweater"].includes(normalized)) {
+    return "knit sweater";
+  }
+
+  if (["vest", "knitted vest"].includes(normalized)) {
+    return "knit vest";
+  }
+
+  if (["overshirt"].includes(normalized)) {
+    return "wool shirt";
+  }
+
   if (["sneaker", "sneakers"].includes(normalized)) {
     return "sneakers";
   }
@@ -434,6 +600,10 @@ function getTypePresetKey(type) {
 
   if (["derby", "derbies"].includes(normalized)) {
     return "derby";
+  }
+
+  if (["sunglasses"].includes(normalized)) {
+    return "sun glasses";
   }
 
   if (normalized === "cap") {
@@ -1626,29 +1796,23 @@ export default function App() {
 
     return getAccessoryOptions(activeAccessorySlot);
   }, [activeAccessorySlot, items, excluded, generationLists]);
+  const typeSuggestions = useMemo(() => {
+    const seen = new Set();
+    return [...defaultTypeSuggestions, ...items.map((item) => item.type).filter(Boolean)].filter((value) => {
+      const key = value.trim().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [items]);
   const resolvedTypeDefaults = useMemo(() => resolveTypeDefaults(draft.type), [draft.type]);
   const advancedOverrideFields = useMemo(
     () => getAdvancedOverrideFields(draft, resolvedTypeDefaults),
     [draft, resolvedTypeDefaults]
   );
   const advancedOverrideSet = useMemo(() => new Set(advancedOverrideFields), [advancedOverrideFields]);
-  const generatedIdPreview = useMemo(
-    () =>
-      hasNamingMetadata(draft)
-        ? buildBaseItemId({
-            garmentType: draft.garmentType,
-            layerType: draft.layerType,
-            accessorySlot: draft.accessorySlot,
-            type: draft.type,
-            brand: draft.brand,
-            name: draft.name,
-            size: draft.size,
-            color: draft.color,
-            list: draft.list
-          })
-        : "",
-    [draft]
-  );
   const wardrobeFilterOptions = useMemo(
     () => {
       const typeItems = items.filter((item) =>
@@ -3637,15 +3801,80 @@ export default function App() {
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
+      <div
+        className={`item-image-upload ${itemImageDragActive ? "is-drag-active" : ""}`}
+        onDragEnter={handleItemImageDragEnter}
+        onDragOver={handleItemImageDragOver}
+        onDragLeave={handleItemImageDragLeave}
+        onDrop={handleItemImageDrop}
+      >
+        <div className="item-image-preview">
+          {draft.imageUrl.trim() ? (
+            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
+          ) : (
+            <span>No image selected</span>
+          )}
+        </div>
+        <div className="item-image-actions">
+          <label className="upload-button">
+            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
+            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
+          </label>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={removeDraftBackground}
+            disabled={!canRemoveDraftBackground || imageProcessing}
+          >
+            {imageProcessing ? "Removing..." : "Remove background"}
+          </button>
+          {draft.imageUrl.trim() ? (
+            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
+              Remove image
+            </button>
+          ) : null}
+          <label className="image-size-field">
+            Image size
+            <div className="image-scale-control">
+              <input
+                type="range"
+                min="50"
+                max="180"
+                step="5"
+                value={normalizeImageScale(draft.imageScale)}
+                onChange={(event) => setAdvancedField("imageScale", Number(event.target.value))}
+              />
+              <input
+                inputMode="numeric"
+                value={normalizeImageScale(draft.imageScale)}
+                onChange={(event) => setAdvancedField("imageScale", normalizeImageScale(event.target.value))}
+                aria-label="Image size percentage"
+              />
+              <span>%</span>
+            </div>
+          </label>
+        </div>
+        <p className="item-image-note">
+          Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
+        </p>
+        {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
+      </div>
+
       <div className="editor-core-fields">
         <label>
           Type
           <input
+            list="item-type-suggestions"
             value={draft.type}
             onChange={(event) => setDraft((current) => applyTypeDefaultsToDraft(current, event.target.value))}
             placeholder="Shirt, jacket, trousers..."
           />
         </label>
+        <datalist id="item-type-suggestions">
+          {typeSuggestions.map((type) => (
+            <option key={type} value={type} />
+          ))}
+        </datalist>
 
         <div className="editor-derived-field">
           <span className="editor-label-row">
@@ -3688,65 +3917,6 @@ export default function App() {
 
       {editorAdvancedOpen ? (
         <div className="editor-advanced-panel">
-          <div
-            className={`item-image-upload ${itemImageDragActive ? "is-drag-active" : ""}`}
-            onDragEnter={handleItemImageDragEnter}
-            onDragOver={handleItemImageDragOver}
-            onDragLeave={handleItemImageDragLeave}
-            onDrop={handleItemImageDrop}
-          >
-            <div className="item-image-preview">
-              {draft.imageUrl.trim() ? (
-                <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
-              ) : (
-                <span>No image selected</span>
-              )}
-            </div>
-            <div className="item-image-actions">
-              <label className="upload-button">
-                {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-                <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
-              </label>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={removeDraftBackground}
-                disabled={!canRemoveDraftBackground || imageProcessing}
-              >
-                {imageProcessing ? "Removing..." : "Remove background"}
-              </button>
-              {draft.imageUrl.trim() ? (
-                <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
-                  Remove image
-                </button>
-              ) : null}
-              <label className="image-size-field">
-                Image size
-                <div className="image-scale-control">
-                  <input
-                    type="range"
-                    min="50"
-                    max="180"
-                    step="5"
-                    value={normalizeImageScale(draft.imageScale)}
-                    onChange={(event) => setAdvancedField("imageScale", Number(event.target.value))}
-                  />
-                  <input
-                    inputMode="numeric"
-                    value={normalizeImageScale(draft.imageScale)}
-                    onChange={(event) => setAdvancedField("imageScale", normalizeImageScale(event.target.value))}
-                    aria-label="Image size percentage"
-                  />
-                  <span>%</span>
-                </div>
-              </label>
-            </div>
-            <p className="item-image-note">
-              Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
-            </p>
-            {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
-          </div>
-
           <label>
             {renderAdvancedLabel("Garment type", "garmentType")}
             <select
@@ -3901,11 +4071,6 @@ export default function App() {
           </label>
         </div>
       ) : null}
-
-      <div className="id-preview">
-        <span>Generated item ID</span>
-        <strong>{generatedIdPreview || "Starts generating once metadata is filled in"}</strong>
-      </div>
 
       <div className="form-actions">
         <button type="submit" className="primary-button">Save item</button>
