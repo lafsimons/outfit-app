@@ -21,6 +21,7 @@ const defaultAppState = {
   likedOutfitKeys: {},
   outfitAffinity: {},
   recentOutfits: [],
+  generateCount: 0,
   generationLists: {
     Wardrobe: true,
     Wishlist: true

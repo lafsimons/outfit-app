@@ -74,7 +74,7 @@ function normalizeAffinityMap(value) {
   );
 }
 
-function pickRandom(items) {
+export function pickRandom(items) {
   if (!items.length) {
     return null;
   }
@@ -201,7 +201,7 @@ export function rememberRecentOutfit(currentRecentOutfits, outfit, layering, opt
   ].slice(0, RECENT_OUTFIT_WINDOW);
 }
 
-function isEligibleForGeneration(item, excluded = {}, generationLists = defaultGenerationLists) {
+export function isEligibleForGeneration(item, excluded = {}, generationLists = defaultGenerationLists) {
   return !excluded[item.id] && generationLists[normalizeList(item.list)] !== false;
 }
 
@@ -555,7 +555,7 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData) {
   return passesSelectedStyleRules(item, selectedStyles);
 }
 
-function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData) {
+export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData) {
   const filtered = pool.filter((item) => passesHardContextRules(item, slot, outfitFilters, weatherData));
   return filtered.length ? filtered : pool;
 }
@@ -867,17 +867,17 @@ export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitF
   );
 }
 
-function isNonStackableTopType(item) {
+export function isNonStackableTopType(item) {
   return (item.garmentType === "Top" || item.garmentType === "Outerwear") && nonStackableTopTypes.has(normalizeType(item.type));
 }
 
-function getOtherTopSlot(slot) {
+export function getOtherTopSlot(slot) {
   if (slot === "TopInner") return "TopOuter";
   if (slot === "TopOuter") return "TopInner";
   return null;
 }
 
-function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
+export function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
   if (slot !== "TopInner" && slot !== "TopOuter") return pool;
 
   const otherTopSlot = getOtherTopSlot(slot);
@@ -909,7 +909,7 @@ function isOutfitCompatible(outfit, itemsById) {
   return !selectedItems.some(isHeavyOuterwear) || !selectedItems.some(isWarmWeatherConflictItem);
 }
 
-function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
+export function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
   if (!pool.length || !["TopOuter", "Bottom", "Footwear"].includes(slot)) return pool;
 
   const filtered = pool.filter((item) =>

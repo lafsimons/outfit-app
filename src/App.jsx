@@ -31,19 +31,25 @@ import {
 import {
   accessorySlots,
   applyOutfitAffinityDelta,
+  applyContextValidityRulesToPool,
   buildNextOutfit,
   climateTagOptions,
   defaultGenerationLists,
   defaultGenerationMode,
   editableClimateTagOptions,
   emptyOutfitFilters,
+  filterPoolForCompatibilityRules,
+  filterPoolForLayeringRules,
   generationModes,
   getCurrentOutfitClimateChip,
   getCurrentOutfitStyleChip,
   getItemStyleTags,
+  getOtherTopSlot,
   getOutfitKey,
   getPool,
   hasActiveOutfitFilters,
+  isEligibleForGeneration,
+  isNonStackableTopType,
   normalizeGenerationMode,
   normalizeLikedOutfitKeys,
   normalizeOutfitAffinity,
@@ -51,6 +57,7 @@ import {
   normalizeRecentOutfits,
   outfitFilterOptions,
   pickNextItemForGeneration,
+  pickRandom,
   rememberRecentOutfit,
   summarizeGuidedExplanation,
   visibleSlots
@@ -1047,6 +1054,7 @@ export default function App() {
   const [likedOutfitKeys, setLikedOutfitKeys] = useState({});
   const [outfitAffinity, setOutfitAffinity] = useState({});
   const [recentOutfits, setRecentOutfits] = useState([]);
+  const [generateCount, setGenerateCount] = useState(0);
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
@@ -1435,6 +1443,7 @@ export default function App() {
         setLikedOutfitKeys(normalizeLikedOutfitKeys(storedAppState.likedOutfitKeys));
         setOutfitAffinity(normalizeOutfitAffinity(storedAppState.outfitAffinity));
         setRecentOutfits(normalizeRecentOutfits(storedAppState.recentOutfits));
+        setGenerateCount(Math.max(0, Math.round(Number(storedAppState.generateCount) || 0)));
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
         setGenerationMode(normalizeGenerationMode(storedAppState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
@@ -1455,6 +1464,7 @@ export default function App() {
         setLikedOutfitKeys(normalizeLikedOutfitKeys(defaultState.likedOutfitKeys));
         setOutfitAffinity(normalizeOutfitAffinity(defaultState.outfitAffinity));
         setRecentOutfits(normalizeRecentOutfits(defaultState.recentOutfits));
+        setGenerateCount(Math.max(0, Math.round(Number(defaultState.generateCount) || 0)));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
         setGenerationMode(normalizeGenerationMode(defaultState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
@@ -1491,6 +1501,7 @@ export default function App() {
       likedOutfitKeys,
       outfitAffinity,
       recentOutfits,
+      generateCount,
       generationLists,
       generationMode,
       outfitFilters,
@@ -1498,7 +1509,7 @@ export default function App() {
       weatherData,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -1639,6 +1650,7 @@ export default function App() {
       }
       return nextOutfit;
     });
+    setGenerateCount((current) => current + 1);
   }
 
   function handleReroll(slot) {
@@ -3777,6 +3789,13 @@ export default function App() {
                 }
               >
                 Generation: {generationMode === "guided" ? "Guided" : "Random"}
+              </button>
+            </div>
+
+            <div className="controls-group">
+              <span>Generate count: {generateCount}</span>
+              <button type="button" className="ghost-button" onClick={() => setGenerateCount(0)}>
+                Reset
               </button>
             </div>
 
