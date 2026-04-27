@@ -224,6 +224,43 @@ test("warm and hot climate penalize medium or heavy beanies", () => {
 
 test("no-filter climate chip stays everyday without weather or explicit climate", () => {
   assert.equal(getCurrentOutfitClimateChip({ style: [], climate: [] }, null), "Everyday");
+  assert.equal(getCurrentOutfitClimateChip({ style: [], climate: [] }, { suggestedFilters: ["Warm"] }), "Everyday");
+  assert.equal(getCurrentOutfitClimateChip({ style: [], climate: ["Cold"] }, { suggestedFilters: ["Warm"] }), "Cold");
+});
+
+test("passive weather data does not influence no-filter generation scoring", () => {
+  const withoutWeather = withSeed(88, () =>
+    buildNextOutfit(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: [], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+  const withPassiveWeather = withSeed(88, () =>
+    buildNextOutfit(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: [], climate: [] },
+      { suggestedFilters: ["Warm"] },
+      "guided",
+      {},
+      []
+    )
+  );
+
+  assert.deepEqual(withPassiveWeather, withoutWeather);
 });
 
 test("smart shirt with shorts and medium or heavy outerwear is suppressed", () => {

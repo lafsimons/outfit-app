@@ -330,7 +330,7 @@ function getGenerationClimatePreferences(outfitFilters, weatherData) {
     return outfitFilters.climate;
   }
 
-  return Array.isArray(weatherData?.suggestedFilters) ? weatherData.suggestedFilters : [];
+  return [];
 }
 
 function getPickedOutfitItems(outfit, itemsById) {
@@ -338,8 +338,11 @@ function getPickedOutfitItems(outfit, itemsById) {
 }
 
 export function getCurrentOutfitClimateChip(outfitFilters, weatherData) {
-  const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
-  return climatePreferences[0] ?? "Everyday";
+  if (Array.isArray(outfitFilters?.climate) && outfitFilters.climate.length) {
+    return outfitFilters.climate[0];
+  }
+
+  return "Everyday";
 }
 
 function getDominantStyleTags(items) {
