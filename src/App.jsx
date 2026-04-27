@@ -120,6 +120,7 @@ const emptyWardrobeFilters = {
   type: "",
   garmentType: "",
   color: "",
+  style: "",
   laundry: "",
   weight: "",
   list: "",
@@ -1698,6 +1699,39 @@ function getDominancePenaltyScore(item, pickedItems, styleMode) {
   return styleMode === "minimal" || styleMode === "minimal-bridge" ? 0 : 0;
 }
 
+function getSoftBalanceScore(item, slot, pickedItems, selectedStyles, climatePreferences) {
+  const itemStyles = getItemStyleTags(item);
+  const itemWeight = normalizeWeight(item.weight);
+  const selectedStyleSet = new Set(selectedStyles ?? []);
+  let score = 0;
+
+  if (pickedItems.length) {
+    const hasHeavyPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Heavy");
+    const hasLightPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Light");
+
+    if ((itemWeight === "Heavy" && hasLightPickedItem) || (itemWeight === "Light" && hasHeavyPickedItem)) {
+      score -= 1.5;
+    }
+  }
+
+  if (!selectedStyleSet.has("Formal") || !selectedStyleSet.has("Athleisure")) {
+    const pickedHasFormal = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).includes("Formal"));
+    const pickedHasAthleisure = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).includes("Athleisure"));
+    const itemIsFormal = itemStyles.includes("Formal");
+    const itemIsAthleisure = itemStyles.includes("Athleisure");
+
+    if ((pickedHasFormal && itemIsAthleisure) || (pickedHasAthleisure && itemIsFormal)) {
+      score -= 2.2;
+    }
+  }
+
+  if (climatePreferences.includes("Hot") && slot === "TopOuter" && item.garmentType === "Outerwear") {
+    score -= itemWeight === "Heavy" ? 2 : 1.25;
+  }
+
+  return score;
+}
+
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
   const itemStyles = getItemStyleTags(item);
   const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
@@ -1771,6 +1805,7 @@ function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfit
   score += getStyleCoherenceScore(item, selectedStyles, preferredStyles);
   score += getStyleCompletionScore(item, slot, styleMode);
   score += getDominancePenaltyScore(item, pickedItems, styleMode);
+  score += getSoftBalanceScore(item, slot, pickedItems, selectedStyles, climatePreferences);
 
   if (slot === "TopOuter") {
     if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
@@ -2072,12 +2107,14 @@ function getUniqueValues(items, key) {
 
 function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
   const ignored = new Set(ignoredKeys);
+  const itemStyles = getItemStyleTags(item);
 
   return (
     (ignored.has("brand") || matchesMetadataFilter(item.brand, filters.brand)) &&
     (ignored.has("type") || matchesMetadataFilter(item.type, filters.type)) &&
     (ignored.has("garmentType") || matchesMetadataFilter(item.garmentType, filters.garmentType)) &&
     (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
+    (ignored.has("style") || !filters.style || itemStyles.includes(filters.style)) &&
     (ignored.has("weight") || matchesMetadataFilter(item.weight, filters.weight)) &&
     (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list) &&
     (ignored.has("favorite") ||
@@ -2822,12 +2859,16 @@ export default function App() {
       const colorItems = items.filter((item) =>
         matchesWardrobeFilters(item, wardrobeFilters, ["color"])
       );
+      const styleItems = items.filter((item) =>
+        matchesWardrobeFilters(item, wardrobeFilters, ["style"])
+      );
 
       return {
         brand: getUniqueValues(brandItems, "brand"),
         type: getUniqueValues(typeItems, "type"),
         garmentType: getUniqueValues(items, "garmentType"),
-        color: getUniqueValues(colorItems, "color")
+        color: getUniqueValues(colorItems, "color"),
+        style: styleTagOptions.filter((style) => styleItems.some((item) => getItemStyleTags(item).includes(style)))
       };
     },
     [items, wardrobeFilters]
@@ -2840,6 +2881,7 @@ export default function App() {
     ["Type", wardrobeFilters.type],
     ["Garment", wardrobeFilters.garmentType],
     ["Color", wardrobeFilters.color],
+    ["Style", wardrobeFilters.style],
     ["Weight", wardrobeFilters.weight],
     ["List", wardrobeFilters.list],
     ["Exclude", wardrobeFilters.laundry],
@@ -3809,11 +3851,6 @@ export default function App() {
     setEditorAdvancedOpen(shouldOpenAdvanced);
     setEditingId(item.id);
     setDraft(normalizedItem);
-    if (options.returnTarget === "outfit") {
-      setActivePanel("wardrobe");
-      setControlsOpen(false);
-      setDockExpanded(isMobileViewport);
-    }
   }
 
   function cancelEdit() {
@@ -3997,7 +4034,10 @@ export default function App() {
 
   async function submitItem(event) {
     event.preventDefault();
+    await persistDraftItem();
+  }
 
+  async function persistDraftItem({ duplicate = false } = {}) {
     const trimmedName = draft.name.trim();
     const trimmedImageUrl = draft.imageUrl.trim();
     const trimmedBrand = draft.brand.trim();
@@ -4021,6 +4061,7 @@ export default function App() {
     setImageUploadError("");
 
     if (
+      !duplicate &&
       editingId === "new" &&
       !trimmedName &&
       !trimmedBrand &&
@@ -4057,7 +4098,7 @@ export default function App() {
     const nextItem = {
       ...normalizedDraft,
       id:
-        editingId === "new"
+        duplicate || editingId === "new"
           ? createUniqueItemId(
               {
                 ...normalizedDraft
@@ -4075,13 +4116,13 @@ export default function App() {
     };
     await saveItem(nextItem);
 
-    if (editingId !== "new" && draft.id !== nextItem.id) {
+    if (!duplicate && editingId !== "new" && draft.id !== nextItem.id) {
       await deleteItem(draft.id);
     }
 
     setItems((current) => {
       const existingIndex = current.findIndex((item) =>
-        item.id === (editingId === "new" ? nextItem.id : draft.id)
+        item.id === (duplicate || editingId === "new" ? nextItem.id : draft.id)
       );
 
       if (existingIndex === -1) {
@@ -4093,7 +4134,7 @@ export default function App() {
       return clone;
     });
 
-    if (editingId !== "new" && draft.id !== nextItem.id) {
+    if (!duplicate && editingId !== "new" && draft.id !== nextItem.id) {
       setOutfit((current) =>
         replaceItemIdInOutfit(current, draft.id, nextItem.id)
       );
@@ -4105,6 +4146,12 @@ export default function App() {
       );
     }
 
+    if (duplicate) {
+      setEditingId(nextItem.id);
+      setDraft(nextItem);
+      return nextItem;
+    }
+
     const shouldReturnToWardrobe = editorReturnTarget === "wardrobe" && activePanel !== "wardrobe";
     cancelEdit();
 
@@ -4112,6 +4159,16 @@ export default function App() {
       setActivePanel("wardrobe");
       setControlsOpen(false);
     }
+
+    return nextItem;
+  }
+
+  async function duplicateDraftItem() {
+    if (editingId === "new") {
+      return;
+    }
+
+    await persistDraftItem({ duplicate: true });
   }
 
   async function ingestItemImageFile(file, options = {}) {
@@ -5178,6 +5235,11 @@ export default function App() {
       <div className="form-actions">
         <button type="submit" className="primary-button">Save item</button>
         {editingId !== "new" ? (
+          <button type="button" className="secondary-button" onClick={duplicateDraftItem}>
+            Duplicate
+          </button>
+        ) : null}
+        {editingId !== "new" ? (
           <button type="button" className="ghost-button danger" onClick={handleEditorDelete}>
             Delete
           </button>
@@ -5667,6 +5729,20 @@ export default function App() {
                     </select>
                   </label>
                   <label>
+                    Style
+                    <select
+                      value={wardrobeFilters.style}
+                      onChange={(event) =>
+                        setWardrobeFilters((current) => ({ ...current, style: event.target.value }))
+                      }
+                    >
+                      <option value="">All styles</option>
+                      {wardrobeFilterOptions.style.map((value) => (
+                        <option key={value} value={value}>{value}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
                     Weight
                     <select
                       value={wardrobeFilters.weight}
@@ -5845,7 +5921,10 @@ export default function App() {
             </div>
           </div>
 
-          <aside ref={editorRef} className={`panel side-editor ${editingId ? "is-open" : ""} ${isMobileViewport ? "is-mobile-fullscreen" : ""}`}>
+          <aside
+            ref={editorRef}
+            className={`panel side-editor ${editingId && editorReturnTarget !== "outfit" ? "is-open" : ""} ${isMobileViewport ? "is-mobile-fullscreen" : ""}`}
+          >
             <div className="panel-header side-editor-header">
               <div>
                 <p className="eyebrow">Item editor</p>
@@ -5911,6 +5990,22 @@ export default function App() {
         ) : null}
         </div>
         </div>
+        ) : null}
+
+        {editingId && editorReturnTarget === "outfit" ? (
+          <aside className={`panel floating-item-editor ${isMobileViewport ? "is-mobile-fullscreen" : ""}`}>
+            <div className="panel-header side-editor-header">
+              <div>
+                <p className="eyebrow">Item editor</p>
+                <h2>{editorTitle}</h2>
+              </div>
+              <button type="button" className="ghost-button" onClick={cancelEdit}>
+                Close
+              </button>
+            </div>
+
+            {editorBody}
+          </aside>
         ) : null}
 
         {confirmation ? (
