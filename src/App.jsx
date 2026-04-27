@@ -115,6 +115,7 @@ const emptyOutfitFilters = {
 };
 const generationModes = ["guided", "random"];
 const defaultGenerationMode = "guided";
+const RECENT_OUTFIT_WINDOW = 3;
 const emptyWardrobeFilters = {
   brand: "",
   type: "",
@@ -772,6 +773,25 @@ const affinityRelationships = [
   ["TopOuter", "TopInner"],
   ["TopOuter", "Bottom"]
 ];
+const guidedExplanationLabels = {
+  climate: "Climate suitability",
+  styleCoherence: "Style match",
+  styleCompletion: "Style completion",
+  dominance: "Style consistency",
+  weightContrast: "Extreme weight mix penalty",
+  styleConflict: "Cross-style conflict penalty",
+  hotOuterwear: "Outerwear adjusted for heat",
+  lonelyExtremes: "Lonely extremes penalty",
+  baseline: "Clean baseline outfit",
+  earlyAnchor: "Early style anchoring",
+  selectedStyleBonus: "Selected style bonus",
+  favorite: "Favorite item boost",
+  affinity: "Liked combo affinity",
+  recentItemPenalty: "Recent item repetition penalty",
+  recentExactPenalty: "Exact outfit repetition penalty",
+  recentLikedBoost: "Recent like combo boost",
+  coldOuterwear: "Outerwear added for cold"
+};
 
 function getOutfitKey(outfit, layering) {
   return JSON.stringify({
@@ -832,6 +852,45 @@ function applyOutfitAffinityDelta(currentAffinity, outfit, delta) {
   });
 
   return nextAffinity;
+}
+
+function sanitizeRecentOutfitSlots(outfit) {
+  return Object.fromEntries(visibleSlots.map((slot) => [slot, outfit?.[slot] ?? null]));
+}
+
+function normalizeRecentOutfitEntry(entry) {
+  const outfit = sanitizeRecentOutfitSlots(entry?.outfit);
+  const layering = Boolean(entry?.layering);
+
+  return {
+    key: typeof entry?.key === "string" ? entry.key : getOutfitKey(outfit, layering),
+    outfit,
+    layering,
+    liked: Boolean(entry?.liked)
+  };
+}
+
+function normalizeRecentOutfits(value) {
+  return Array.isArray(value) ? value.map(normalizeRecentOutfitEntry).slice(0, RECENT_OUTFIT_WINDOW) : [];
+}
+
+function rememberRecentOutfit(currentRecentOutfits, outfit, layering, options = {}) {
+  const { liked, preserveLiked = false } = options;
+  const entry = normalizeRecentOutfitEntry({
+    outfit,
+    layering,
+    liked: Boolean(liked)
+  });
+  const existing = normalizeRecentOutfits(currentRecentOutfits);
+  const previous = existing.find((current) => current.key === entry.key);
+
+  return [
+    {
+      ...entry,
+      liked: typeof liked === "boolean" ? liked : preserveLiked ? previous?.liked || false : false
+    },
+    ...existing.filter((current) => current.key !== entry.key)
+  ].slice(0, RECENT_OUTFIT_WINDOW);
 }
 
 function isEligibleForGeneration(item, excluded = {}, generationLists = defaultGenerationLists) {
@@ -1321,6 +1380,11 @@ function getPickedOutfitItems(outfit, itemsById) {
   return visibleSlots.map((slot) => itemsById[outfit[slot]]).filter(Boolean);
 }
 
+function getCurrentOutfitClimateChip(outfitFilters, weatherData) {
+  const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
+  return climatePreferences[0] ?? "Everyday";
+}
+
 function getDominantStyleTags(items) {
   const counts = new Map();
 
@@ -1348,6 +1412,20 @@ function getDominantStyleCounts(items) {
   });
 
   return counts;
+}
+
+function getCurrentOutfitStyleChip(items, selectedStyles) {
+  const counts = getDominantStyleCounts(items);
+  const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+
+  if (ranked.length) {
+    const topScore = ranked[0][1];
+    const tiedStyles = ranked.filter(([, score]) => score === topScore).map(([style]) => style);
+    const selectedMatch = (selectedStyles ?? []).find((style) => tiedStyles.includes(style));
+    return selectedMatch ?? tiedStyles[0];
+  }
+
+  return selectedStyles?.[0] ?? "Casual";
 }
 
 function inferClimateSuitability(item) {
@@ -1699,20 +1777,26 @@ function getDominancePenaltyScore(item, pickedItems, styleMode) {
   return styleMode === "minimal" || styleMode === "minimal-bridge" ? 0 : 0;
 }
 
-function getSoftBalanceScore(item, slot, pickedItems, selectedStyles, climatePreferences) {
-  const itemStyles = getItemStyleTags(item);
+function getWeightContrastScore(item, pickedItems) {
   const itemWeight = normalizeWeight(item.weight);
-  const selectedStyleSet = new Set(selectedStyles ?? []);
-  let score = 0;
 
-  if (pickedItems.length) {
-    const hasHeavyPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Heavy");
-    const hasLightPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Light");
-
-    if ((itemWeight === "Heavy" && hasLightPickedItem) || (itemWeight === "Light" && hasHeavyPickedItem)) {
-      score -= 1.5;
-    }
+  if (!pickedItems.length) {
+    return 0;
   }
+
+  const hasHeavyPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Heavy");
+  const hasLightPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Light");
+
+  if ((itemWeight === "Heavy" && hasLightPickedItem) || (itemWeight === "Light" && hasHeavyPickedItem)) {
+    return -1.5;
+  }
+
+  return 0;
+}
+
+function getCrossStyleConflictScore(item, pickedItems, selectedStyles) {
+  const itemStyles = getItemStyleTags(item);
+  const selectedStyleSet = new Set(selectedStyles ?? []);
 
   if (!selectedStyleSet.has("Formal") || !selectedStyleSet.has("Athleisure")) {
     const pickedHasFormal = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).includes("Formal"));
@@ -1721,15 +1805,152 @@ function getSoftBalanceScore(item, slot, pickedItems, selectedStyles, climatePre
     const itemIsAthleisure = itemStyles.includes("Athleisure");
 
     if ((pickedHasFormal && itemIsAthleisure) || (pickedHasAthleisure && itemIsFormal)) {
-      score -= 2.2;
+      return -2.2;
     }
   }
 
+  return 0;
+}
+
+function getHotOuterwearScore(item, slot, climatePreferences) {
   if (climatePreferences.includes("Hot") && slot === "TopOuter" && item.garmentType === "Outerwear") {
-    score -= itemWeight === "Heavy" ? 2 : 1.25;
+    return normalizeWeight(item.weight) === "Heavy" ? -2 : -1.25;
   }
 
-  return score;
+  return 0;
+}
+
+function getLonelyExtremesScore(item, slot, outfit, itemsById) {
+  if (!["TopInner", "TopOuter", "Bottom", "Footwear"].includes(slot)) {
+    return 0;
+  }
+
+  const nextItems = getPickedOutfitItems(
+    {
+      ...outfit,
+      [slot]: item.id
+    },
+    itemsById
+  );
+
+  const heavyCount = nextItems.filter((candidate) => normalizeWeight(candidate.weight) === "Heavy").length;
+  const lightCount = nextItems.filter((candidate) => normalizeWeight(candidate.weight) === "Light").length;
+
+  if (heavyCount === 1 && lightCount >= 2) {
+    return -1.15;
+  }
+
+  if (lightCount === 1 && heavyCount >= 2) {
+    return -1;
+  }
+
+  return 0;
+}
+
+function getBaselineOutfitScore(item, slot) {
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+
+  if (slot === "TopInner" && hasType("t-shirt", "shirt")) {
+    return 1.2;
+  }
+
+  if (slot === "Bottom" && hasType("jeans", "trousers", "light trousers")) {
+    return 1.2;
+  }
+
+  if (slot === "Footwear" && hasType("sneakers", "leather sneakers")) {
+    return 1.2;
+  }
+
+  return 0;
+}
+
+function getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles) {
+  if (pickedItems.length >= 2 || slot === "Headwear") {
+    return 0;
+  }
+
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  const selectedStyleSet = new Set(selectedStyles ?? []);
+
+  if (hasType("shirt")) {
+    return selectedStyleSet.has("Formal") || selectedStyleSet.has("Smart Casual") ? 2.2 : 1.3;
+  }
+
+  if (hasType("hoodie", "sport t-shirt", "sport ls t-shirt", "sweatshirt")) {
+    return selectedStyleSet.has("Athleisure") ? 2.2 : 1.3;
+  }
+
+  if (hasType("trousers", "light trousers", "derby")) {
+    return selectedStyleSet.has("Formal") || selectedStyleSet.has("Smart Casual") ? 1.4 : 0.8;
+  }
+
+  if (hasType("sport shorts", "shell jacket", "fleece jacket")) {
+    return selectedStyleSet.has("Athleisure") ? 1.4 : 0.8;
+  }
+
+  return 0;
+}
+
+function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering) {
+  const normalizedRecentOutfits = normalizeRecentOutfits(recentOutfits);
+  const scores = {
+    recentItemPenalty: 0,
+    recentExactPenalty: 0,
+    recentLikedBoost: 0
+  };
+
+  if (!normalizedRecentOutfits.length) {
+    return scores;
+  }
+
+  normalizedRecentOutfits.forEach((recentOutfit, index) => {
+    const recencyWeight = RECENT_OUTFIT_WINDOW - index;
+    const itemUsed = visibleSlots.some((recentSlot) => recentOutfit.outfit?.[recentSlot] === item.id);
+
+    if (itemUsed) {
+      scores.recentItemPenalty -= 0.18 * recencyWeight;
+    }
+
+    affinityRelationships.forEach(([sourceSlot, targetSlot]) => {
+      if (targetSlot !== slot || !recentOutfit.liked) {
+        return;
+      }
+
+      const sourceItemId = outfit?.[sourceSlot];
+
+      if (!sourceItemId) {
+        return;
+      }
+
+      if (recentOutfit.outfit?.[sourceSlot] === sourceItemId && recentOutfit.outfit?.[targetSlot] === item.id) {
+        scores.recentLikedBoost += 0.25 * recencyWeight;
+      }
+    });
+
+    const completedOutfit = {
+      ...outfit,
+      [slot]: item.id
+    };
+    const isComplete = visibleSlots.every((visibleSlot) => completedOutfit[visibleSlot]);
+
+    if (isComplete && recentOutfit.key === getOutfitKey(completedOutfit, layering)) {
+      scores.recentExactPenalty -= 0.45 * recencyWeight;
+    }
+  });
+
+  return scores;
+}
+
+function getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selectedStyles, climatePreferences) {
+  return {
+    weightContrast: getWeightContrastScore(item, pickedItems),
+    styleConflict: getCrossStyleConflictScore(item, pickedItems, selectedStyles),
+    hotOuterwear: getHotOuterwearScore(item, slot, climatePreferences),
+    lonelyExtremes: getLonelyExtremesScore(item, slot, outfit, itemsById)
+  };
 }
 
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
@@ -1793,44 +2014,60 @@ function getAffinityScore(item, slot, outfit, outfitAffinity) {
   return score;
 }
 
-function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity) {
+function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering) {
   const pickedItems = getPickedOutfitItems(outfit, itemsById);
   const selectedStyles = outfitFilters.style ?? [];
   const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
   const preferredStyles = getDominantStyleTags(pickedItems);
   const styleMode = getDominantStyleMode(selectedStyles, pickedItems);
-  let score = 1;
-
-  score += getClimateScore(item, slot, climatePreferences);
-  score += getStyleCoherenceScore(item, selectedStyles, preferredStyles);
-  score += getStyleCompletionScore(item, slot, styleMode);
-  score += getDominancePenaltyScore(item, pickedItems, styleMode);
-  score += getSoftBalanceScore(item, slot, pickedItems, selectedStyles, climatePreferences);
+  const breakdown = {
+    climate: getClimateScore(item, slot, climatePreferences),
+    styleCoherence: getStyleCoherenceScore(item, selectedStyles, preferredStyles),
+    styleCompletion: getStyleCompletionScore(item, slot, styleMode),
+    dominance: getDominancePenaltyScore(item, pickedItems, styleMode),
+    ...getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selectedStyles, climatePreferences),
+    baseline: getBaselineOutfitScore(item, slot),
+    earlyAnchor: getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles),
+    selectedStyleBonus: 0,
+    favorite: item.favorite ? 0.5 : 0,
+    affinity: getAffinityScore(item, slot, outfit, outfitAffinity),
+    recentItemPenalty: 0,
+    recentExactPenalty: 0,
+    recentLikedBoost: 0,
+    coldOuterwear: 0
+  };
 
   if (slot === "TopOuter") {
     if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
-      score += item.garmentType === "Outerwear" ? 3 : -4;
+      breakdown.coldOuterwear += item.garmentType === "Outerwear" ? 3 : -4;
     }
 
     if (climatePreferences.includes("Hot")) {
-      score += item.garmentType === "Outerwear" ? -3 : 0;
+      breakdown.hotOuterwear += item.garmentType === "Outerwear" ? -3 : 0;
     }
   }
 
   if ((slot === "TopInner" || slot === "Bottom" || slot === "Footwear") && selectedStyles.length) {
-    score += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? 1 : 0;
+    breakdown.selectedStyleBonus += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? 1 : 0;
   }
 
-  if (item.favorite) {
-    score += 0.5;
-  }
+  const recentScores = getRecentMemoryScore(item, slot, outfit, recentOutfits, layering);
+  breakdown.recentItemPenalty += recentScores.recentItemPenalty;
+  breakdown.recentExactPenalty += recentScores.recentExactPenalty;
+  breakdown.recentLikedBoost += recentScores.recentLikedBoost;
 
-  score += getAffinityScore(item, slot, outfit, outfitAffinity);
-
-  return Math.max(0.2, score);
+  const score = 1 + Object.values(breakdown).reduce((sum, value) => sum + value, 0);
+  return {
+    score: Math.max(0.2, score),
+    breakdown
+  };
 }
 
-function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity) {
+function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering) {
+  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering).score;
+}
+
+function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering) {
   if (!pool.length) {
     return null;
   }
@@ -1842,7 +2079,7 @@ function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters,
   return pickWeightedRandom(
     pool.map((item) => ({
       item,
-      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity)
+      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering)
     }))
   );
 }
@@ -1933,7 +2170,8 @@ function buildNextOutfit(
   outfitFilters = emptyOutfitFilters,
   weatherData = null,
   generationMode = defaultGenerationMode,
-  outfitAffinity = {}
+  outfitAffinity = {},
+  recentOutfits = []
 ) {
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
@@ -1978,7 +2216,7 @@ function buildNextOutfit(
       pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
       pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
 
-      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity);
+      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
       nextOutfit[slot] = nextItem?.id ?? null;
 
       if (nextItem?.layerType === "Both") {
@@ -1990,10 +2228,56 @@ function buildNextOutfit(
 
     pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
     pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
-    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity)?.id ?? null;
+    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering)?.id ?? null;
   });
 
   return nextOutfit;
+}
+
+function summarizeGuidedExplanation(outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering) {
+  const aggregated = {};
+  const contextOutfit = {};
+
+  visibleSlots.forEach((slot) => {
+    const itemId = outfit?.[slot];
+    const item = itemId ? itemsById[itemId] : null;
+
+    if (!item) {
+      return;
+    }
+
+    const { breakdown } = getGuidedScoreBreakdown(
+      item,
+      slot,
+      contextOutfit,
+      itemsById,
+      outfitFilters,
+      weatherData,
+      outfitAffinity,
+      recentOutfits,
+      layering
+    );
+
+    Object.entries(breakdown).forEach(([key, value]) => {
+      if (!value) {
+        return;
+      }
+
+      aggregated[key] = (aggregated[key] ?? 0) + value;
+    });
+
+    contextOutfit[slot] = itemId;
+  });
+
+  return Object.entries(aggregated)
+    .filter(([, value]) => Math.abs(value) >= 0.2)
+    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
+    .slice(0, 6)
+    .map(([key, value]) => ({
+      key,
+      label: guidedExplanationLabels[key] ?? key,
+      value
+    }));
 }
 
 function slugPart(value) {
@@ -2737,6 +3021,7 @@ export default function App() {
   const [savedOutfits, setSavedOutfits] = useState([]);
   const [likedOutfitKeys, setLikedOutfitKeys] = useState({});
   const [outfitAffinity, setOutfitAffinity] = useState({});
+  const [recentOutfits, setRecentOutfits] = useState([]);
   const [fitpics, setFitpics] = useState([]);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
@@ -2774,6 +3059,7 @@ export default function App() {
   const [weatherData, setWeatherData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState("");
+  const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -2820,6 +3106,36 @@ export default function App() {
   }, [accessoriesEnabled, itemsById, outfit]);
   const currentOutfitKey = useMemo(() => getOutfitKey(outfit, layering), [outfit, layering]);
   const isCurrentOutfitLiked = Boolean(likedOutfitKeys[currentOutfitKey]);
+  const explanationRecentOutfits = useMemo(
+    () =>
+      recentOutfits[0]?.key === currentOutfitKey
+        ? recentOutfits.slice(1)
+        : recentOutfits,
+    [recentOutfits, currentOutfitKey]
+  );
+  const currentOutfitStyleChip = useMemo(
+    () => getCurrentOutfitStyleChip(currentOutfitItems, outfitFilters.style ?? []),
+    [currentOutfitItems, outfitFilters.style]
+  );
+  const currentOutfitClimateChip = useMemo(
+    () => getCurrentOutfitClimateChip(outfitFilters, weatherData),
+    [outfitFilters, weatherData]
+  );
+  const currentOutfitDebugReasons = useMemo(
+    () =>
+      generationMode === "guided"
+        ? summarizeGuidedExplanation(
+            outfit,
+            itemsById,
+            outfitFilters,
+            weatherData,
+            outfitAffinity,
+            explanationRecentOutfits,
+            layering
+          )
+        : [],
+    [outfit, itemsById, outfitFilters, weatherData, outfitAffinity, explanationRecentOutfits, layering, generationMode]
+  );
   const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
     0
@@ -3093,6 +3409,7 @@ export default function App() {
         setSavedOutfits(normalizeSavedOutfits(storedAppState.savedOutfits));
         setLikedOutfitKeys(normalizeLikedOutfitKeys(storedAppState.likedOutfitKeys));
         setOutfitAffinity(normalizeOutfitAffinity(storedAppState.outfitAffinity));
+        setRecentOutfits(normalizeRecentOutfits(storedAppState.recentOutfits));
         setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
         setGenerationMode(normalizeGenerationMode(storedAppState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
@@ -3107,11 +3424,12 @@ export default function App() {
         setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
         setLocked(defaultState.locked ?? {});
         setExcluded(defaultState.excluded ?? {});
-        setOutfit(defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity)));
+        setOutfit(defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits)));
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits(normalizeSavedOutfits(defaultState.savedOutfits));
         setLikedOutfitKeys(normalizeLikedOutfitKeys(defaultState.likedOutfitKeys));
         setOutfitAffinity(normalizeOutfitAffinity(defaultState.outfitAffinity));
+        setRecentOutfits(normalizeRecentOutfits(defaultState.recentOutfits));
         setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
         setGenerationMode(normalizeGenerationMode(defaultState.generationMode));
         setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
@@ -3147,6 +3465,7 @@ export default function App() {
       savedOutfits,
       likedOutfitKeys,
       outfitAffinity,
+      recentOutfits,
       generationLists,
       generationMode,
       outfitFilters,
@@ -3154,7 +3473,7 @@ export default function App() {
       weatherData,
       fitpics
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -3178,9 +3497,9 @@ export default function App() {
         }
       });
 
-      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity);
+      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, loading]);
+  }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
@@ -3286,7 +3605,15 @@ export default function App() {
     setFitpicPreview(null);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity));
+    setOutfit((current) => {
+      const nextOutfit = buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      if (generationMode === "guided") {
+        setRecentOutfits((currentRecentOutfits) =>
+          rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
+        );
+      }
+      return nextOutfit;
+    });
   }
 
   function handleReroll(slot) {
@@ -3296,7 +3623,7 @@ export default function App() {
 
     const pool = getSlotOptions(slot).filter((item) => item.id !== outfit[slot]);
 
-    const nextItem = pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity);
+    const nextItem = pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
 
     setOutfit((current) => ({
       ...current,
@@ -3460,11 +3787,12 @@ export default function App() {
     setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
     setLocked(nextAppState?.locked ?? {});
     setExcluded(nextAppState?.excluded ?? {});
-    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity)));
+    setOutfit(nextAppState?.outfit ?? buildNextOutfit(normalizedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity), normalizeRecentOutfits(nextAppState?.recentOutfits)));
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits(normalizeSavedOutfits(nextAppState?.savedOutfits));
     setLikedOutfitKeys(normalizeLikedOutfitKeys(nextAppState?.likedOutfitKeys));
     setOutfitAffinity(normalizeOutfitAffinity(nextAppState?.outfitAffinity));
+    setRecentOutfits(normalizeRecentOutfits(nextAppState?.recentOutfits));
     setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
     setGenerationMode(normalizeGenerationMode(nextAppState?.generationMode));
     setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
@@ -3893,7 +4221,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity);
+        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       });
 
       return nextExcluded;
@@ -4359,6 +4687,7 @@ export default function App() {
     setOutfitAffinity((current) =>
       applyOutfitAffinityDelta(current, outfitToToggle, isLiked ? -1 : 1)
     );
+    setRecentOutfits((current) => rememberRecentOutfit(current, outfitToToggle, outfitLayering, { liked: !isLiked }));
   }
 
   function toggleCurrentOutfitLike() {
@@ -4375,6 +4704,17 @@ export default function App() {
     setLayering(Boolean(savedOutfit.layering));
     setAccessoriesEnabled(hasAccessoryItems(sanitizedOutfit));
     setOutfit(sanitizedOutfit);
+    setRecentOutfits((current) =>
+      rememberRecentOutfit(
+        current,
+        sanitizedOutfit,
+        Boolean(savedOutfit.layering),
+        {
+          preserveLiked: true,
+          liked: Boolean(likedOutfitKeys[getOutfitKey(savedOutfit.outfit, savedOutfit.layering)])
+        }
+      )
+    );
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
   }
@@ -5546,6 +5886,40 @@ export default function App() {
             </div>
 
             <div className="controls-group controls-group-bottom">
+              <div className="outfit-feedback-panel">
+                <div className="outfit-feedback-header">
+                  <p className="eyebrow">Why this outfit?</p>
+                  <button
+                    type="button"
+                    className={`ghost-button outfit-debug-toggle ${outfitDebugOpen ? "is-active" : ""}`}
+                    onClick={() => setOutfitDebugOpen((current) => !current)}
+                    aria-expanded={outfitDebugOpen}
+                  >
+                    {outfitDebugOpen ? "Hide debug" : "Debug"}
+                  </button>
+                </div>
+
+                <div className="outfit-feedback-chips" aria-label="Outfit reasons">
+                  <span className="active-filter-chip">{currentOutfitStyleChip}</span>
+                  <span className="active-filter-chip">{currentOutfitClimateChip}</span>
+                </div>
+
+                {outfitDebugOpen ? (
+                  <div className="outfit-debug-panel">
+                    {currentOutfitDebugReasons.length ? (
+                      currentOutfitDebugReasons.map((reason) => (
+                        <div key={reason.key} className="outfit-debug-row">
+                          <span>{reason.label}</span>
+                          <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="outfit-debug-empty">No guided scoring reasons available.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
               <button
                 type="button"
                 className={`ghost-button ${isCurrentOutfitLiked ? "is-active" : ""}`}

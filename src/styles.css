@@ -134,6 +134,55 @@ button:disabled {
   align-items: center;
 }
 
+.outfit-feedback-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.outfit-feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.outfit-feedback-header .eyebrow {
+  margin: 0;
+}
+
+.outfit-feedback-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.outfit-debug-toggle {
+  justify-self: end;
+}
+
+.outfit-debug-panel {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-soft);
+}
+
+.outfit-debug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.72rem;
+}
+
+.outfit-debug-empty {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .current-outfit-panel {
   position: relative;
   height: 100%;

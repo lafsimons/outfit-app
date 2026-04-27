@@ -10,6 +10,15 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function stripLocalOnlyAppState(appState) {
+  if (!appState || typeof appState !== "object") {
+    return {};
+  }
+
+  const { recentOutfits, ...rest } = appState;
+  return rest;
+}
+
 function requestToPromise(request) {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -143,7 +152,7 @@ export async function exportBackup() {
     version: 1,
     exportedAt: new Date().toISOString(),
     items,
-    appState: appState ?? {}
+    appState: stripLocalOnlyAppState(appState)
   };
 }
 
@@ -155,7 +164,10 @@ export async function replaceWithBackup(backup) {
     backup.items.forEach((item) => items.put(item));
     appState.put({
       key: "state",
-      value: backup.appState
+      value: {
+        ...(backup.appState ?? {}),
+        recentOutfits: []
+      }
     });
   });
 }
