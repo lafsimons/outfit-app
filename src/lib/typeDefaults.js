@@ -54,6 +54,8 @@ export const defaultTypeSuggestions = [
   "Pants",
   "Shorts",
   "Sport Shorts",
+  "Sport Pants",
+  "Sweat Pants",
   "T-Shirt",
   "Sport T-Shirt",
   "LS T-Shirt",
@@ -75,6 +77,7 @@ export const defaultTypeSuggestions = [
   "Twill Jacket (light)",
   "Denim Jacket",
   "Denim Jacket (light)",
+  "Fleece Sweater",
   "Fleece Jacket",
   "Shell Jacket",
   "Wool Jacket",
@@ -98,7 +101,7 @@ export const typeDefaultsByKey = {
   cap: { garmentType: "Headwear", size: "OS", weight: "Light", styleTags: ["Casual", "Athleisure"] },
   "sport cap": { garmentType: "Headwear", size: "OS", weight: "Light", styleTags: ["Athleisure"] },
   beanie: { garmentType: "Headwear", size: "OS", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
-  "beanie (light)": { garmentType: "Headwear", size: "OS", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
+  "beanie (light)": { garmentType: "Headwear", size: "OS", weight: "Light", styleTags: ["Casual", "Athleisure"] },
   "heavy beanie": { garmentType: "Headwear", size: "OS", weight: "Heavy", styleTags: ["Casual", "Athleisure"] },
   hat: { garmentType: "Headwear", size: "OS", weight: "Light", styleTags: ["Casual", "Smart Casual"] },
   "t-shirt": { garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Casual"] },
@@ -114,6 +117,7 @@ export const typeDefaultsByKey = {
   sweatshirt: { garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
   "sweatshirt (thin)": { garmentType: "Top", layerType: "Both", weight: "Light", styleTags: ["Casual", "Athleisure"] },
   hoodie: { garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
+  "fleece sweater": { garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
   knit: { garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Smart Casual"] },
   "knit sweater": { garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Smart Casual"] },
   "thick knit sweater": { garmentType: "Top", layerType: "Both", weight: "Heavy", styleTags: ["Casual", "Smart Casual"] },
@@ -142,6 +146,8 @@ export const typeDefaultsByKey = {
   "jeans (light)": { garmentType: "Bottom", weight: "Light", styleTags: ["Casual"] },
   shorts: { garmentType: "Bottom", weight: "Light", styleTags: ["Casual"] },
   "sport shorts": { garmentType: "Bottom", weight: "Light", styleTags: ["Athleisure"] },
+  "sport pants": { garmentType: "Bottom", weight: "Medium", styleTags: ["Athleisure"] },
+  "sweat pants": { garmentType: "Bottom", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
   sneakers: { garmentType: "Footwear", weight: "Light", styleTags: ["Casual", "Athleisure"] },
   "sneakers (thin)": { garmentType: "Footwear", weight: "Light", styleTags: ["Casual", "Athleisure"] },
   "canvas sneakers": { garmentType: "Footwear", weight: "Light", styleTags: ["Casual"] },
@@ -198,11 +204,14 @@ export function getTypePresetKey(type) {
   if (["ls t-shirt (light)", "light ls t-shirt", "ls tee light"].includes(normalized)) return "ls t-shirt (light)";
   if (["ls t-shirt (thick)", "thick ls t-shirt", "heavy ls t-shirt"].includes(normalized)) return "ls t-shirt (thick)";
   if (["pants"].includes(normalized)) return "trousers";
+  if (["sport pants", "track pants", "training pants", "joggers"].includes(normalized)) return "sport pants";
+  if (["sweat pants", "sweatpants", "sweats", "jogging pants"].includes(normalized)) return "sweat pants";
   if (["light trousers", "linen trousers", "cotton trousers light"].includes(normalized)) return "light trousers";
   if (["heavy wool trousers"].includes(normalized)) return "heavy wool trousers";
   if (["denim", "denim pants"].includes(normalized)) return "jeans";
   if (["jeans (light)", "light jeans"].includes(normalized)) return "jeans (light)";
   if (["sweater"].includes(normalized)) return "knit sweater";
+  if (["fleece", "fleece pullover", "fleece sweater"].includes(normalized)) return "fleece sweater";
   if (["thick knit sweater", "heavy knit sweater"].includes(normalized)) return "thick knit sweater";
   if (["vest", "knitted vest"].includes(normalized)) return "knit vest";
   if (["overshirt"].includes(normalized)) return "overshirt";
@@ -242,6 +251,7 @@ export function getTypeMatchKeys(type) {
     matches.add("ls t-shirt");
   }
   if (presetKey?.startsWith("sweatshirt")) matches.add("sweatshirt");
+  if (presetKey === "fleece sweater") matches.add("fleece sweater");
   if (presetKey?.startsWith("twill jacket")) matches.add("twill jacket");
   if (presetKey?.startsWith("denim jacket")) matches.add("denim jacket");
   if (presetKey?.startsWith("jacket")) matches.add("jacket");
@@ -255,6 +265,7 @@ export function getTypeMatchKeys(type) {
     matches.add("wool shirt");
   }
   if (presetKey === "light trousers" || presetKey === "heavy wool trousers") matches.add("trousers");
+  if (presetKey === "sport pants" || presetKey === "sweat pants") matches.add("pants");
   if (presetKey === "jeans (light)") matches.add("jeans");
   if (presetKey === "thick knit sweater") matches.add("knit sweater");
   if (presetKey === "sunglasses") matches.add("sun glasses");

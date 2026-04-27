@@ -30,6 +30,9 @@ export const noFilterStyleWeights = {
   Athleisure: 0.2,
   Formal: 0.1
 };
+const MAX_RECENT_ITEM_PENALTY = -4.5;
+const MAX_RECENT_EXACT_PENALTY = -3.6;
+const MAX_STYLE_STREAK_PENALTY = -3.8;
 
 const nonStackableTopTypes = new Set(["sweatshirt", "jacket"]);
 const affinityRelationships = [
@@ -399,6 +402,10 @@ function modeToStyle(styleMode) {
   return "Casual";
 }
 
+function clampScore(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function classifyOutfitStyle(items, selectedStyles = []) {
   return resolveDominantStyleFromCounts(getDominantStyleCounts(items), selectedStyles);
 }
@@ -429,6 +436,10 @@ function getClimateScore(item, slot, climatePreferences) {
     if (climateTags.has(climate)) score += 1.4;
 
     if (climate === "Hot") {
+      if (slot === "Headwear") {
+        if (hasType("sport cap", "cap")) score += 1.6;
+        if (hasType("beanie")) score -= normalizeWeight(item.weight) === "Light" ? 1.5 : 4.5;
+      }
       if (slot === "TopInner") {
         if (hasType("t-shirt", "shirt")) score += 3;
         else if (hasType("ls t-shirt")) score += 1;
@@ -446,6 +457,10 @@ function getClimateScore(item, slot, climatePreferences) {
     }
 
     if (climate === "Warm") {
+      if (slot === "Headwear") {
+        if (hasType("sport cap", "cap")) score += 1.1;
+        if (hasType("beanie")) score -= normalizeWeight(item.weight) === "Light" ? 0.8 : 2.6;
+      }
       if (hasType("t-shirt", "shirt", "sneakers", "canvas sneakers", "trousers", "shorts")) score += 1;
       if (item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") score -= 2;
       if (hasType("scarf")) score -= 3;
@@ -580,7 +595,7 @@ function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById =
   }
 
   if (profile.blockFormalSet) {
-    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt")) {
+    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "leather sneakers", "boots", "knit", "knit sweater", "wool shirt", "fleece sweater")) {
       return false;
     }
     if (isAthleisureOnly || isAthleisureSneaker(item)) {
@@ -591,7 +606,7 @@ function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById =
   if (profile.blockFormalBridgeSet && hasFormalBridgeBlockedType) return false;
 
   if (profile.blockSmartCasualSet) {
-    if (hasType("slides", "sandals", "sport cap", "fleece jacket", "shell jacket", "sport t-shirt", "sport ls t-shirt", "sport shorts")) {
+    if (hasType("slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "sport t-shirt", "sport ls t-shirt", "sport shorts", "fleece sweater", "sneakers", "sneakers (thin)", "canvas sneakers")) {
       return false;
     }
     if (isAthleisureOnly) {
@@ -600,7 +615,10 @@ function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById =
   }
 
   if (profile.blockAthleisureSet) {
-    if (hasType("derby", "wool coat", "wool jacket") || isFormalOnly) {
+    if (hasType("derby", "wool coat", "wool jacket", "blazer", "shirt", "wool shirt") || isFormalOnly) {
+      return false;
+    }
+    if (getItemStyleTags(item).every((style) => style === "Smart Casual" || style === "Formal")) {
       return false;
     }
   }
@@ -646,6 +664,11 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
   if (climatePreferences.includes("Hot")) {
     if (slot === "TopOuter" && item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") return false;
     if (hasType("wool coat")) return false;
+    if (slot === "Headwear" && hasType("beanie")) return false;
+  }
+
+  if (climatePreferences.includes("Warm")) {
+    if (slot === "Headwear" && hasType("beanie") && normalizeWeight(item.weight) !== "Light") return false;
   }
 
   if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
@@ -677,11 +700,13 @@ export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weath
   return filtered.length ? filtered : pool;
 }
 
-function getDominantStyleMode(selectedStyles, pickedItems) {
+function getDominantStyleMode(selectedStyles, pickedItems, noFilterData = null) {
   const selectedStyleMode = resolveSelectedStyleMode(selectedStyles);
   const counts = getDominantStyleCounts(pickedItems);
 
-  if (pickedItems.length < 2) return selectedStyleMode;
+  if (pickedItems.length < 2) {
+    return selectedStyleMode === "no-filter" ? noFilterData?.targetMode ?? "casual" : selectedStyleMode;
+  }
 
   const dominantEntry = rankStyleCounts(counts)[0];
   if (!dominantEntry || dominantEntry[1] < 2) return selectedStyleMode;
@@ -738,6 +763,52 @@ function getAdjustedNoFilterWeights(recentStyles, support, anchoredStyle = null)
   );
 }
 
+function pickWeightedStyle(weights) {
+  const entries = Object.entries(weights).filter(([, weight]) => weight > 0);
+  const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
+  if (!totalWeight) return "Casual";
+
+  let remaining = Math.random() * totalWeight;
+  for (const [style, weight] of entries) {
+    remaining -= weight;
+    if (remaining <= 0) return style;
+  }
+
+  return entries.at(-1)?.[0] ?? "Casual";
+}
+
+function getEligibleStyleSupport(items, excluded, generationLists) {
+  return getPoolStyleSupport(
+    items.filter((item) => isEligibleForGeneration(item, excluded, generationLists) && visibleSlots.some((slot) => getPool([item], slot, {}, generationLists).length))
+  );
+}
+
+function buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById) {
+  const support = getEligibleStyleSupport(items, excluded, generationLists);
+  const recentStyles = getRecentDominantStyles(recentOutfits, itemsById);
+  const weights = getAdjustedNoFilterWeights(recentStyles, support, null);
+  const repeatedRecentStyle = recentStyles[0] && recentStyles[0] === recentStyles[1] ? recentStyles[0] : null;
+  const targetCandidates = repeatedRecentStyle
+    ? Object.fromEntries(
+        Object.entries(weights).map(([style, weight]) => [
+          style,
+          style === repeatedRecentStyle && Object.entries(weights).some(([otherStyle, otherWeight]) => otherStyle !== style && otherWeight > 0.08)
+            ? 0
+            : weight
+        ])
+      )
+    : weights;
+  const targetStyle = pickWeightedStyle(targetCandidates);
+
+  return {
+    support,
+    weights,
+    targetStyle,
+    targetMode: styleToMode(targetStyle),
+    avoidStyle: repeatedRecentStyle
+  };
+}
+
 function getNoFilterPreference(item, noFilterData) {
   const itemStyles = getItemStyleTags(item);
   if (!noFilterData || !itemStyles.length) return 0;
@@ -749,6 +820,8 @@ function getNoFilterPreference(item, noFilterData) {
   const isAthleisureOnly = isAthleisureOnlyItem(item);
 
   let score = styleWeight * 4.4 + supportWeight * 1.2;
+  const targetStyle = noFilterData.targetStyle;
+  const avoidStyle = noFilterData.avoidStyle;
 
   if (anchoredStyle) {
     if (itemStyles.includes(anchoredStyle)) score += anchoredStyle === "Formal" ? 3.2 : 2.4;
@@ -759,6 +832,15 @@ function getNoFilterPreference(item, noFilterData) {
     if (isFormalOnly && (noFilterData.weights.Formal ?? 0) < 0.16) score -= 1.6;
     if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) < 0.22) score -= 1.2;
     if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) >= 0.22) score += 1.4;
+    if (targetStyle && itemStyles.includes(targetStyle)) {
+      score += targetStyle === "Formal" ? 2.8 : 1.8;
+    }
+    if (targetStyle === "Formal" && itemStyles.includes("Smart Casual")) {
+      score += 0.8;
+    }
+    if (avoidStyle && itemStyles.includes(avoidStyle)) {
+      score -= itemStyles.length === 1 ? 4.4 : 3.4;
+    }
   }
 
   return score;
@@ -770,15 +852,16 @@ function getStyleCompletionScore(item, slot, styleMode) {
   let score = 0;
 
   if (styleMode === "formal") {
-    if (slot === "TopInner" && hasType("shirt")) score += 4;
-    if (slot === "Bottom" && hasType("trousers", "light trousers", "heavy wool trousers")) score += 4;
-    if (slot === "Footwear" && hasType("derby")) score += 4;
-    if (slot === "TopOuter" && hasType("blazer", "wool coat")) score += 4;
+    if (slot === "TopInner" && hasType("shirt")) score += 6;
+    if (slot === "Bottom" && hasType("trousers", "light trousers", "heavy wool trousers")) score += 6;
+    if (slot === "Footwear" && hasType("derby")) score += 6;
+    if (slot === "TopOuter" && hasType("blazer", "wool coat")) score += 6;
     if (item.garmentType === "Accessory" && item.accessorySlot === "LeftHand" && hasType("watch")) score += 1.5;
     if (item.garmentType === "Accessory" && item.accessorySlot === "Belt" && hasType("belt")) score += 1.2;
     if (slot === "Headwear" && hasType("hat")) score += 1.5;
-    if (slot === "Headwear" && hasType("cap")) score -= 1.5;
-    if (slot === "Bottom" && hasType("jeans")) score -= 2;
+    if (slot === "Headwear" && hasType("cap")) score -= 2.6;
+    if (slot === "Bottom" && hasType("jeans")) score -= 2.5;
+    if (slot === "TopInner" && hasType("t-shirt", "ls t-shirt")) score -= 2.4;
   }
 
   if (styleMode === "formal-bridge") {
@@ -791,18 +874,20 @@ function getStyleCompletionScore(item, slot, styleMode) {
   }
 
   if (styleMode === "smart-casual") {
-    if (slot === "TopInner" && hasType("shirt", "knit", "knit sweater", "wool shirt")) score += 2.5;
-    if (slot === "Footwear" && hasType("leather sneakers")) score += 2.5;
-    if (slot === "TopOuter" && hasType("jacket", "blazer", "wool coat", "wool jacket")) score += 2.5;
+    if (slot === "TopInner" && hasType("shirt", "casual shirt", "knit", "knit sweater", "wool shirt", "fleece sweater")) score += hasType("shirt", "wool shirt") ? 4.8 : 3.8;
+    if (slot === "Footwear" && hasType("leather sneakers", "boots", "derby")) score += hasType("leather sneakers") ? 4.2 : hasType("boots") ? 2.8 : 1.6;
+    if (slot === "TopOuter" && hasType("jacket", "twill jacket", "blazer", "wool coat", "wool jacket")) score += hasType("blazer", "wool coat") ? 4.2 : 3.2;
     if (slot === "Headwear" && hasType("hat")) score += 1;
+    if (slot === "Bottom" && hasType("trousers", "light trousers")) score += 3.5;
+    if (slot === "Bottom" && hasType("jeans")) score += 1.2;
   }
 
   if (styleMode === "athleisure") {
-    if (slot === "TopInner" && hasType("hoodie", "sweatshirt", "sport t-shirt", "sport ls t-shirt")) score += 3.5;
-    if (slot === "Footwear" && hasType("sneakers", "sneakers (thin)", "canvas sneakers")) score += 3.5;
-    if (slot === "Headwear" && hasType("cap", "sport cap")) score += 2.5;
-    if (slot === "TopOuter" && hasType("shell jacket", "fleece jacket")) score += 3;
-    if (slot === "Bottom" && hasType("sport shorts")) score += 3;
+    if (slot === "TopInner" && hasType("hoodie", "sweatshirt", "sport t-shirt", "sport ls t-shirt", "fleece sweater")) score += hasType("sport t-shirt", "sport ls t-shirt") ? 5 : 4.4;
+    if (slot === "Footwear" && hasType("sneakers", "sneakers (thin)", "canvas sneakers")) score += 4.8;
+    if (slot === "Headwear" && hasType("cap", "sport cap")) score += hasType("sport cap") ? 4.8 : 3.8;
+    if (slot === "TopOuter" && hasType("shell jacket", "fleece jacket")) score += 4.4;
+    if (slot === "Bottom" && hasType("sport shorts", "sport pants", "sweat pants", "shorts")) score += hasType("sport shorts", "sport pants") ? 4.8 : hasType("sweat pants") ? 4.2 : 1.8;
   }
 
   return score;
@@ -913,9 +998,9 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
     const recencyWeight = RECENT_OUTFIT_WINDOW - index;
     const itemUsed = visibleSlots.some((recentSlot) => recentOutfit.outfit?.[recentSlot] === item.id);
     if (itemUsed) {
-      scores.recentItemPenalty -= (index === 0 ? 0.72 : 0.36) * recencyWeight;
+      scores.recentItemPenalty -= (index === 0 ? 0.28 : 0.16) * recencyWeight;
       if (recentOutfit.outfit?.[slot] === item.id) {
-        scores.recentItemPenalty -= (index === 0 ? 0.55 : 0.22) * recencyWeight;
+        scores.recentItemPenalty -= (index === 0 ? 0.18 : 0.08) * recencyWeight;
       }
     }
 
@@ -924,7 +1009,7 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
       const sourceItemId = outfit?.[sourceSlot];
       if (!sourceItemId) return;
       if (recentOutfit.outfit?.[sourceSlot] === sourceItemId && recentOutfit.outfit?.[targetSlot] === item.id) {
-        scores.recentLikedBoost += 0.25 * recencyWeight;
+        scores.recentLikedBoost += 0.12 * recencyWeight;
       }
     });
 
@@ -936,11 +1021,15 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
   if (completedStyle && normalizedRecentOutfits.length >= 2) {
     const recentStyles = getRecentDominantStyles(normalizedRecentOutfits, itemsById);
     if (recentStyles[0] === completedStyle && recentStyles[1] === completedStyle) {
-      scores.styleStreakPenalty -= 12;
+      scores.styleStreakPenalty -= 3.4;
     } else if (recentStyles[0] === completedStyle) {
-      scores.styleStreakPenalty -= 2.8;
+      scores.styleStreakPenalty -= 1.1;
     }
   }
+
+  scores.recentItemPenalty = clampScore(scores.recentItemPenalty, MAX_RECENT_ITEM_PENALTY, 0);
+  scores.recentExactPenalty = clampScore(scores.recentExactPenalty, MAX_RECENT_EXACT_PENALTY, 0);
+  scores.styleStreakPenalty = clampScore(scores.styleStreakPenalty, MAX_STYLE_STREAK_PENALTY, 0);
 
   return scores;
 }
@@ -992,6 +1081,7 @@ function getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selecte
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterData) {
   const itemStyles = getItemStyleTags(item);
   const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
+  const isFormalOnly = isFormalOnlyItem(item);
   const typeMatches = getTypeMatchKeys(item.type);
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
   const styleMode = resolveSelectedStyleMode(selectedStyles);
@@ -1002,13 +1092,30 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterD
 
   if (selectedStyles.length) {
     if (selectedStyles.some((style) => itemStyles.includes(style))) {
-      score += 4;
+      score += styleMode === "casual" ? 4 : 6;
     } else {
-      score -= isAthleisureOnly ? 4 : 1.5;
+      score -= isAthleisureOnly || isFormalOnly ? 5.5 : 3;
     }
 
     if ((styleMode === "formal" || styleMode === "formal-bridge") && hasType("t-shirt", "sport t-shirt", "ls t-shirt", "ls t-shirt (light)")) {
-      score -= 3;
+      score -= 4.8;
+    }
+
+    if (styleMode === "formal" && hasType("cap", "jeans")) {
+      score -= hasType("cap") ? 2.6 : 2;
+    }
+
+    if (styleMode === "smart-casual" && hasType("sport t-shirt", "sport ls t-shirt", "sport shorts", "sport cap", "slides", "sandals", "fleece jacket", "shell jacket")) {
+      score -= 4.5;
+    }
+
+    if (styleMode === "athleisure") {
+      if (hasType("wool shirt", "shirt", "blazer", "derby", "wool coat", "wool jacket")) {
+        score -= 6;
+      }
+      if (itemStyles.every((style) => style === "Smart Casual" || style === "Formal")) {
+        score -= 5.4;
+      }
     }
   }
 
@@ -1038,32 +1145,36 @@ function getAffinityScore(item, slot, outfit, outfitAffinity) {
     if (!sourceItemId) return;
 
     const pairCount = affinity[buildAffinityPairKey(sourceSlot, targetSlot, sourceItemId, item.id)] ?? 0;
-    score += Math.min(pairCount * 0.85, 3.4);
+    score += Math.min(pairCount * 0.45, 1.6);
   });
 
   const itemCount = affinity[buildAffinityItemKey(slot, item.id)] ?? 0;
-  score += Math.min(itemCount * 0.25, 1.5);
+  score += Math.min(itemCount * 0.12, 0.8);
 
   return score;
 }
 
-function buildNoFilterData(pool, outfit, itemsById, recentOutfits) {
+function buildNoFilterData(pool, outfit, itemsById, recentOutfits, generationContext = null) {
   const support = getPoolStyleSupport(pool);
   const anchoredStyle = getAnchoredStyle(outfit, itemsById);
+  const baseWeights = generationContext?.weights ?? getAdjustedNoFilterWeights(getRecentDominantStyles(recentOutfits, itemsById), support, anchoredStyle);
+  const targetStyle = anchoredStyle ?? generationContext?.targetStyle ?? pickWeightedStyle(baseWeights);
   return {
     support,
     anchoredStyle,
-    weights: getAdjustedNoFilterWeights(getRecentDominantStyles(recentOutfits, itemsById), support, anchoredStyle)
+    weights: anchoredStyle ? getAdjustedNoFilterWeights(getRecentDominantStyles(recentOutfits, itemsById), support, anchoredStyle) : baseWeights,
+    targetStyle,
+    targetMode: styleToMode(targetStyle)
   };
 }
 
-export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool = []) {
+export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool = [], generationContext = null) {
   const pickedItems = getPickedOutfitItems(outfit, itemsById);
   const selectedStyles = outfitFilters.style ?? [];
   const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
   const preferredStyles = getDominantStyleTags(pickedItems);
-  const styleMode = getDominantStyleMode(selectedStyles, pickedItems);
-  const noFilterData = !selectedStyles.length ? buildNoFilterData(pool, outfit, itemsById, recentOutfits) : null;
+  const noFilterData = !selectedStyles.length ? buildNoFilterData(pool, outfit, itemsById, recentOutfits, generationContext) : null;
+  const styleMode = getDominantStyleMode(selectedStyles, pickedItems, noFilterData);
   const breakdown = {
     climate: getClimateScore(item, slot, climatePreferences),
     styleCoherence: getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterData),
@@ -1093,8 +1204,9 @@ export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFil
     }
   }
 
-  if ((slot === "TopInner" || slot === "Bottom" || slot === "Footwear") && selectedStyles.length) {
-    breakdown.selectedStyleBonus += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? 1 : 0;
+  if ((slot === "TopInner" || slot === "Bottom" || slot === "Footwear" || slot === "TopOuter") && selectedStyles.length) {
+    const styleModeBonus = styleMode === "formal" ? 2.8 : styleMode === "athleisure" ? 2.6 : styleMode === "smart-casual" ? 2.2 : 1.2;
+    breakdown.selectedStyleBonus += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? styleModeBonus : 0;
   }
 
   if (!selectedStyles.length) {
@@ -1114,11 +1226,11 @@ export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFil
   };
 }
 
-function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool) {
-  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool).score;
+function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool, generationContext) {
+  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool, generationContext).score;
 }
 
-export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering) {
+export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
   if (!pool.length) return null;
   if (normalizeGenerationMode(generationMode) === "random") return pickRandom(pool);
 
@@ -1141,7 +1253,7 @@ export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitF
   return pickWeightedRandom(
     candidatePool.map((item) => ({
       item,
-      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, candidatePool)
+      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, candidatePool, generationContext)
     }))
   );
 }
@@ -1220,6 +1332,9 @@ export function buildNextOutfit(
   const nextOutfit = { ...currentOutfit };
   let usedTopBoth = false;
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
+  const generationContext = !(outfitFilters.style ?? []).length
+    ? buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById)
+    : null;
 
   visibleSlots.forEach((slot) => {
     if (!locked[slot]) nextOutfit[slot] = null;
@@ -1250,7 +1365,7 @@ export function buildNextOutfit(
       pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, nextOutfit, itemsById);
       pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
 
-      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
+      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext);
       nextOutfit[slot] = nextItem?.id ?? null;
 
       if (nextItem?.layerType === "Both") usedTopBoth = true;
@@ -1259,7 +1374,7 @@ export function buildNextOutfit(
 
     pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, nextOutfit, itemsById);
     pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
-    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering)?.id ?? null;
+    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext)?.id ?? null;
   });
 
   return nextOutfit;
