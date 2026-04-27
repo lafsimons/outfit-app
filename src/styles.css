@@ -1360,11 +1360,14 @@ button:disabled {
 }
 
 .card-actions {
+  display: flex;
   flex-wrap: wrap;
   align-self: start;
+  width: 100%;
 }
 
 .card-actions .ghost-button {
+  flex: 1 1 0;
   padding: 5px 8px;
   font-size: 0.7rem;
 }
@@ -2449,12 +2452,6 @@ button:disabled {
     overflow: auto;
   }
 
-  .editor-form input,
-  .editor-form select,
-  .editor-form textarea {
-    font-size: 16px;
-  }
-
   .item-image-upload {
     grid-template-columns: 110px 1fr;
     gap: 8px;
@@ -2617,6 +2614,10 @@ button:disabled {
     width: 100%;
     max-width: 100%;
     overflow-x: hidden;
+  }
+
+  .card-actions {
+    flex-wrap: nowrap;
   }
 
   .wardrobe-card {
