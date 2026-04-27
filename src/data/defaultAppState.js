@@ -18,6 +18,8 @@ const defaultAppState = {
   },
   ignoredImportImages: [],
   savedOutfits: [],
+  likedOutfitKeys: {},
+  outfitAffinity: {},
   generationLists: {
     Wardrobe: true,
     Wishlist: true
