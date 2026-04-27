@@ -3826,7 +3826,7 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
-    setEditorReturnTarget("wardrobe");
+    setEditorReturnTarget(isMobileViewport ? "outfit" : "wardrobe");
     setEditorAdvancedOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
@@ -3847,7 +3847,8 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
-    setEditorReturnTarget(options.returnTarget ?? "wardrobe");
+    const requestedReturnTarget = options.returnTarget ?? "wardrobe";
+    setEditorReturnTarget(isMobileViewport ? "outfit" : requestedReturnTarget);
     setEditorAdvancedOpen(shouldOpenAdvanced);
     setEditingId(item.id);
     setDraft(normalizedItem);
@@ -4937,6 +4938,7 @@ export default function App() {
       ? "Add wardrobe item"
       : "Edit wardrobe item"
     : "Item editor";
+  const isMobileFullscreenEditorOpen = Boolean(editingId && isMobileViewport);
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
@@ -5314,70 +5316,72 @@ export default function App() {
           </div>
         ) : null}
 
-        <div
-          className={`workspace-tabs ${isDockExpanded ? "is-dock-expanded" : ""} ${paletteOpen ? "is-palette-open" : ""}`}
-          aria-label="Workspace sections"
-        >
-          <button type="button" className="workspace-tab is-active" onClick={handleGenerate}>
-            Generate
-          </button>
-          <button
-            type="button"
-            className={`workspace-tab ${controlsOpen && !activePanel ? "is-active" : ""}`}
-            onClick={toggleControlsWindow}
-            aria-pressed={controlsOpen && !activePanel}
+        {isMobileFullscreenEditorOpen ? null : (
+          <div
+            className={`workspace-tabs ${isDockExpanded ? "is-dock-expanded" : ""} ${paletteOpen ? "is-palette-open" : ""}`}
+            aria-label="Workspace sections"
           >
-            CONTROLS
-          </button>
-          <div className={`workspace-tab-group ${isDockExpanded ? "is-expanded" : ""}`}>
-            {[
-              ["wardrobe", "Wardrobe"],
-              ["fitpics", "Fitpics"]
-            ].map(([panel, label]) => (
-              <button
-                key={panel}
-                type="button"
-                className={`workspace-tab ${activePanel === panel ? "is-active" : ""}`}
-                onClick={() => toggleWorkspacePanel(panel)}
-                aria-pressed={activePanel === panel}
-                tabIndex={isDockExpanded ? 0 : -1}
-              >
-                {label}
-              </button>
-            ))}
+            <button type="button" className="workspace-tab is-active" onClick={handleGenerate}>
+              Generate
+            </button>
+            <button
+              type="button"
+              className={`workspace-tab ${controlsOpen && !activePanel ? "is-active" : ""}`}
+              onClick={toggleControlsWindow}
+              aria-pressed={controlsOpen && !activePanel}
+            >
+              CONTROLS
+            </button>
+            <div className={`workspace-tab-group ${isDockExpanded ? "is-expanded" : ""}`}>
+              {[
+                ["wardrobe", "Wardrobe"],
+                ["fitpics", "Fitpics"]
+              ].map(([panel, label]) => (
+                <button
+                  key={panel}
+                  type="button"
+                  className={`workspace-tab ${activePanel === panel ? "is-active" : ""}`}
+                  onClick={() => toggleWorkspacePanel(panel)}
+                  aria-pressed={activePanel === panel}
+                  tabIndex={isDockExpanded ? 0 : -1}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {outfitPalette.length ? (
+              paletteOpen ? (
+                <button
+                  type="button"
+                  className="outfit-palette-inline"
+                  onClick={() => setPaletteOpen(false)}
+                  aria-label="Hide outfit color palette"
+                  title="Hide color palette"
+                >
+                  {outfitPalette.map((entry) => (
+                    <span
+                      key={`${entry.color}-${entry.label}`}
+                      className="outfit-palette-swatch"
+                      style={{ backgroundColor: entry.color }}
+                      title={`${entry.label}: ${entry.color}`}
+                    />
+                  ))}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="palette-tab"
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label="Toggle outfit color palette"
+                  aria-expanded={paletteOpen}
+                  title="Color palette"
+                >
+                  <span style={{ backgroundColor: outfitPalette[0].color }} />
+                </button>
+              )
+            ) : null}
           </div>
-          {outfitPalette.length ? (
-            paletteOpen ? (
-              <button
-                type="button"
-                className="outfit-palette-inline"
-                onClick={() => setPaletteOpen(false)}
-                aria-label="Hide outfit color palette"
-                title="Hide color palette"
-              >
-                {outfitPalette.map((entry) => (
-                  <span
-                    key={`${entry.color}-${entry.label}`}
-                    className="outfit-palette-swatch"
-                    style={{ backgroundColor: entry.color }}
-                    title={`${entry.label}: ${entry.color}`}
-                  />
-                ))}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="palette-tab"
-                onClick={() => setPaletteOpen(true)}
-                aria-label="Toggle outfit color palette"
-                aria-expanded={paletteOpen}
-                title="Color palette"
-              >
-                <span style={{ backgroundColor: outfitPalette[0].color }} />
-              </button>
-            )
-          ) : null}
-        </div>
+        )}
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">

@@ -2385,9 +2385,12 @@ button:disabled {
   .wardrobe-panel {
     position: static;
     height: 100%;
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   .wardrobe-panel-scroll {
+    overflow-x: hidden;
     padding-right: 0;
   }
 
@@ -2444,6 +2447,12 @@ button:disabled {
 
   .floating-item-editor > *:last-child {
     overflow: auto;
+  }
+
+  .editor-form input,
+  .editor-form select,
+  .editor-form textarea {
+    font-size: 16px;
   }
 
   .item-image-upload {
@@ -2602,9 +2611,12 @@ button:disabled {
     gap: 4px;
     margin-top: 0;
     padding-right: 0;
-    margin-left: -2px;
-    margin-right: -2px;
+    margin-left: 0;
+    margin-right: 0;
     padding-bottom: 2px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .wardrobe-card {
