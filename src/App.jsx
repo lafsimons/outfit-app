@@ -1682,7 +1682,7 @@ export default function App() {
       pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
     }
 
-    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData);
+    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById);
     return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
   }
 
@@ -2075,7 +2075,9 @@ export default function App() {
       pool.filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]),
       slot,
       outfitFilters,
-      weatherData
+      weatherData,
+      nextOutfit,
+      itemsById
     );
     return filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
   }
