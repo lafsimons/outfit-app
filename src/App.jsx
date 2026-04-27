@@ -104,6 +104,7 @@ const defaultGenerationLists = {
 const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
+const editableClimateTagOptions = ["Rain", "Snow"];
 const outfitFilterOptions = {
   climate: climateTagOptions,
   style: styleTagOptions
@@ -171,6 +172,7 @@ const defaultTypeSuggestions = [
   "Derby",
   "Slides",
   "Jeans",
+  "Jeans (light)",
   "Trousers",
   "Pants",
   "Shorts",
@@ -420,6 +422,12 @@ const typeDefaultsByKey = {
   "fleece jacket": {
     garmentType: "Outerwear",
     layerType: "Outer",
+    weight: "Medium",
+    styleTags: ["Casual", "Athleisure"]
+  },
+  "heavy fleece jacket": {
+    garmentType: "Outerwear",
+    layerType: "Outer",
     weight: "Heavy",
     styleTags: ["Casual", "Athleisure"]
   },
@@ -427,7 +435,7 @@ const typeDefaultsByKey = {
     garmentType: "Outerwear",
     layerType: "Outer",
     weight: "Light",
-    styleTags: ["Athleisure"]
+    styleTags: ["Casual", "Athleisure"]
   },
   "wool jacket": {
     garmentType: "Outerwear",
@@ -445,7 +453,7 @@ const typeDefaultsByKey = {
     garmentType: "Outerwear",
     layerType: "Outer",
     weight: "Medium",
-    styleTags: ["Formal"]
+    styleTags: ["Smart Casual", "Formal"]
   },
   coat: {
     garmentType: "Outerwear",
@@ -483,6 +491,11 @@ const typeDefaultsByKey = {
   jeans: {
     garmentType: "Bottom",
     weight: "Medium",
+    styleTags: ["Casual"]
+  },
+  "jeans (light)": {
+    garmentType: "Bottom",
+    weight: "Light",
     styleTags: ["Casual"]
   },
   shorts: {
@@ -537,7 +550,8 @@ const typeDefaultsByKey = {
   },
   sandals: {
     garmentType: "Footwear",
-    weight: "Light"
+    weight: "Light",
+    styleTags: ["Casual"]
   },
   slides: {
     garmentType: "Footwear",
@@ -903,6 +917,10 @@ function getTypePresetKey(type) {
     return "jeans";
   }
 
+  if (["jeans (light)", "light jeans"].includes(normalized)) {
+    return "jeans (light)";
+  }
+
   if (["sweater"].includes(normalized)) {
     return "knit sweater";
   }
@@ -991,6 +1009,10 @@ function getTypePresetKey(type) {
     return "puffer";
   }
 
+  if (["heavy fleece jacket"].includes(normalized)) {
+    return "heavy fleece jacket";
+  }
+
   if (["heavy wool layers"].includes(normalized)) {
     return "heavy wool layers";
   }
@@ -1059,6 +1081,10 @@ function getTypeMatchKeys(type) {
 
   if (presetKey === "light trousers" || presetKey === "heavy wool trousers") {
     matches.add("trousers");
+  }
+
+  if (presetKey === "jeans (light)") {
+    matches.add("jeans");
   }
 
   if (presetKey === "thick knit sweater") {
@@ -1215,7 +1241,7 @@ function inferClimateTags(item) {
     }
 
     if (climate === "Rain") {
-      return garmentType === "Outerwear" || hasType("coat", "jacket", "boots", "cap");
+      return garmentType === "Outerwear" || hasType("coat", "jacket", "boots", "cap", "shell jacket");
     }
 
     if (climate === "Transitional") {
@@ -1311,6 +1337,18 @@ function getDominantStyleTags(items) {
   );
 }
 
+function getDominantStyleCounts(items) {
+  const counts = new Map();
+
+  items.forEach((item) => {
+    getItemStyleTags(item).forEach((style) => {
+      counts.set(style, (counts.get(style) ?? 0) + 1);
+    });
+  });
+
+  return counts;
+}
+
 function inferClimateSuitability(item) {
   return inferClimateTags(item);
 }
@@ -1350,6 +1388,7 @@ function getClimateScore(item, slot, climatePreferences) {
     if (climate === "Warm") {
       if (hasType("t-shirt", "shirt", "sneakers", "canvas sneakers", "trousers", "shorts")) score += 1;
       if (item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") score -= 2;
+      if (hasType("scarf")) score -= 3;
     }
 
     if (climate === "Cold" || climate === "Snow") {
@@ -1380,7 +1419,146 @@ function getClimateScore(item, slot, climatePreferences) {
     }
   });
 
+  if (climatePreferences.includes("Hot") && hasType("scarf")) {
+    score -= 5;
+  }
+
   return score;
+}
+
+function isAthleisureOnlyItem(item) {
+  const itemStyles = getItemStyleTags(item);
+  return itemStyles.length === 1 && itemStyles[0] === "Athleisure";
+}
+
+function isFormalOnlyItem(item) {
+  const itemStyles = getItemStyleTags(item);
+  return itemStyles.length > 0 && itemStyles.every((style) => style === "Formal");
+}
+
+function isAthleisureSneaker(item) {
+  const typeMatches = getTypeMatchKeys(item.type);
+  const itemStyles = getItemStyleTags(item);
+  return typeMatches.has("sneakers") && itemStyles.includes("Athleisure");
+}
+
+function resolveSelectedStyleMode(selectedStyles) {
+  const uniqueStyles = [...new Set((selectedStyles ?? []).filter(Boolean))];
+
+  if (!uniqueStyles.length || uniqueStyles.every((style) => style === "Casual")) {
+    return "casual";
+  }
+
+  const hasFormal = uniqueStyles.includes("Formal");
+  const hasSmartCasual = uniqueStyles.includes("Smart Casual");
+  const hasAthleisure = uniqueStyles.includes("Athleisure");
+
+  if (hasFormal && hasSmartCasual && hasAthleisure) {
+    return "minimal";
+  }
+
+  if (hasFormal && hasSmartCasual) {
+    return "formal-bridge";
+  }
+
+  if (hasFormal && hasAthleisure) {
+    return "minimal";
+  }
+
+  if (hasSmartCasual && hasAthleisure) {
+    return "minimal-bridge";
+  }
+
+  if (hasFormal) {
+    return "formal";
+  }
+
+  if (hasSmartCasual) {
+    return "smart-casual";
+  }
+
+  if (hasAthleisure) {
+    return "athleisure";
+  }
+
+  return "casual";
+}
+
+function getStyleBlockProfile(styleMode) {
+  return {
+    styleMode,
+    blockFormalSet: styleMode === "formal",
+    blockFormalBridgeSet: styleMode === "formal-bridge",
+    blockSmartCasualSet: styleMode === "smart-casual",
+    blockAthleisureSet: styleMode === "athleisure"
+  };
+}
+
+function passesSelectedStyleRules(item, selectedStyles) {
+  const styleMode = resolveSelectedStyleMode(selectedStyles);
+  const profile = getStyleBlockProfile(styleMode);
+
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  const isAthleisureOnly = isAthleisureOnlyItem(item);
+  const isFormalOnly = isFormalOnlyItem(item);
+  const hasFormalBridgeBlockedType = hasType(
+    "shorts",
+    "slides",
+    "sandals",
+    "sport cap",
+    "beanie",
+    "fleece jacket",
+    "shell jacket",
+    "hoodie",
+    "sweatshirt",
+    "sport t-shirt"
+  );
+
+  if (profile.blockFormalSet) {
+    if (
+      hasType(
+        "shorts",
+        "slides",
+        "sandals",
+        "sport cap",
+        "beanie",
+        "fleece jacket",
+        "shell jacket",
+        "hoodie",
+        "sweatshirt",
+        "sport t-shirt"
+      )
+    ) {
+      return false;
+    }
+
+    if (isAthleisureOnly || isAthleisureSneaker(item)) {
+      return false;
+    }
+  }
+
+  if (profile.blockFormalBridgeSet && hasFormalBridgeBlockedType) {
+    return false;
+  }
+
+  if (profile.blockSmartCasualSet) {
+    if (hasType("slides", "sandals", "sport cap", "fleece jacket", "shell jacket", "sport t-shirt", "sport ls t-shirt", "sport shorts")) {
+      return false;
+    }
+
+    if (isAthleisureOnly) {
+      return false;
+    }
+  }
+
+  if (profile.blockAthleisureSet) {
+    if (hasType("derby", "wool coat", "wool jacket") || isFormalOnly) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function passesHardContextRules(item, slot, outfitFilters, weatherData) {
@@ -1411,10 +1589,8 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData) {
     }
   }
 
-  if (selectedStyles.includes("Formal")) {
-    if (hasType("slides", "hoodie", "fleece jacket", "shell jacket")) {
-      return false;
-    }
+  if (!passesSelectedStyleRules(item, selectedStyles)) {
+    return false;
   }
 
   return true;
@@ -1425,9 +1601,109 @@ function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData)
   return filtered.length ? filtered : pool;
 }
 
+function getDominantStyleMode(selectedStyles, pickedItems) {
+  const selectedStyleMode = resolveSelectedStyleMode(selectedStyles);
+  const counts = getDominantStyleCounts(pickedItems);
+
+  if (pickedItems.length < 2) {
+    return selectedStyleMode;
+  }
+
+  const dominantEntry = [...counts.entries()].sort((left, right) => right[1] - left[1])[0];
+
+  if (!dominantEntry || dominantEntry[1] < 2) {
+    return selectedStyleMode;
+  }
+
+  const [dominantStyle] = dominantEntry;
+
+  if (dominantStyle === "Formal") return "formal";
+  if (dominantStyle === "Smart Casual") return "smart-casual";
+  if (dominantStyle === "Athleisure") return "athleisure";
+  return selectedStyleMode;
+}
+
+function getStyleCompletionScore(item, slot, styleMode) {
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  let score = 0;
+
+  if (styleMode === "formal") {
+    if (slot === "TopInner" && hasType("shirt")) score += 4;
+    if (slot === "Bottom" && hasType("trousers", "light trousers", "heavy wool trousers")) score += 4;
+    if (slot === "Footwear" && hasType("derby")) score += 4;
+    if (slot === "TopOuter" && hasType("blazer", "wool coat")) score += 4;
+    if (item.garmentType === "Accessory" && item.accessorySlot === "LeftHand" && hasType("watch")) score += 1.5;
+    if (item.garmentType === "Accessory" && item.accessorySlot === "Belt" && hasType("belt")) score += 1.2;
+    if (slot === "Headwear" && hasType("hat")) score += 1.5;
+    if (slot === "Headwear" && hasType("cap")) score -= 1.5;
+    if (slot === "Bottom" && hasType("jeans")) score -= 2;
+  }
+
+  if (styleMode === "formal-bridge") {
+    if (slot === "TopInner" && hasType("shirt")) score += 3.5;
+    if (slot === "Bottom" && hasType("trousers", "light trousers", "heavy wool trousers")) score += 3.5;
+    if (slot === "Footwear" && hasType("derby", "leather sneakers")) score += hasType("derby") ? 3.5 : 2.2;
+    if (slot === "TopOuter" && hasType("blazer", "wool coat", "jacket", "wool jacket")) score += hasType("blazer", "wool coat") ? 3.5 : 2;
+    if (slot === "Headwear" && hasType("hat")) score += 1.2;
+    if (slot === "Bottom" && hasType("jeans")) score -= 1;
+  }
+
+  if (styleMode === "smart-casual") {
+    if (slot === "TopInner" && hasType("shirt", "knit", "knit sweater", "wool shirt")) score += 2.5;
+    if (slot === "Footwear" && hasType("leather sneakers")) score += 2.5;
+    if (slot === "TopOuter" && hasType("jacket", "blazer", "wool coat", "wool jacket")) score += 2.5;
+    if (slot === "Headwear" && hasType("hat")) score += 1;
+  }
+
+  if (styleMode === "athleisure") {
+    if (slot === "TopInner" && hasType("hoodie", "sweatshirt", "sport t-shirt", "sport ls t-shirt")) score += 3.5;
+    if (slot === "Footwear" && hasType("sneakers", "sneakers (thin)", "canvas sneakers")) score += 3.5;
+    if (slot === "Headwear" && hasType("cap", "sport cap")) score += 2.5;
+    if (slot === "TopOuter" && hasType("shell jacket", "fleece jacket")) score += 3;
+    if (slot === "Bottom" && hasType("sport shorts")) score += 3;
+  }
+
+  return score;
+}
+
+function getDominancePenaltyScore(item, pickedItems, styleMode) {
+  if (pickedItems.length < 2) {
+    return 0;
+  }
+
+  const counts = getDominantStyleCounts(pickedItems);
+  const dominantEntry = [...counts.entries()].sort((left, right) => right[1] - left[1])[0];
+
+  if (!dominantEntry || dominantEntry[1] < 2) {
+    return 0;
+  }
+
+  const [dominantStyle] = dominantEntry;
+  const itemStyles = getItemStyleTags(item);
+
+  if (dominantStyle === "Formal") {
+    if (itemStyles.includes("Athleisure")) return -3.5;
+    if (itemStyles.includes("Casual") && !itemStyles.includes("Formal") && !itemStyles.includes("Smart Casual")) return -2;
+  }
+
+  if (dominantStyle === "Athleisure") {
+    if (itemStyles.includes("Formal")) return -3.5;
+  }
+
+  if (dominantStyle === "Smart Casual") {
+    if (isAthleisureOnlyItem(item)) return -2.5;
+  }
+
+  return styleMode === "minimal" || styleMode === "minimal-bridge" ? 0 : 0;
+}
+
 function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
   const itemStyles = getItemStyleTags(item);
   const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  const styleMode = resolveSelectedStyleMode(selectedStyles);
 
   if (!itemStyles.length) {
     return 0;
@@ -1440,6 +1716,10 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles) {
       score += 4;
     } else {
       score -= isAthleisureOnly ? 4 : 1.5;
+    }
+
+    if ((styleMode === "formal" || styleMode === "formal-bridge") && hasType("t-shirt", "sport t-shirt", "ls t-shirt", "ls t-shirt (light)")) {
+      score -= 3;
     }
   }
 
@@ -1484,10 +1764,13 @@ function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfit
   const selectedStyles = outfitFilters.style ?? [];
   const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
   const preferredStyles = getDominantStyleTags(pickedItems);
+  const styleMode = getDominantStyleMode(selectedStyles, pickedItems);
   let score = 1;
 
   score += getClimateScore(item, slot, climatePreferences);
   score += getStyleCoherenceScore(item, selectedStyles, preferredStyles);
+  score += getStyleCompletionScore(item, slot, styleMode);
+  score += getDominancePenaltyScore(item, pickedItems, styleMode);
 
   if (slot === "TopOuter") {
     if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
@@ -1937,7 +2220,7 @@ function normalizeItem(item) {
     garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
     weight: normalizeWeight(item.weight),
     styleTags: normalizeTagList(item.styleTags, styleTagOptions),
-    climateTags: normalizeTagList(item.climateTags, climateTagOptions),
+    climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
@@ -1988,7 +2271,7 @@ function itemNeedsTagMigration(originalItem, normalizedItem) {
 function itemNeedsClimateTagMigration(originalItem, normalizedItem) {
   return (
     !Array.isArray(originalItem.climateTags) ||
-    normalizeTagList(originalItem.climateTags, climateTagOptions).length !== normalizedItem.climateTags.length
+    normalizeTagList(originalItem.climateTags, editableClimateTagOptions).length !== normalizedItem.climateTags.length
   );
 }
 
@@ -2092,19 +2375,7 @@ function normalizeOutfitAffinity(value) {
 }
 
 function getWorthCategory(item) {
-  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
-    return "Tops";
-  }
-
-  if (item.garmentType === "Bottom") {
-    return "Pants";
-  }
-
-  if (item.garmentType === "Footwear") {
-    return "Shoes";
-  }
-
-  return "Accessories";
+  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Accessory";
 }
 
 function createFitpicId() {
@@ -2676,13 +2947,12 @@ export default function App() {
   }, [items, wardrobeFilters, wardrobeSort, excluded]);
 
   const wardrobeWorth = useMemo(() => {
-    const categories = ["Tops", "Pants", "Shoes", "Accessories"];
+    const categories = garmentTypes;
     const byCategory = Object.fromEntries(
       categories.map((category) => [category, { category, count: 0, value: 0, retailValue: 0 }])
     );
 
     visibleWardrobeItems
-      .filter((item) => !isWishlistItem(item))
       .forEach((item) => {
         const category = getWorthCategory(item);
         const quantity = normalizeQuantity(item.quantity);
@@ -3781,7 +4051,7 @@ export default function App() {
       list: normalizeList(draft.list),
       quantity: normalizedQuantity,
       styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
-      climateTags: normalizeTagList(draft.climateTags, climateTagOptions)
+      climateTags: normalizeTagList(draft.climateTags, editableClimateTagOptions)
     };
 
     const nextItem = {
@@ -4876,15 +5146,15 @@ export default function App() {
           <section className="metadata-tag-group" aria-label="Climate metadata">
             {renderAdvancedLabel("Climate tags", "climateTags")}
             <div className="metadata-tag-options">
-              {climateTagOptions.map((tag) => {
-                const isSelected = normalizeTagList(draft.climateTags, climateTagOptions).includes(tag);
+              {editableClimateTagOptions.map((tag) => {
+                const isSelected = normalizeTagList(draft.climateTags, editableClimateTagOptions).includes(tag);
 
                 return (
                   <button
                     key={tag}
                     type="button"
                     className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                    onClick={() => toggleDraftTag("climateTags", tag, climateTagOptions)}
+                    onClick={() => toggleDraftTag("climateTags", tag, editableClimateTagOptions)}
                     aria-pressed={isSelected}
                   >
                     {tag}
