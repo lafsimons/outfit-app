@@ -3802,13 +3802,6 @@ export default function App() {
               </button>
             </div>
 
-            <div className="controls-group">
-              <span>Generate count: {generateCount}</span>
-              <button type="button" className="ghost-button" onClick={() => setGenerateCount(0)}>
-                Reset
-              </button>
-            </div>
-
             <div className="controls-group controls-group-middle">
               <div className="generation-list-controls" aria-label="Generation lists">
                 {itemLists.map((list) => (
@@ -3822,7 +3815,25 @@ export default function App() {
                   </button>
                 ))}
               </div>
+            </div>
 
+            <div className="controls-group controls-group-bottom">
+              <button
+                type="button"
+                className={`ghost-button ${isCurrentOutfitLiked ? "is-active" : ""}`}
+                onClick={toggleCurrentOutfitLike}
+              >
+                {isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+              </button>
+              <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
+                Save outfit
+              </button>
+              <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
+                Export outfit image
+              </button>
+            </div>
+
+            <div className="controls-group">
               <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
                 <button
                   type="button"
@@ -3906,10 +3917,6 @@ export default function App() {
 
                 {outfitFiltersOpen ? (
                   <div className="outfit-filters-panel">
-                    <button type="button" className="ghost-button" onClick={clearOutfitFilters}>
-                      Clear outfit filters
-                    </button>
-
                     <div className="outfit-filter-groups">
                       {Object.entries(outfitFilterOptions).map(([group, options]) => (
                         <section key={group} className="outfit-filter-group">
@@ -3934,28 +3941,30 @@ export default function App() {
                         </section>
                       ))}
                     </div>
+
+                    <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
+                      Clear outfit filters
+                    </button>
                   </div>
                 ) : null}
               </div>
             </div>
 
-            <div className="controls-group controls-group-bottom">
+            <div className="controls-group">
               <div className="outfit-feedback-panel">
                 <div className="outfit-feedback-header">
-                  <p className="eyebrow">Why this outfit?</p>
+                  <div className="outfit-feedback-chips" aria-label="Outfit reasons">
+                    <span className="active-filter-chip">{currentOutfitStyleChip}</span>
+                    <span className="active-filter-chip">{currentOutfitClimateChip}</span>
+                  </div>
                   <button
                     type="button"
                     className={`ghost-button outfit-debug-toggle ${outfitDebugOpen ? "is-active" : ""}`}
                     onClick={() => setOutfitDebugOpen((current) => !current)}
                     aria-expanded={outfitDebugOpen}
                   >
-                    {outfitDebugOpen ? "Hide debug" : "Debug"}
+                    {outfitDebugOpen ? "Hide" : "Debug"}
                   </button>
-                </div>
-
-                <div className="outfit-feedback-chips" aria-label="Outfit reasons">
-                  <span className="active-filter-chip">{currentOutfitStyleChip}</span>
-                  <span className="active-filter-chip">{currentOutfitClimateChip}</span>
                 </div>
 
                 {outfitDebugOpen ? (
@@ -3973,19 +3982,13 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
+            </div>
 
-              <button
-                type="button"
-                className={`ghost-button ${isCurrentOutfitLiked ? "is-active" : ""}`}
-                onClick={toggleCurrentOutfitLike}
-              >
-                {isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
-              </button>
-              <button type="button" className="ghost-button" onClick={saveCurrentOutfit}>
-                Save outfit
-              </button>
-              <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-                Export outfit image
+            <div className="controls-group controls-group-generate-count">
+              <span className="controls-generate-count-label">Generate count:</span>
+              <span className="controls-generate-count-value">{generateCount}</span>
+              <button type="button" className="ghost-button controls-generate-count-reset" onClick={() => setGenerateCount(0)}>
+                Reset
               </button>
             </div>
           </div>

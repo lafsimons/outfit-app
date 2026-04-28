@@ -136,28 +136,29 @@ button:disabled {
 
 .outfit-feedback-panel {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .outfit-feedback-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-}
-
-.outfit-feedback-header .eyebrow {
-  margin: 0;
+  gap: 6px;
+  min-width: 0;
 }
 
 .outfit-feedback-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .outfit-debug-toggle {
-  justify-self: end;
+  flex: 0 0 auto;
 }
 
 .outfit-debug-panel {
@@ -315,6 +316,7 @@ button:disabled {
 }
 
 .controls-window {
+  --controls-active: #5a5a5a;
   position: fixed;
   left: 16px;
   bottom: calc(78px + env(safe-area-inset-bottom));
@@ -405,6 +407,10 @@ button:disabled {
   border-color: var(--primary);
 }
 
+.controls-window .controls-weather-toggle.is-active {
+  border-color: var(--controls-active);
+}
+
 .controls-outfit-filters {
   display: grid;
   gap: 8px;
@@ -442,10 +448,70 @@ button:disabled {
   border-color: var(--primary);
 }
 
+.controls-window .controls-outfit-filters-toggle.is-active {
+  border-color: var(--controls-active);
+}
+
 .generation-list-controls {
   display: grid;
   gap: 6px;
   margin: 0;
+}
+
+.controls-group-generate-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.controls-window .list-toggle.is-active,
+.controls-window .secondary-button.is-active,
+.controls-window .ghost-button.is-active {
+  background: var(--controls-active);
+  border-color: var(--controls-active);
+  color: var(--primary-text);
+}
+
+.controls-window .list-toggle,
+.controls-window .secondary-button,
+.controls-window .ghost-button,
+.controls-window .controls-weather-toggle,
+.controls-window .controls-outfit-filters-toggle {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.controls-window .active-filter-chip {
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.outfit-filters-clear-button {
+  padding: 4px 7px;
+  font-size: 0.68rem;
+}
+
+.controls-generate-count-label {
+  min-width: 0;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+
+.controls-generate-count-value {
+  min-width: 1.5rem;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.controls-generate-count-reset {
+  margin-left: auto;
 }
 
 .workspace-tabs {
@@ -1030,16 +1096,20 @@ button:disabled {
 }
 
 .outfit-filter-group {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 7px;
 }
 
 .outfit-filter-group .eyebrow {
   margin: 0;
+  flex: 0 0 auto;
 }
 
 .outfit-filter-options {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
   gap: 7px;
 }
