@@ -1581,7 +1581,7 @@ button:disabled {
 
 .saved-outfits-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   min-width: 0;
 }
@@ -1603,17 +1603,6 @@ button:disabled {
   align-content: start;
   gap: 14px;
   min-height: 100%;
-}
-
-.saved-outfits-page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.saved-outfits-page-header h2 {
-  margin: 2px 0 0;
 }
 
 .saved-outfits-empty {
@@ -1755,14 +1744,14 @@ button:disabled {
 }
 
 .saved-outfit-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  flex-wrap: wrap;
 }
 
 .saved-outfit-actions .ghost-button,
 .saved-outfit-actions .primary-button {
-  flex: 1 1 96px;
+  width: 100%;
 }
 
 .insights-stack {
@@ -2822,7 +2811,7 @@ button:disabled {
   }
 
   .saved-outfits-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
 
@@ -2831,7 +2820,6 @@ button:disabled {
     gap: 5px;
   }
 
-  .saved-outfits-page-header,
   .wardrobe-subview-header {
     align-items: flex-start;
     flex-direction: column;

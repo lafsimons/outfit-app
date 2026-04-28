@@ -3675,16 +3675,6 @@ export default function App() {
   function renderSavedOutfitsContent() {
     return (
       <section className="saved-outfits-page" aria-label="Saved outfits">
-        <div className="saved-outfits-page-header">
-          <div>
-            <p className="eyebrow">Saved outfits</p>
-            <h2>Saved outfits</h2>
-          </div>
-          <button type="button" className="ghost-button" onClick={closeSavedOutfitsView}>
-            Back to wardrobe
-          </button>
-        </div>
-
         {!savedOutfits.length ? (
           <div className="editor-placeholder saved-outfits-empty">
             <p>Save an outfit you like and it will appear here.</p>
