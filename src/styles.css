@@ -252,6 +252,7 @@ button:disabled {
 
 .weather-window-controls {
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -260,43 +261,48 @@ button:disabled {
 }
 
 .weather-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.weather-form label {
-  display: grid;
-  gap: 5px;
-  color: var(--text);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  align-items: center;
 }
 
 .weather-form input {
   min-width: 0;
+  flex: 1 1 auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface-solid);
-  padding: 7px 9px;
+  padding: 5px 8px;
   font-size: 0.76rem;
 }
 
+.weather-form .secondary-button {
+  flex: 0 0 auto;
+}
+
 .weather-summary {
-  display: grid;
-  gap: 3px;
+  min-width: 0;
+  line-height: 1.3;
 }
 
 .weather-summary strong {
-  font-size: 1.35rem;
+  display: inline;
+  font-size: 1rem;
 }
 
 .weather-summary span,
 .weather-error {
+  display: inline;
   color: var(--muted-strong);
   font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.weather-summary span::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--muted);
 }
 
 .weather-error {
@@ -362,6 +368,7 @@ button:disabled {
 
 .controls-group {
   display: grid;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -372,6 +379,7 @@ button:disabled {
 
 .controls-weather {
   display: grid;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -1091,8 +1099,6 @@ button:disabled {
 .outfit-filters-panel {
   display: grid;
   gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-soft);
 }
 
 .outfit-filter-group {
@@ -1104,14 +1110,10 @@ button:disabled {
 
 .outfit-filter-group .eyebrow {
   margin: 0;
-  flex: 0 0 auto;
 }
 
 .outfit-filter-options {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: contents;
 }
 
 .metadata-tag-group {

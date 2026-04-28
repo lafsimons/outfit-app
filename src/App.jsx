@@ -964,6 +964,21 @@ function getWeatherClimateFilters(temperature, code) {
   return [...new Set(filters)];
 }
 
+function getCompactWeatherLocationName(locationName) {
+  const parts = String(locationName ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length <= 2) {
+    return parts.join(", ");
+  }
+
+  const city = parts[0];
+  const country = parts.at(-1);
+  return city === country ? city : `${city}, ${country}`;
+}
+
 async function fetchWeatherForecast(latitude, longitude) {
   const weatherUrl = new URL("https://api.open-meteo.com/v1/forecast");
   weatherUrl.searchParams.set("latitude", latitude);
@@ -1149,6 +1164,10 @@ export default function App() {
   const currentOutfitStyleChip = useMemo(
     () => getCurrentOutfitStyleChip(currentOutfitItems, outfitFilters.style ?? []),
     [currentOutfitItems, outfitFilters.style]
+  );
+  const compactWeatherLocationName = useMemo(
+    () => getCompactWeatherLocationName(weatherSettings.locationName),
+    [weatherSettings.locationName]
   );
   const currentOutfitClimateChip = useMemo(
     () =>
@@ -3845,8 +3864,8 @@ export default function App() {
                   <span>
                     {Number.isFinite(weatherData?.temperature)
                       ? `${Math.round(weatherData.temperature)}°C`
-                      : weatherSettings.locationName
-                        ? weatherSettings.locationName
+                      : compactWeatherLocationName
+                        ? compactWeatherLocationName
                         : "Set location"}
                   </span>
                 </button>
@@ -3860,14 +3879,12 @@ export default function App() {
                         refreshWeather();
                       }}
                     >
-                      <label>
-                        Location
-                        <input
-                          value={weatherLocationDraft}
-                          onChange={(event) => setWeatherLocationDraft(event.target.value)}
-                          placeholder="Berlin"
-                        />
-                      </label>
+                      <input
+                        aria-label="Location"
+                        value={weatherLocationDraft}
+                        onChange={(event) => setWeatherLocationDraft(event.target.value)}
+                        placeholder="Berlin"
+                      />
                       <button type="submit" className="secondary-button" disabled={weatherLoading}>
                         {weatherLoading ? "Loading..." : "Update"}
                       </button>
@@ -3876,7 +3893,8 @@ export default function App() {
                     {weatherData ? (
                       <div className="weather-summary">
                         <strong>{Math.round(weatherData.temperature)}°C</strong>
-                        <span>{weatherData.condition}{weatherSettings.locationName ? ` · ${weatherSettings.locationName}` : ""}</span>
+                        <span>{weatherData.condition}</span>
+                        {compactWeatherLocationName ? <span>{compactWeatherLocationName}</span> : null}
                         {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
                           <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
                         ) : null}
