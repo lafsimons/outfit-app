@@ -337,12 +337,152 @@ function getPickedOutfitItems(outfit, itemsById) {
   return visibleSlots.map((slot) => itemsById[outfit[slot]]).filter(Boolean);
 }
 
-export function getCurrentOutfitClimateChip(outfitFilters, weatherData) {
-  if (Array.isArray(outfitFilters?.climate) && outfitFilters.climate.length) {
-    return outfitFilters.climate[0];
+const climateTieBreakPriority = {
+  Transitional: 5,
+  Warm: 4,
+  Hot: 3,
+  Cold: 2,
+  Snow: 1,
+  Rain: 0
+};
+
+function getOutfitClimateWeight(item, slot) {
+  const weight = normalizeWeight(item.weight);
+
+  if (slot === "TopOuter") return item.garmentType === "Outerwear" ? (weight === "Heavy" ? 2.9 : 2.4) : 1.8;
+  if (slot === "TopInner") return weight === "Heavy" ? 2.3 : weight === "Medium" ? 2 : 1.8;
+  if (slot === "Bottom") return weight === "Heavy" ? 2.1 : 1.9;
+  if (slot === "Footwear") return weight === "Heavy" ? 2.4 : 2;
+  if (slot === "Headwear") return 0.8;
+  return 1;
+}
+
+function scoreOutfitClimate(items) {
+  const scores = Object.fromEntries(climateTagOptions.map((climate) => [climate, 0]));
+  let rainSignalCount = 0;
+
+  items.forEach(({ item, slot }) => {
+    const typeMatches = getTypeMatchKeys(item.type);
+    const hasType = (...types) => types.some((type) => typeMatches.has(type));
+    const itemClimateTags = new Set(getItemClimateTags(item));
+    const baseWeight = getOutfitClimateWeight(item, slot);
+    const itemWeight = normalizeWeight(item.weight);
+
+    itemClimateTags.forEach((climate) => {
+      scores[climate] += baseWeight;
+    });
+
+    if (slot === "TopOuter" && item.garmentType === "Outerwear") {
+      if (itemWeight === "Heavy") {
+        scores.Cold += 1.5;
+        scores.Snow += 0.9;
+      } else if (itemWeight === "Medium") {
+        scores.Transitional += 1.2;
+      }
+
+      if (hasType("shell jacket")) {
+        scores.Rain += 2.2;
+        scores.Transitional += 0.8;
+        rainSignalCount += 2;
+      }
+    }
+
+    if (slot === "TopInner") {
+      if (hasType("hoodie", "sweatshirt", "knit sweater", "fleece sweater")) {
+        scores.Cold += 1.1;
+        scores.Transitional += 0.6;
+      }
+      if (hasType("sport t-shirt", "t-shirt")) {
+        scores.Warm += 0.8;
+        scores.Hot += 0.5;
+      }
+    }
+
+    if (slot === "Bottom") {
+      if (hasType("shorts", "sport shorts")) {
+        scores.Hot += 1.6;
+        scores.Warm += 1.1;
+      }
+      if (hasType("trousers", "jeans", "sport pants", "sweat pants")) {
+        scores.Transitional += 0.7;
+      }
+    }
+
+    if (slot === "Footwear") {
+      if (hasType("boots")) {
+        scores.Cold += 1.3;
+        scores.Rain += 0.8;
+        rainSignalCount += 1;
+      }
+      if (hasType("slides", "sandals")) {
+        scores.Hot += 1.4;
+        scores.Warm += 0.8;
+      }
+      if (hasType("sneakers", "canvas sneakers")) {
+        scores.Warm += 0.5;
+        scores.Transitional += 0.4;
+      }
+    }
+
+    if (slot === "Headwear") {
+      if (hasType("beanie")) {
+        scores.Cold += itemWeight === "Light" ? 0.7 : 1.2;
+      }
+      if (hasType("cap", "sport cap")) {
+        scores.Rain += 0.5;
+        scores.Warm += 0.3;
+        rainSignalCount += 1;
+      }
+    }
+  });
+
+  if (rainSignalCount >= 3) {
+    scores.Rain += 1.8;
   }
 
-  return "Everyday";
+  if (scores.Rain < 3.2) {
+    scores.Rain -= 1.2;
+  }
+
+  if (scores.Hot > 0 && scores.Warm >= scores.Hot - 0.75) {
+    scores.Warm += 0.6;
+  }
+
+  if (scores.Snow > 0 && scores.Cold >= scores.Snow - 0.9) {
+    scores.Cold += 0.6;
+  }
+
+  if (scores.Transitional > 0 && scores.Warm > 0 && Math.abs(scores.Transitional - scores.Warm) <= 1.1) {
+    scores.Transitional += 0.55;
+  }
+
+  return scores;
+}
+
+export function getCurrentOutfitClimateChip(items) {
+  if (!items?.length) {
+    return "Everyday";
+  }
+
+  const slottedItems = items
+    .map((entry) => (entry?.item ? entry : entry ? { item: entry, slot: "Unknown" } : null))
+    .filter(Boolean);
+
+  if (!slottedItems.length) {
+    return "Everyday";
+  }
+
+  const scores = scoreOutfitClimate(slottedItems);
+  const ranked = Object.entries(scores).sort((left, right) => {
+    if (right[1] !== left[1]) return right[1] - left[1];
+    return (climateTieBreakPriority[right[0]] ?? -1) - (climateTieBreakPriority[left[0]] ?? -1);
+  });
+
+  if (!ranked.length || ranked[0][1] <= 0.75) {
+    return "Everyday";
+  }
+
+  return ranked[0][0];
 }
 
 function getDominantStyleTags(items) {

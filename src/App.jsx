@@ -1151,8 +1151,16 @@ export default function App() {
     [currentOutfitItems, outfitFilters.style]
   );
   const currentOutfitClimateChip = useMemo(
-    () => getCurrentOutfitClimateChip(outfitFilters, weatherData),
-    [outfitFilters, weatherData]
+    () =>
+      getCurrentOutfitClimateChip(
+        ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"]
+          .map((slot) => {
+            const item = itemsById[outfit[slot]];
+            return item ? { slot, item } : null;
+          })
+          .filter(Boolean)
+      ),
+    [itemsById, outfit]
   );
   const currentOutfitDebugReasons = useMemo(
     () =>

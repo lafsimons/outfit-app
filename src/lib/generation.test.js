@@ -124,6 +124,10 @@ function breakdownFor(itemId, slot, outfit = {}, outfitFilters = { style: [], cl
   return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, null, {}, recentOutfits, true, [item]).breakdown;
 }
 
+function climateItems(...entries) {
+  return entries.map(([slot, itemId]) => ({ slot, item: itemsById[itemId] }));
+}
+
 test("no-filter generation uses weighted variety instead of collapsing into casual", () => {
   const outfits = generateBatch();
   const counts = countByDominantStyle(outfits);
@@ -222,45 +226,74 @@ test("warm and hot climate penalize medium or heavy beanies", () => {
   });
 });
 
-test("no-filter climate chip stays everyday without weather or explicit climate", () => {
-  assert.equal(getCurrentOutfitClimateChip({ style: [], climate: [] }, null), "Everyday");
-  assert.equal(getCurrentOutfitClimateChip({ style: [], climate: [] }, { suggestedFilters: ["Warm"] }), "Everyday");
-  assert.equal(getCurrentOutfitClimateChip({ style: [], climate: ["Cold"] }, { suggestedFilters: ["Warm"] }), "Cold");
+test("climate pill reflects warm or hot leaning outfits from the outfit itself", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_tee"],
+        ["Bottom", "bottom_shorts"],
+        ["Footwear", "shoe_sneakers"]
+      )
+    ),
+    "Warm"
+  );
 });
 
-test("passive weather data does not influence no-filter generation scoring", () => {
-  const withoutWeather = withSeed(88, () =>
-    buildNextOutfit(
-      syntheticWardrobe,
-      {},
-      {},
-      true,
-      {},
-      { Wardrobe: true, Wishlist: true },
-      { style: [], climate: [] },
-      null,
-      "guided",
-      {},
-      []
-    )
+test("climate pill reflects transitional leaning outfits from the outfit itself", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_knit"],
+        ["TopOuter", "outer_jacket"],
+        ["Bottom", "bottom_trousers"],
+        ["Footwear", "shoe_sneakers"]
+      )
+    ),
+    "Transitional"
   );
-  const withPassiveWeather = withSeed(88, () =>
-    buildNextOutfit(
-      syntheticWardrobe,
-      {},
-      {},
-      true,
-      {},
-      { Wardrobe: true, Wishlist: true },
-      { style: [], climate: [] },
-      { suggestedFilters: ["Warm"] },
-      "guided",
-      {},
-      []
+});
+
+test("climate pill reflects cold leaning outfits from the outfit itself", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["Headwear", "head_beanie"],
+        ["TopInner", "top_hoodie"],
+        ["TopOuter", "outer_wool"],
+        ["Bottom", "bottom_formal_trousers"],
+        ["Footwear", "shoe_boots"]
+      )
+    ),
+    "Cold"
+  );
+});
+
+test("climate pill reflects rain when rain cues are strongest", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["Headwear", "head_cap"],
+        ["TopInner", "top_hoodie"],
+        ["TopOuter", "outer_shell"],
+        ["Bottom", "bottom_trousers"],
+        ["Footwear", "shoe_boots"]
+      )
+    ),
+    "Rain"
+  );
+});
+
+test("climate pill ignores passive weather and explicit climate state and reflects the outfit", () => {
+  const actualOutfitClimate = getCurrentOutfitClimateChip(
+    climateItems(
+      ["TopInner", "top_tee"],
+      ["Bottom", "bottom_shorts"],
+      ["Footwear", "shoe_sneakers"]
     )
   );
 
-  assert.deepEqual(withPassiveWeather, withoutWeather);
+  assert.equal(actualOutfitClimate, "Warm");
+  assert.notEqual(actualOutfitClimate, "Cold");
 });
 
 test("smart shirt with shorts and medium or heavy outerwear is suppressed", () => {
