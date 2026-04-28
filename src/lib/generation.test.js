@@ -32,6 +32,7 @@ const syntheticWardrobe = [
   { id: "outer_blazer", type: "Blazer", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Smart Casual", "Formal"] },
   { id: "outer_formal_blazer", type: "Blazer", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Formal"] },
   { id: "outer_shell", type: "Shell Jacket", garmentType: "Outerwear", layerType: "Outer", weight: "Light", styleTags: ["Athleisure"] },
+  { id: "outer_puffer", type: "Puffer", garmentType: "Outerwear", layerType: "Outer", weight: "Heavy", styleTags: ["Casual", "Athleisure"] },
   { id: "outer_wool", type: "Wool Coat", garmentType: "Outerwear", layerType: "Outer", weight: "Heavy", styleTags: ["Formal", "Smart Casual"] },
   { id: "bottom_jeans", type: "Jeans", garmentType: "Bottom", layerType: "Both", weight: "Medium", styleTags: ["Casual"] },
   { id: "bottom_trousers", type: "Trousers", garmentType: "Bottom", layerType: "Both", weight: "Medium", styleTags: ["Smart Casual", "Formal"] },
@@ -69,7 +70,8 @@ function withSeed(seed, run) {
 function generateBatch({
   count = 60,
   outfitFilters = { style: [], climate: [] },
-  seed = 42
+  seed = 42,
+  weatherData = null
 } = {}) {
   return withSeed(seed, () => {
     const results = [];
@@ -84,7 +86,7 @@ function generateBatch({
         {},
         { Wardrobe: true, Wishlist: true },
         outfitFilters,
-        null,
+        weatherData,
         "guided",
         {},
         recentOutfits
@@ -142,19 +144,32 @@ test("no-filter generation uses weighted variety instead of collapsing into casu
   const representedStyles = Object.values(counts).filter((count) => count > 0).length;
 
   assert.ok((counts.Casual ?? 0) > (counts["Smart Casual"] ?? 0));
-  assert.ok((counts["Smart Casual"] ?? 0) >= 7);
+  assert.ok((counts["Smart Casual"] ?? 0) >= 6);
   assert.ok((counts.Athleisure ?? 0) >= 8);
-  assert.ok((counts.Casual ?? 0) <= 32);
-  assert.ok((counts.Formal ?? 0) <= 18);
-  assert.ok(representedStyles >= 3);
+  assert.ok((counts.Casual ?? 0) <= 28);
+  assert.ok((counts.Formal ?? 0) >= 5);
+  assert.ok((counts.Formal ?? 0) <= 20);
+  assert.ok(representedStyles >= 4);
 });
 
 test("no-filter occasionally produces formal when the wardrobe supports it", () => {
   const outfits = generateBatch({ count: 120, seed: 77 });
   const counts = countByDominantStyle(outfits);
 
-  assert.ok((counts.Formal ?? 0) >= 3);
+  assert.ok((counts.Formal ?? 0) >= 8);
   assert.ok((counts.Formal ?? 0) < (counts.Casual ?? 0));
+});
+
+test("no-filter ignores passive weather unless climate filters are explicitly applied", () => {
+  const passiveWarmWeather = {
+    temperature: 27,
+    suggestedFilters: ["Warm"]
+  };
+
+  const neutralOutfits = generateBatch({ count: 20, seed: 314, weatherData: null });
+  const weatherOutfits = generateBatch({ count: 20, seed: 314, weatherData: passiveWarmWeather });
+
+  assert.deepEqual(weatherOutfits, neutralOutfits);
 });
 
 test("sport cap only appears in non-formal no-filter outfits", () => {
@@ -261,6 +276,48 @@ test("climate pill reflects transitional leaning outfits from the outfit itself"
   );
 });
 
+test("climate pill returns cold for heavy coat and boots", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_tee"],
+        ["TopOuter", "outer_wool"],
+        ["Bottom", "bottom_jeans"],
+        ["Footwear", "shoe_boots"]
+      )
+    ),
+    "Cold"
+  );
+});
+
+test("climate pill returns cold for wool coat with medium footwear", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_shirt"],
+        ["TopOuter", "outer_wool"],
+        ["Bottom", "bottom_trousers"],
+        ["Footwear", "shoe_derby"]
+      )
+    ),
+    "Cold"
+  );
+});
+
+test("climate pill returns cold for puffer and boots", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_tee"],
+        ["TopOuter", "outer_puffer"],
+        ["Bottom", "bottom_jeans"],
+        ["Footwear", "shoe_boots"]
+      )
+    ),
+    "Cold"
+  );
+});
+
 test("climate pill reflects cold leaning outfits from the outfit itself", () => {
   assert.equal(
     getCurrentOutfitClimateChip(
@@ -274,6 +331,20 @@ test("climate pill reflects cold leaning outfits from the outfit itself", () => 
     ),
     "Cold"
   );
+});
+
+test("climate pill does not let a light inner top overpower heavy outerwear", () => {
+  const actualOutfitClimate = getCurrentOutfitClimateChip(
+    climateItems(
+      ["TopInner", "top_tee"],
+      ["TopOuter", "outer_wool"],
+      ["Bottom", "bottom_shorts"],
+      ["Footwear", "shoe_boots"]
+    )
+  );
+
+  assert.notEqual(actualOutfitClimate, "Warm");
+  assert.ok(["Cold", "Transitional"].includes(actualOutfitClimate));
 });
 
 test("climate pill reflects rain when rain cues are strongest", () => {
@@ -302,6 +373,19 @@ test("climate pill ignores passive weather and explicit climate state and reflec
 
   assert.equal(actualOutfitClimate, "Warm");
   assert.notEqual(actualOutfitClimate, "Cold");
+});
+
+test("climate pill returns hot only when the outfit has strong warm-weather signals", () => {
+  assert.equal(
+    getCurrentOutfitClimateChip(
+      climateItems(
+        ["TopInner", "top_tee"],
+        ["Bottom", "bottom_shorts"],
+        ["Footwear", "shoe_slides"]
+      )
+    ),
+    "Hot"
+  );
 });
 
 test("smart shirt with shorts and medium or heavy outerwear is suppressed", () => {
