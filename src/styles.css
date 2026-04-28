@@ -895,12 +895,39 @@ button:disabled {
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.18));
 }
 
-.accessory-slot img {
-  max-width: 118px;
-  max-height: 88px;
-  width: auto;
+.managed-image {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  min-width: 0;
+  margin-inline: auto;
+}
+
+.managed-image-plain {
+  position: static;
+  overflow: visible;
   height: auto;
   object-fit: contain;
+  aspect-ratio: auto;
+}
+
+.managed-image-content {
+  position: absolute;
+  left: var(--managed-base-left, 0);
+  top: var(--managed-base-top, 0);
+  width: var(--managed-base-width, 100%);
+  height: var(--managed-base-height, 100%);
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
+  transform: translate(var(--managed-offset-x, 0), var(--managed-offset-y, 0)) scale(var(--managed-scale, 1));
+  transform-origin: center;
+}
+
+.accessory-slot .managed-image {
+  width: calc(118px * var(--managed-frame-scale, 1));
+  max-width: calc(118px * var(--managed-frame-scale, 1));
+  max-height: calc(88px * var(--managed-frame-scale, 1));
 }
 
 .accessory-slot-neck {
@@ -910,9 +937,10 @@ button:disabled {
   min-height: 180px;
 }
 
-.accessory-slot-neck img {
-  max-width: 180px;
-  max-height: 160px;
+.accessory-slot-neck .managed-image {
+  width: calc(180px * var(--managed-frame-scale, 1));
+  max-width: calc(180px * var(--managed-frame-scale, 1));
+  max-height: calc(160px * var(--managed-frame-scale, 1));
 }
 
 .accessory-slot-lefthand {
@@ -932,9 +960,10 @@ button:disabled {
   min-height: 190px;
 }
 
-.accessory-slot-bag img {
-  max-width: 190px;
-  max-height: 170px;
+.accessory-slot-bag .managed-image {
+  width: calc(190px * var(--managed-frame-scale, 1));
+  max-width: calc(190px * var(--managed-frame-scale, 1));
+  max-height: calc(170px * var(--managed-frame-scale, 1));
 }
 
 .accessory-slot-glasses {
@@ -1077,13 +1106,11 @@ button:disabled {
   color: var(--primary-text);
 }
 
-.accessory-picker-item img,
-.slot-picker-item img {
-  max-width: 70px;
-  max-height: 56px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+.accessory-picker-item .managed-image,
+.slot-picker-item .managed-image {
+  width: calc(70px * var(--managed-frame-scale, 1));
+  max-width: calc(70px * var(--managed-frame-scale, 1));
+  max-height: calc(56px * var(--managed-frame-scale, 1));
 }
 
 .accessory-picker-item.is-current,
@@ -1257,41 +1284,38 @@ button:disabled {
   left: -22px;
 }
 
-.item-figure img,
-.wardrobe-preview img {
-  width: 100%;
-  max-width: 180px;
-  height: auto;
-  object-fit: contain;
+.item-figure .managed-image,
+.wardrobe-preview .managed-image {
+  width: calc(100% * var(--managed-frame-scale, 1));
+  max-width: calc(180px * var(--managed-frame-scale, 1));
 }
 
-.wardrobe-preview img {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 150px;
+.wardrobe-preview .managed-image {
+  width: calc(100% * var(--managed-frame-scale, 1));
+  max-width: calc(100% * var(--managed-frame-scale, 1));
+  max-height: calc(150px * var(--managed-frame-scale, 1));
 }
 
-.outfit-slot-headwear .item-figure img {
-  max-width: 104px;
+.outfit-slot-headwear .item-figure .managed-image {
+  max-width: calc(104px * var(--managed-frame-scale, 1));
 }
 
-.outfit-slot-topinner .item-figure img,
-.outfit-slot-topouter .item-figure img {
-  max-width: 196px;
+.outfit-slot-topinner .item-figure .managed-image,
+.outfit-slot-topouter .item-figure .managed-image {
+  max-width: calc(196px * var(--managed-frame-scale, 1));
 }
 
-.top-layer-row .outfit-slot-topinner .item-figure img,
-.top-layer-row .outfit-slot-topouter .item-figure img {
-  max-width: 214px;
+.top-layer-row .outfit-slot-topinner .item-figure .managed-image,
+.top-layer-row .outfit-slot-topouter .item-figure .managed-image {
+  max-width: calc(214px * var(--managed-frame-scale, 1));
 }
 
-.outfit-slot-bottom .item-figure img {
-  max-width: 138px;
+.outfit-slot-bottom .item-figure .managed-image {
+  max-width: calc(138px * var(--managed-frame-scale, 1));
 }
 
-.outfit-slot-footwear .item-figure img {
-  max-width: 124px;
+.outfit-slot-footwear .item-figure .managed-image {
+  max-width: calc(124px * var(--managed-frame-scale, 1));
 }
 
 .slot-meta,
@@ -1618,32 +1642,34 @@ button:disabled {
   background: var(--soft);
 }
 
-.saved-preview-piece img {
+.saved-preview-piece .managed-image {
   display: block;
-  width: auto;
-  height: auto;
-  object-fit: contain;
+  width: calc(100% * var(--managed-frame-scale, 1));
 }
 
-.saved-preview-headwear img {
-  max-width: 32px;
-  max-height: 24px;
+.saved-preview-headwear .managed-image {
+  width: calc(32px * var(--managed-frame-scale, 1));
+  max-width: calc(32px * var(--managed-frame-scale, 1));
+  max-height: calc(24px * var(--managed-frame-scale, 1));
 }
 
-.saved-preview-topinner img,
-.saved-preview-topouter img {
-  max-width: 84px;
-  max-height: 48px;
+.saved-preview-topinner .managed-image,
+.saved-preview-topouter .managed-image {
+  width: calc(84px * var(--managed-frame-scale, 1));
+  max-width: calc(84px * var(--managed-frame-scale, 1));
+  max-height: calc(48px * var(--managed-frame-scale, 1));
 }
 
-.saved-preview-bottom img {
-  max-width: 54px;
-  max-height: 52px;
+.saved-preview-bottom .managed-image {
+  width: calc(54px * var(--managed-frame-scale, 1));
+  max-width: calc(54px * var(--managed-frame-scale, 1));
+  max-height: calc(52px * var(--managed-frame-scale, 1));
 }
 
-.saved-preview-footwear img {
-  max-width: 44px;
-  max-height: 28px;
+.saved-preview-footwear .managed-image {
+  width: calc(44px * var(--managed-frame-scale, 1));
+  max-width: calc(44px * var(--managed-frame-scale, 1));
+  max-height: calc(28px * var(--managed-frame-scale, 1));
 }
 
 .saved-preview.is-layered {
@@ -2228,11 +2254,10 @@ button:disabled {
   text-transform: uppercase;
 }
 
-.item-image-preview img {
+.item-image-preview .managed-image {
   display: block;
-  width: 100%;
-  max-height: 120px;
-  object-fit: contain;
+  width: calc(100% * var(--managed-frame-scale, 1));
+  max-height: calc(120px * var(--managed-frame-scale, 1));
 }
 
 .item-image-actions {
@@ -2583,8 +2608,8 @@ button:disabled {
     min-height: 118px;
   }
 
-  .item-image-preview img {
-    max-height: 130px;
+  .item-image-preview .managed-image {
+    max-height: calc(130px * var(--managed-frame-scale, 1));
   }
 
   .top-layer-row {
@@ -2751,8 +2776,8 @@ button:disabled {
     padding: 5px;
   }
 
-  .wardrobe-preview img {
-    max-height: 86px;
+  .wardrobe-preview .managed-image {
+    max-height: calc(86px * var(--managed-frame-scale, 1));
   }
 
   .card-actions .ghost-button {
@@ -2776,20 +2801,23 @@ button:disabled {
     padding: 4px 0 2px;
   }
 
-  .saved-preview-topinner img,
-  .saved-preview-topouter img {
-    max-width: 58px;
-    max-height: 34px;
+  .saved-preview-topinner .managed-image,
+  .saved-preview-topouter .managed-image {
+    width: calc(58px * var(--managed-frame-scale, 1));
+    max-width: calc(58px * var(--managed-frame-scale, 1));
+    max-height: calc(34px * var(--managed-frame-scale, 1));
   }
 
-  .saved-preview-bottom img {
-    max-width: 40px;
-    max-height: 38px;
+  .saved-preview-bottom .managed-image {
+    width: calc(40px * var(--managed-frame-scale, 1));
+    max-width: calc(40px * var(--managed-frame-scale, 1));
+    max-height: calc(38px * var(--managed-frame-scale, 1));
   }
 
-  .saved-preview-footwear img {
-    max-width: 34px;
-    max-height: 22px;
+  .saved-preview-footwear .managed-image {
+    width: calc(34px * var(--managed-frame-scale, 1));
+    max-width: calc(34px * var(--managed-frame-scale, 1));
+    max-height: calc(22px * var(--managed-frame-scale, 1));
   }
 
   .slot-picker-list {

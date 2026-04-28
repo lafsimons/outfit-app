@@ -2,11 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  applyContextValidityRulesToPool,
   buildNextOutfit,
   getCurrentOutfitClimateChip,
   getGuidedScoreBreakdown,
   getOutfitDominantStyle,
-  rememberRecentOutfit
+  getPool,
+  rememberRecentOutfit,
+  summarizeGuidedExplanation
 } from "./generation.js";
 import { resolveTypeDefaults } from "./typeDefaults.js";
 
@@ -124,6 +127,11 @@ function breakdownFor(itemId, slot, outfit = {}, outfitFilters = { style: [], cl
   return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, null, {}, recentOutfits, true, [item]).breakdown;
 }
 
+function scoreFor(itemId, slot, outfit = {}, outfitFilters = { style: [], climate: [] }, recentOutfits = [], outfitAffinity = {}) {
+  const item = itemsById[itemId];
+  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, null, outfitAffinity, recentOutfits, true, [item]).score;
+}
+
 function climateItems(...entries) {
   return entries.map(([slot, itemId]) => ({ slot, item: itemsById[itemId] }));
 }
@@ -134,10 +142,10 @@ test("no-filter generation uses weighted variety instead of collapsing into casu
   const representedStyles = Object.values(counts).filter((count) => count > 0).length;
 
   assert.ok((counts.Casual ?? 0) > (counts["Smart Casual"] ?? 0));
-  assert.ok((counts["Smart Casual"] ?? 0) >= 10);
+  assert.ok((counts["Smart Casual"] ?? 0) >= 7);
   assert.ok((counts.Athleisure ?? 0) >= 8);
   assert.ok((counts.Casual ?? 0) <= 32);
-  assert.ok((counts.Formal ?? 0) <= 12);
+  assert.ok((counts.Formal ?? 0) <= 18);
   assert.ok(representedStyles >= 3);
 });
 
@@ -149,12 +157,12 @@ test("no-filter occasionally produces formal when the wardrobe supports it", () 
   assert.ok((counts.Formal ?? 0) < (counts.Casual ?? 0));
 });
 
-test("sport cap only appears in athleisure-leaning no-filter outfits", () => {
+test("sport cap only appears in non-formal no-filter outfits", () => {
   const outfits = generateBatch({ count: 80, seed: 99 });
 
   outfits.forEach((outfit) => {
     if (outfit.Headwear !== "head_sport_cap") return;
-    assert.equal(getOutfitDominantStyle(outfit, itemsById), "Athleisure");
+    assert.notEqual(getOutfitDominantStyle(outfit, itemsById), "Formal");
   });
 });
 
@@ -350,10 +358,116 @@ test("recent item repetition penalties are capped and mild", () => {
     repeatedOutfit,
     repeatedOutfit
   ].reduce((current, outfit) => rememberRecentOutfit(current, outfit, true), []);
-  const breakdown = breakdownFor("top_tee", "TopInner", { Bottom: "bottom_jeans" }, { style: [], climate: [] }, recentOutfits);
+  const breakdown = breakdownFor(
+    "shoe_sneakers",
+    "Footwear",
+    {
+      Headwear: "head_cap",
+      TopInner: "top_tee",
+      TopOuter: "outer_jacket",
+      Bottom: "bottom_jeans"
+    },
+    { style: [], climate: [] },
+    recentOutfits
+  );
 
-  assert.ok(breakdown.recentItemPenalty >= -4.5);
-  assert.ok(breakdown.recentExactPenalty >= -3.6);
+  assert.ok(breakdown.recentItemPenalty <= -0.3);
+  assert.ok(breakdown.recentItemPenalty >= -0.8);
+  assert.ok(breakdown.recentExactPenalty <= -0.4);
+  assert.ok(breakdown.recentExactPenalty >= -0.5);
+  assert.ok(breakdown.styleStreakPenalty >= -0.5);
+});
+
+test("guided breakdown components stay within normalized caps", () => {
+  const scenarios = [
+    breakdownFor("top_formal_shirt", "TopInner", {}, { style: ["Formal"], climate: [] }),
+    breakdownFor("outer_wool", "TopOuter", { TopInner: "top_tee", Bottom: "bottom_shorts" }, { style: ["Formal"], climate: ["Hot"] }),
+    breakdownFor("head_sport_cap", "Headwear", {}, { style: ["Athleisure"], climate: ["Warm"] }),
+    breakdownFor("shoe_boots", "Footwear", { TopInner: "top_tee", TopOuter: "outer_wool", Bottom: "bottom_formal_trousers" }, { style: [], climate: ["Cold"] })
+  ];
+
+  const caps = {
+    styleCoherence: [-3, 2.5],
+    styleCompletion: [0, 2.5],
+    climate: [-1.5, 2],
+    baseline: [0, 1],
+    affinity: [0, 0.5],
+    noFilterVariety: [-0.4, 1],
+    recentItemPenalty: [-0.8, 0],
+    recentExactPenalty: [-0.5, 0],
+    styleStreakPenalty: [-0.5, 0],
+    dominance: [-2, 0]
+  };
+
+  scenarios.forEach((breakdown) => {
+    Object.entries(caps).forEach(([key, [min, max]]) => {
+      assert.ok(breakdown[key] >= min, `${key} below cap: ${breakdown[key]}`);
+      assert.ok(breakdown[key] <= max, `${key} above cap: ${breakdown[key]}`);
+    });
+
+    Object.values(breakdown).forEach((value) => {
+      assert.ok(value >= -3, `component below general floor: ${value}`);
+      assert.ok(value <= 3, `component above general ceiling: ${value}`);
+    });
+  });
+});
+
+test("affinity boost is capped at a small supportive value", () => {
+  const affinity = {
+    "pair|TopInner|Bottom|top_tee|bottom_jeans": 99,
+    "item|Bottom|bottom_jeans": 99
+  };
+  const breakdown = getGuidedScoreBreakdown(
+    itemsById.bottom_jeans,
+    "Bottom",
+    { TopInner: "top_tee" },
+    itemsById,
+    { style: [], climate: [] },
+    null,
+    affinity,
+    [],
+    true,
+    [itemsById.bottom_jeans]
+  ).breakdown;
+
+  assert.ok(breakdown.affinity <= 0.5);
+  assert.ok(breakdown.affinity >= 0);
+});
+
+test("valid guided candidates receive a positive minimum score floor", () => {
+  const score = scoreFor("top_tee", "TopInner", {}, { style: ["Formal"], climate: [] });
+
+  assert.ok(score >= 0.3);
+});
+
+test("hard-blocked candidates are excluded before scoring floor applies", () => {
+  const pool = getPool(syntheticWardrobe, "Headwear", {}, { Wardrobe: true, Wishlist: true }, true);
+  const filtered = applyContextValidityRulesToPool(pool, "Headwear", { style: [], climate: ["Hot"] }, null, {}, itemsById);
+
+  assert.ok(filtered.some((item) => item.id === "head_cap"));
+  assert.ok(!filtered.some((item) => item.id === "head_beanie"));
+});
+
+test("guided explanation debug reasons stay on the normalized score scale", () => {
+  const explanation = summarizeGuidedExplanation(
+    {
+      Headwear: "head_cap",
+      TopInner: "top_tee",
+      TopOuter: "outer_jacket",
+      Bottom: "bottom_jeans",
+      Footwear: "shoe_sneakers"
+    },
+    itemsById,
+    { style: [], climate: [] },
+    null,
+    {},
+    [],
+    true
+  );
+
+  explanation.forEach((reason) => {
+    assert.ok(Math.abs(reason.value) <= 3, `${reason.label} out of range: ${reason.value}`);
+  });
 });
 
 test("random mode ignores guided recent-memory inputs", () => {

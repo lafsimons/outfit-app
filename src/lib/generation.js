@@ -30,9 +30,39 @@ export const noFilterStyleWeights = {
   Athleisure: 0.2,
   Formal: 0.1
 };
-const MAX_RECENT_ITEM_PENALTY = -4.5;
-const MAX_RECENT_EXACT_PENALTY = -3.6;
-const MAX_STYLE_STREAK_PENALTY = -3.8;
+const GUIDED_BASE_SCORE = 0.8;
+const GUIDED_SCORE_FLOOR = 0.3;
+const MAX_RECENT_ITEM_PENALTY = -0.8;
+const MAX_RECENT_EXACT_PENALTY = -0.5;
+const MAX_STYLE_STREAK_PENALTY = -0.5;
+const MAX_AFFINITY_BOOST = 0.5;
+const recentItemPenaltySteps = [0.22, 0.11, 0.04, 0.02, 0.01];
+const recentSlotPenaltySteps = [0.08, 0.04, 0.01, 0.005, 0.005];
+const recentExactPenaltySteps = [0.4, 0.2, 0.1, 0.05];
+const recentLikedBoostSteps = [0.12, 0.08, 0.04, 0.02];
+const guidedScoreNormalizers = {
+  climate: { scale: 0.45, min: -1.5, max: 2 },
+  styleCoherence: { scale: 0.28, min: -3, max: 2.5 },
+  styleCompletion: { scale: 0.4, min: 0, max: 2.5 },
+  dominance: { scale: 0.6, min: -2, max: 0 },
+  weightContrast: { scale: 0.6, min: -1, max: 0 },
+  styleConflict: { scale: 0.65, min: -1.5, max: 0 },
+  hotOuterwear: { scale: 0.65, min: -1.5, max: 0 },
+  lonelyExtremes: { scale: 0.6, min: -0.8, max: 0 },
+  baseline: { scale: 0.7, min: 0, max: 1 },
+  earlyAnchor: { scale: 0.55, min: 0, max: 1.2 },
+  selectedStyleBonus: { scale: 0.45, min: 0, max: 1.4 },
+  favorite: { scale: 0.6, min: 0, max: 0.3 },
+  affinity: { scale: 1, min: 0, max: MAX_AFFINITY_BOOST },
+  recentItemPenalty: { scale: 1, min: MAX_RECENT_ITEM_PENALTY, max: 0 },
+  recentExactPenalty: { scale: 1, min: MAX_RECENT_EXACT_PENALTY, max: 0 },
+  recentLikedBoost: { scale: 1, min: 0, max: 0.35 },
+  coldOuterwear: { scale: 0.45, min: -1.2, max: 1 },
+  noFilterVariety: { scale: 0.14, min: -0.4, max: 1 },
+  coldLightTopPenalty: { scale: 0.28, min: -1.2, max: 0 },
+  mismatchedSeasonality: { scale: 0.32, min: -1.8, max: 0 },
+  styleStreakPenalty: { scale: 1, min: MAX_STYLE_STREAK_PENALTY, max: 0 }
+};
 
 const nonStackableTopTypes = new Set(["sweatshirt", "jacket"]);
 const affinityRelationships = [
@@ -549,6 +579,22 @@ function clampScore(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function normalizeGuidedScoreComponent(key, value) {
+  const config = guidedScoreNormalizers[key];
+  if (!config) {
+    return value;
+  }
+
+  const scaledValue = value * config.scale;
+  return clampScore(scaledValue, config.min, config.max);
+}
+
+function normalizeGuidedBreakdown(breakdown) {
+  return Object.fromEntries(
+    Object.entries(breakdown).map(([key, value]) => [key, normalizeGuidedScoreComponent(key, value)])
+  );
+}
+
 export function classifyOutfitStyle(items, selectedStyles = []) {
   return resolveDominantStyleFromCounts(getDominantStyleCounts(items), selectedStyles);
 }
@@ -749,7 +795,7 @@ function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById =
   if (profile.blockFormalBridgeSet && hasFormalBridgeBlockedType) return false;
 
   if (profile.blockSmartCasualSet) {
-    if (hasType("slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "sport t-shirt", "sport ls t-shirt", "sport shorts", "fleece sweater", "sneakers", "sneakers (thin)", "canvas sneakers")) {
+    if (hasType("slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "sport t-shirt", "sport ls t-shirt", "sport shorts", "fleece sweater", "hoodie", "sweatshirt", "sneakers", "sneakers (thin)", "canvas sneakers")) {
       return false;
     }
     if (isAthleisureOnly) {
@@ -900,8 +946,8 @@ function getAdjustedNoFilterWeights(recentStyles, support, anchoredStyle = null)
       const oversharePenalty = Math.max(0, recentShare - baseWeight) * 1.8;
       const streakPenalty = streakStyle === style ? 1.05 : lastStyle === style ? 0.24 : 0;
       const supportMultiplier = Math.max(0.2, Math.min(1.15, (support?.[style] ?? 0.25) * 1.6));
-      const formalDamping = style === "Formal" ? 0.72 : 1;
-      return [style, Math.max(0.02, (baseWeight + absenceBoost - oversharePenalty - streakPenalty) * supportMultiplier * formalDamping)];
+      const styleBias = style === "Smart Casual" ? 1.08 : style === "Formal" ? 0.42 : 1;
+      return [style, Math.max(0.02, (baseWeight + absenceBoost - oversharePenalty - streakPenalty) * supportMultiplier * styleBias)];
     })
   );
 }
@@ -972,7 +1018,9 @@ function getNoFilterPreference(item, noFilterData) {
     else if (anchoredStyle === "Smart Casual" && isAthleisureOnly) score -= 3.5;
     else if (anchoredStyle === "Athleisure" && isFormalOnly) score -= 4;
   } else {
+    if (itemStyles.includes("Smart Casual")) score += 0.6;
     if (isFormalOnly && (noFilterData.weights.Formal ?? 0) < 0.16) score -= 1.6;
+    if (isFormalOnly) score -= 0.8;
     if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) < 0.22) score -= 1.2;
     if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) >= 0.22) score += 1.4;
     if (targetStyle && itemStyles.includes(targetStyle)) {
@@ -1138,12 +1186,15 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
   const completedStyle = isComplete ? getOutfitDominantStyle(completedOutfit, itemsById) : null;
 
   normalizedRecentOutfits.forEach((recentOutfit, index) => {
-    const recencyWeight = RECENT_OUTFIT_WINDOW - index;
+    const itemPenalty = recentItemPenaltySteps[index] ?? 0;
+    const slotPenalty = recentSlotPenaltySteps[index] ?? 0;
+    const exactPenalty = recentExactPenaltySteps[index] ?? 0;
+    const likedBoost = recentLikedBoostSteps[index] ?? 0;
     const itemUsed = visibleSlots.some((recentSlot) => recentOutfit.outfit?.[recentSlot] === item.id);
     if (itemUsed) {
-      scores.recentItemPenalty -= (index === 0 ? 0.28 : 0.16) * recencyWeight;
+      scores.recentItemPenalty -= itemPenalty;
       if (recentOutfit.outfit?.[slot] === item.id) {
-        scores.recentItemPenalty -= (index === 0 ? 0.18 : 0.08) * recencyWeight;
+        scores.recentItemPenalty -= slotPenalty;
       }
     }
 
@@ -1152,21 +1203,21 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
       const sourceItemId = outfit?.[sourceSlot];
       if (!sourceItemId) return;
       if (recentOutfit.outfit?.[sourceSlot] === sourceItemId && recentOutfit.outfit?.[targetSlot] === item.id) {
-        scores.recentLikedBoost += 0.12 * recencyWeight;
+        scores.recentLikedBoost += likedBoost;
       }
     });
 
     if (isComplete && recentOutfit.key === getOutfitKey(completedOutfit, layering)) {
-      scores.recentExactPenalty -= 0.45 * recencyWeight;
+      scores.recentExactPenalty -= exactPenalty;
     }
   });
 
   if (completedStyle && normalizedRecentOutfits.length >= 2) {
     const recentStyles = getRecentDominantStyles(normalizedRecentOutfits, itemsById);
     if (recentStyles[0] === completedStyle && recentStyles[1] === completedStyle) {
-      scores.styleStreakPenalty -= 3.4;
+      scores.styleStreakPenalty -= 0.5;
     } else if (recentStyles[0] === completedStyle) {
-      scores.styleStreakPenalty -= 1.1;
+      scores.styleStreakPenalty -= 0.2;
     }
   }
 
@@ -1252,6 +1303,10 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterD
       score -= 4.5;
     }
 
+    if (styleMode === "smart-casual" && hasType("hoodie", "sweatshirt")) {
+      score -= 2.6;
+    }
+
     if (styleMode === "athleisure") {
       if (hasType("wool shirt", "shirt", "blazer", "derby", "wool coat", "wool jacket")) {
         score -= 6;
@@ -1271,7 +1326,7 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterD
   }
 
   if (styleMode === "no-filter") {
-    score += getNoFilterPreference(item, noFilterData);
+    score += getNoFilterPreference(item, noFilterData) * 0.4;
   }
 
   return score;
@@ -1288,13 +1343,13 @@ function getAffinityScore(item, slot, outfit, outfitAffinity) {
     if (!sourceItemId) return;
 
     const pairCount = affinity[buildAffinityPairKey(sourceSlot, targetSlot, sourceItemId, item.id)] ?? 0;
-    score += Math.min(pairCount * 0.45, 1.6);
+    score += Math.min(pairCount * 0.14, 0.35);
   });
 
   const itemCount = affinity[buildAffinityItemKey(slot, item.id)] ?? 0;
-  score += Math.min(itemCount * 0.12, 0.8);
+  score += Math.min(itemCount * 0.05, 0.2);
 
-  return score;
+  return Math.min(score, MAX_AFFINITY_BOOST);
 }
 
 function buildNoFilterData(pool, outfit, itemsById, recentOutfits, generationContext = null) {
@@ -1362,10 +1417,11 @@ export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFil
   breakdown.recentLikedBoost += recentScores.recentLikedBoost;
   breakdown.styleStreakPenalty += recentScores.styleStreakPenalty;
 
-  const score = 1 + Object.values(breakdown).reduce((sum, value) => sum + value, 0);
+  const normalizedBreakdown = normalizeGuidedBreakdown(breakdown);
+  const score = GUIDED_BASE_SCORE + Object.values(normalizedBreakdown).reduce((sum, value) => sum + value, 0);
   return {
-    score: Math.max(0.2, score),
-    breakdown
+    score: Math.max(GUIDED_SCORE_FLOOR, score),
+    breakdown: normalizedBreakdown
   };
 }
 
@@ -1536,13 +1592,17 @@ export function summarizeGuidedExplanation(outfit, itemsById, outfitFilters, wea
 
     Object.entries(breakdown).forEach(([key, value]) => {
       if (!value) return;
-      aggregated[key] = (aggregated[key] ?? 0) + value;
+      const current = aggregated[key] ?? { total: 0, count: 0 };
+      current.total += value;
+      current.count += 1;
+      aggregated[key] = current;
     });
 
     contextOutfit[slot] = itemId;
   });
 
   return Object.entries(aggregated)
+    .map(([key, entry]) => [key, entry.total / entry.count])
     .filter(([, value]) => Math.abs(value) >= 0.2)
     .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
     .slice(0, 6)

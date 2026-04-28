@@ -84,6 +84,7 @@ const imageAssetEntries = Object.entries(imageAssets)
 const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
+const imageMetricsCache = new Map();
 
 function getImageFilename(imageUrl) {
   const pathname = imageUrl.split("?")[0].split("#")[0];
@@ -145,6 +146,7 @@ const garmentTypes = [
   "Accessory"
 ];
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
+const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
 const emptyWardrobeFilters = {
   brand: "",
   type: "",
@@ -187,12 +189,47 @@ function normalizeImageScale(value) {
   return Math.min(180, Math.max(50, Math.round(parsed)));
 }
 
+function normalizeImageFrameScale(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+  return Math.min(300, Math.max(20, Math.round(parsed)));
+}
+
 function normalizeImageOffset(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) {
     return 0;
   }
   return Math.min(50, Math.max(-50, Math.round(parsed)));
+}
+
+function normalizeImageCropSize(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 100;
+  }
+
+  return Math.min(100, Math.max(1, Math.round(parsed)));
+}
+
+function normalizeImageCropStart(value, size) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.min(100 - size, Math.max(0, Math.round(parsed)));
+}
+
+function getNormalizedImageCrop(item) {
+  const width = normalizeImageCropSize(item?.imageCropWidth);
+  const height = normalizeImageCropSize(item?.imageCropHeight);
+  const x = normalizeImageCropStart(item?.imageCropX, width);
+  const y = normalizeImageCropStart(item?.imageCropY, height);
+
+  return { x, y, width, height };
 }
 
 function normalizeQuantity(value) {
@@ -215,16 +252,248 @@ function areEditorValuesEqual(left, right) {
   return left === right;
 }
 
-function getItemImageStyle(item) {
-  const scale = normalizeImageScale(item?.imageScale);
-  const offsetX = normalizeImageOffset(item?.imageOffsetX);
-  const offsetY = normalizeImageOffset(item?.imageOffsetY);
+function itemNeedsImageBake(item) {
+  const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
 
-  if (scale === 100 && offsetX === 0 && offsetY === 0) {
-    return undefined;
+  return Boolean(imageUrl) && (
+    normalizeImageScale(item?.imageScale) !== normalizeImageFrameScale(item?.imageFrameScale) ||
+    normalizeImageOffset(item?.imageOffsetX) !== 0 ||
+    normalizeImageOffset(item?.imageOffsetY) !== 0
+  );
+}
+
+function restoreLegacyBakedImageScale(item) {
+  const frameScale = normalizeImageFrameScale(item?.imageFrameScale);
+  const scale = normalizeImageScale(item?.imageScale);
+
+  if (frameScale === 100 || scale !== 100) {
+    return item;
   }
 
-  return { transform: `translate(${offsetX}%, ${offsetY}%) scale(${scale / 100})` };
+  return {
+    ...item,
+    imageScale: frameScale
+  };
+}
+
+function bakeItemImagePresentation(item) {
+  if (!itemNeedsImageBake(item)) {
+    return {
+      ...item,
+      imageFrameScale: normalizeImageFrameScale(item?.imageFrameScale),
+      imageScale: normalizeImageScale(item?.imageScale),
+      imageOffsetX: normalizeImageOffset(item?.imageOffsetX),
+      imageOffsetY: normalizeImageOffset(item?.imageOffsetY),
+      imageCropX: getNormalizedImageCrop(item).x,
+      imageCropY: getNormalizedImageCrop(item).y,
+      imageCropWidth: getNormalizedImageCrop(item).width,
+      imageCropHeight: getNormalizedImageCrop(item).height
+    };
+  }
+
+  return {
+    ...item,
+    imageFrameScale: normalizeImageFrameScale(item?.imageScale),
+    imageScale: normalizeImageScale(item?.imageScale),
+    imageOffsetX: normalizeImageOffset(item?.imageOffsetX),
+    imageOffsetY: normalizeImageOffset(item?.imageOffsetY),
+    imageCropX: getNormalizedImageCrop(item).x,
+    imageCropY: getNormalizedImageCrop(item).y,
+    imageCropWidth: getNormalizedImageCrop(item).width,
+    imageCropHeight: getNormalizedImageCrop(item).height
+  };
+}
+
+function getItemImageStyle(item, { useFrameScale = false, usePresentation = false } = {}) {
+  const frameScale = useFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100;
+  const scale = usePresentation ? normalizeImageScale(item?.imageScale) : 100;
+  const offsetX = usePresentation ? normalizeImageOffset(item?.imageOffsetX) : 0;
+  const offsetY = usePresentation ? normalizeImageOffset(item?.imageOffsetY) : 0;
+  const effectiveScale = useFrameScale ? scale / frameScale : scale / 100;
+
+  return {
+    "--managed-frame-scale": frameScale / 100,
+    "--managed-scale": effectiveScale,
+    "--managed-offset-x": `${offsetX}%`,
+    "--managed-offset-y": `${offsetY}%`
+  };
+}
+
+function getManagedImageSourceRect(item, naturalWidth, naturalHeight, { useCrop = false } = {}) {
+  const crop = useCrop ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
+  const sourceX = (crop.x / 100) * naturalWidth;
+  const sourceY = (crop.y / 100) * naturalHeight;
+  const sourceWidth = (crop.width / 100) * naturalWidth;
+  const sourceHeight = (crop.height / 100) * naturalHeight;
+
+  return {
+    x: sourceX,
+    y: sourceY,
+    width: Math.max(sourceWidth, 1),
+    height: Math.max(sourceHeight, 1)
+  };
+}
+
+function getManagedImageFrameStyle(item, metrics, options = {}) {
+  const crop = options.useCrop && options.usePresentation ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
+  const cropWidth = crop.width / 100;
+  const cropHeight = crop.height / 100;
+  const naturalWidth = Math.max(metrics?.naturalWidth ?? 1, 1);
+  const naturalHeight = Math.max(metrics?.naturalHeight ?? 1, 1);
+  const cropAspectRatio = (naturalWidth * cropWidth) / (naturalHeight * cropHeight);
+
+  return {
+    aspectRatio: `${cropAspectRatio || 1}`,
+    "--managed-base-width": `${100 / cropWidth}%`,
+    "--managed-base-height": `${100 / cropHeight}%`,
+    "--managed-base-left": `${(-crop.x / crop.width) * 100}%`,
+    "--managed-base-top": `${(-crop.y / crop.height) * 100}%`,
+    ...getItemImageStyle(item, options)
+  };
+}
+
+function getManagedImageDrawBox(item, image, frameX, frameY, frameWidth, frameHeight, { useFrameScale = false, useCrop = false, usePresentation = false } = {}) {
+  const crop = useCrop && usePresentation ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
+  const scale = (usePresentation ? normalizeImageScale(item?.imageScale) : 100) / (useFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100);
+  const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight, { useCrop: useCrop && usePresentation });
+  const drawCropWidth = image.naturalWidth * (crop.width / 100);
+  const drawCropHeight = image.naturalHeight * (crop.height / 100);
+  const cropScale = Math.min(frameWidth / drawCropWidth, frameHeight / drawCropHeight, 1_000);
+  const visibleWidth = drawCropWidth * cropScale;
+  const visibleHeight = drawCropHeight * cropScale;
+  const baseWidth = visibleWidth / (crop.width / 100);
+  const baseHeight = visibleHeight / (crop.height / 100);
+  const baseX = frameX - (crop.x / 100) * baseWidth;
+  const baseY = frameY - (crop.y / 100) * baseHeight;
+  const scaledWidth = baseWidth * scale;
+  const scaledHeight = baseHeight * scale;
+  const offsetX = ((usePresentation ? normalizeImageOffset(item?.imageOffsetX) : 0) / 100) * scaledWidth;
+  const offsetY = ((usePresentation ? normalizeImageOffset(item?.imageOffsetY) : 0) / 100) * scaledHeight;
+
+  return {
+    sourceRect,
+    drawX: baseX + offsetX - (scaledWidth - baseWidth) / 2,
+    drawY: baseY + offsetY - (scaledHeight - baseHeight) / 2,
+    drawWidth: scaledWidth,
+    drawHeight: scaledHeight
+  };
+}
+
+function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight, options = {}) {
+  const { sourceRect, drawX, drawY, drawWidth, drawHeight } = getManagedImageDrawBox(
+    item,
+    image,
+    frameX,
+    frameY,
+    frameWidth,
+    frameHeight,
+    options
+  );
+
+  context.save();
+  context.beginPath();
+  context.rect(frameX, frameY, frameWidth, frameHeight);
+  context.clip();
+  context.drawImage(
+    image,
+    sourceRect.x,
+    sourceRect.y,
+    sourceRect.width,
+    sourceRect.height,
+    drawX,
+    drawY,
+    drawWidth,
+    drawHeight
+  );
+  context.restore();
+}
+
+function useImageMetrics(imageUrl) {
+  const resolvedImageUrl = resolveImageUrl(imageUrl?.trim?.() ?? imageUrl ?? "");
+  const [metrics, setMetrics] = useState(() => imageMetricsCache.get(resolvedImageUrl) ?? null);
+
+  useEffect(() => {
+    if (!resolvedImageUrl) {
+      setMetrics(null);
+      return undefined;
+    }
+
+    const cached = imageMetricsCache.get(resolvedImageUrl);
+    if (cached) {
+      setMetrics(cached);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const image = new Image();
+
+    image.onload = () => {
+      const nextMetrics = {
+        naturalWidth: Math.max(image.naturalWidth || 1, 1),
+        naturalHeight: Math.max(image.naturalHeight || 1, 1)
+      };
+
+      imageMetricsCache.set(resolvedImageUrl, nextMetrics);
+
+      if (!cancelled) {
+        setMetrics(nextMetrics);
+      }
+    };
+
+    image.onerror = () => {
+      const fallbackMetrics = { naturalWidth: 1, naturalHeight: 1 };
+      imageMetricsCache.set(resolvedImageUrl, fallbackMetrics);
+
+      if (!cancelled) {
+        setMetrics(fallbackMetrics);
+      }
+    };
+
+    image.src = resolvedImageUrl;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedImageUrl]);
+
+  return metrics ?? { naturalWidth: 1, naturalHeight: 1 };
+}
+
+function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, useCrop = false, usePresentation = false }) {
+  const resolvedImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "");
+  const metrics = useImageMetrics(resolvedImageUrl);
+
+  if (!resolvedImageUrl) {
+    return null;
+  }
+
+  if (!usePresentation) {
+    return (
+      <img
+        ref={imageRef}
+        src={resolvedImageUrl}
+        alt={alt}
+        className={`managed-image managed-image-plain ${className}`.trim()}
+        data-item-id={dataItemId || item?.id || ""}
+      />
+    );
+  }
+
+  return (
+    <span
+      ref={frameRef}
+      className={`managed-image ${className}`.trim()}
+      style={getManagedImageFrameStyle(item, metrics, { useFrameScale, useCrop, usePresentation })}
+      data-item-id={dataItemId || item?.id || ""}
+    >
+      <img
+        ref={imageRef}
+        src={resolvedImageUrl}
+        alt={alt}
+        className="managed-image-content"
+      />
+    </span>
+  );
 }
 
 function itemNeedsStyleWeightMappingMigration(originalItem, nextItem) {
@@ -584,9 +853,14 @@ function normalizeItem(item) {
     value: shouldMoveValueToRetail ? "" : value,
     retailValue: shouldMoveValueToRetail ? value : correction?.retailValue ?? retailValue,
     imageUrl,
+    imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
     imageScale: normalizeImageScale(item.imageScale),
     imageOffsetX: normalizeImageOffset(item.imageOffsetX),
     imageOffsetY: normalizeImageOffset(item.imageOffsetY),
+    imageCropX: getNormalizedImageCrop(item).x,
+    imageCropY: getNormalizedImageCrop(item).y,
+    imageCropWidth: getNormalizedImageCrop(item).width,
+    imageCropHeight: getNormalizedImageCrop(item).height,
     favorite: Boolean(item.favorite),
     quantity: normalizeQuantity(item.quantity),
     garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
@@ -608,12 +882,34 @@ function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
   return originalItem.imageScale === undefined || normalizeImageScale(originalItem.imageScale) !== normalizedItem.imageScale;
 }
 
+function itemNeedsImageFrameScaleMigration(originalItem, normalizedItem) {
+  return (
+    originalItem.imageFrameScale === undefined ||
+    normalizeImageFrameScale(originalItem.imageFrameScale) !== normalizedItem.imageFrameScale
+  );
+}
+
 function itemNeedsImageOffsetMigration(originalItem, normalizedItem) {
   return (
     originalItem.imageOffsetX === undefined ||
     originalItem.imageOffsetY === undefined ||
     normalizeImageOffset(originalItem.imageOffsetX) !== normalizedItem.imageOffsetX ||
     normalizeImageOffset(originalItem.imageOffsetY) !== normalizedItem.imageOffsetY
+  );
+}
+
+function itemNeedsImageCropMigration(originalItem, normalizedItem) {
+  const originalCrop = getNormalizedImageCrop(originalItem);
+
+  return (
+    originalItem.imageCropX === undefined ||
+    originalItem.imageCropY === undefined ||
+    originalItem.imageCropWidth === undefined ||
+    originalItem.imageCropHeight === undefined ||
+    originalCrop.x !== normalizedItem.imageCropX ||
+    originalCrop.y !== normalizedItem.imageCropY ||
+    originalCrop.width !== normalizedItem.imageCropWidth ||
+    originalCrop.height !== normalizedItem.imageCropHeight
   );
 }
 
@@ -1056,6 +1352,8 @@ export default function App() {
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const editorImageFrameRef = useRef(null);
+  const editorImageRef = useRef(null);
   const paletteCacheRef = useRef(new Map());
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1428,17 +1726,30 @@ export default function App() {
 
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
-      const normalizedItems = storedItems.map(normalizeItem);
+      const normalizedItems = storedItems
+        .map(normalizeItem)
+        .map((item) =>
+          (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
+            ? restoreLegacyBakedImageScale(item)
+            : item
+        );
       const shouldApplyStyleWeightMigration =
         (storedAppState?.itemDefaultsMigrationVersion ?? 0) < ITEM_DEFAULTS_MIGRATION_VERSION;
-      const effectiveItems = shouldApplyStyleWeightMigration
+      const shouldApplyImagePresentationMigration =
+        (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION;
+      const styleWeightedItems = shouldApplyStyleWeightMigration
         ? normalizedItems.map(applyMappedStyleWeightDefaults)
         : normalizedItems;
+      const effectiveItems = shouldApplyImagePresentationMigration
+        ? styleWeightedItems.map((item) => (itemNeedsImageBake(item) ? bakeItemImagePresentation(item) : item))
+        : styleWeightedItems;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
+          itemNeedsImageFrameScaleMigration(storedItems[index], item) ||
           itemNeedsImageScaleMigration(storedItems[index], item) ||
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
+          itemNeedsImageCropMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
           (!shouldApplyStyleWeightMigration && itemNeedsWeightMigration(storedItems[index], item)) ||
@@ -1512,15 +1823,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (loading) {
-      return;
-    }
+      if (loading) {
+        return;
+      }
 
-    saveAppState({
-      itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
-      layering,
-      accessoriesEnabled,
-      locked,
+      saveAppState({
+        itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
+        imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+        layering,
+        accessoriesEnabled,
+        locked,
       excluded,
       outfit,
       ignoredImportImages,
@@ -1827,12 +2139,24 @@ export default function App() {
   }
 
   function applyLoadedData(nextItems, nextAppState) {
-    const normalizedItems = nextItems.map(normalizeItem);
-    const migratedItems = normalizedItems.filter(
+    const normalizedItems = nextItems
+      .map(normalizeItem)
+      .map((item) =>
+        (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
+          ? restoreLegacyBakedImageScale(item)
+          : item
+      );
+    const effectiveItems =
+      (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
+        ? normalizedItems.map((item) => (itemNeedsImageBake(item) ? bakeItemImagePresentation(item) : item))
+        : normalizedItems;
+    const migratedItems = effectiveItems.filter(
       (item, index) =>
         itemNeedsRetailMigration(nextItems[index], item) ||
+        itemNeedsImageFrameScaleMigration(nextItems[index], item) ||
         itemNeedsImageScaleMigration(nextItems[index], item) ||
         itemNeedsImageOffsetMigration(nextItems[index], item) ||
+        itemNeedsImageCropMigration(nextItems[index], item) ||
         itemNeedsFavoriteMigration(nextItems[index], item) ||
       itemNeedsQuantityMigration(nextItems[index], item) ||
       itemNeedsWeightMigration(nextItems[index], item) ||
@@ -1846,7 +2170,7 @@ export default function App() {
       Promise.all(migratedItems.map((item) => saveItem(item)));
     }
 
-    setItems(normalizedItems);
+    setItems(effectiveItems);
     setLayering(Boolean(nextAppState?.layering));
     setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
     setLocked(nextAppState?.locked ?? {});
@@ -1942,19 +2266,22 @@ export default function App() {
       return;
     }
 
-    const images = [...stage.querySelectorAll(".outfit-slot img, .accessory-slot.has-item img")];
+    const frameEntries = [...stage.querySelectorAll(".outfit-slot .managed-image, .accessory-slot.has-item .managed-image")]
+      .map((element) => {
+        const itemId = element.dataset.itemId;
+        const item = itemId ? itemsById[itemId] : null;
 
-    if (!images.length) {
+        return item ? { element, item } : null;
+      })
+      .filter(Boolean);
+
+    if (!frameEntries.length) {
       window.alert("There is no outfit image to export.");
       return;
     }
 
-    await Promise.all(
-      images.map((image) => (image.complete ? Promise.resolve() : image.decode?.() ?? Promise.resolve()))
-    );
-
     const stageRect = stage.getBoundingClientRect();
-    const imageRects = images.map((image) => image.getBoundingClientRect());
+    const imageRects = frameEntries.map(({ element }) => element.getBoundingClientRect());
     const margin = 24;
     const cropLeft = Math.max(Math.min(...imageRects.map((rect) => rect.left)) - margin, stageRect.left);
     const cropTop = Math.max(Math.min(...imageRects.map((rect) => rect.top)) - margin, stageRect.top);
@@ -1973,14 +2300,25 @@ export default function App() {
     context.fillRect(0, 0, cropWidth, cropHeight);
 
     try {
-      images.forEach((image) => {
-        const imageRect = image.getBoundingClientRect();
-        context.drawImage(
+      const loadedEntries = await Promise.all(
+        frameEntries.map(async ({ element, item }) => ({
+          element,
+          item,
+          image: await loadImage(resolveImageUrl(item.imageUrl))
+        }))
+      );
+
+      loadedEntries.forEach(({ element, item, image }) => {
+        const imageRect = element.getBoundingClientRect();
+        drawManagedImageToCanvas(
+          context,
+          item,
           image,
           imageRect.left - cropLeft,
           imageRect.top - cropTop,
           imageRect.width,
-          imageRect.height
+          imageRect.height,
+          { useFrameScale: true, useCrop: true, usePresentation: true }
         );
       });
 
@@ -2038,22 +2376,16 @@ export default function App() {
         const cellLeft = padding + column * cellSize;
         const cellTop = padding + row * cellSize;
         const maxImageSize = cellSize * 0.78;
-        const baseScale = Math.min(
-          maxImageSize / image.naturalWidth,
-          maxImageSize / image.naturalHeight,
-          1
-        );
-        const itemScale = normalizeImageScale(item.imageScale) / 100;
-        const drawWidth = image.naturalWidth * baseScale * itemScale;
-        const drawHeight = image.naturalHeight * baseScale * itemScale;
+        const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
+        const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
+        const frameWidth = sourceRect.width * baseScale;
+        const frameHeight = sourceRect.height * baseScale;
         const jitterX = (Math.random() - 0.5) * cellSize * 0.22;
         const jitterY = (Math.random() - 0.5) * cellSize * 0.22;
-        const offsetX = (normalizeImageOffset(item.imageOffsetX) / 100) * drawWidth;
-        const offsetY = (normalizeImageOffset(item.imageOffsetY) / 100) * drawHeight;
-        const drawX = cellLeft + (cellSize - drawWidth) / 2 + jitterX + offsetX;
-        const drawY = cellTop + (cellSize - drawHeight) / 2 + jitterY + offsetY;
+        const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
+        const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
 
-        context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+        drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
       });
 
       const link = document.createElement("a");
@@ -2442,9 +2774,11 @@ export default function App() {
     const normalizedWeight = normalizeWeight(draft.weight);
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
     const normalizedRetailValue = String(draft.retailValue ?? "").replace(/[^\d]/g, "");
+    const normalizedImageFrameScale = normalizeImageFrameScale(draft.imageFrameScale);
     const normalizedImageScale = normalizeImageScale(draft.imageScale);
     const normalizedImageOffsetX = normalizeImageOffset(draft.imageOffsetX);
     const normalizedImageOffsetY = normalizeImageOffset(draft.imageOffsetY);
+    const normalizedImageCrop = getNormalizedImageCrop(draft);
     const normalizedQuantity = normalizeQuantity(draft.quantity);
 
     if (!trimmedImageUrl) {
@@ -2469,13 +2803,18 @@ export default function App() {
       return;
     }
 
-    const normalizedDraft = {
+    const normalizedDraft = bakeItemImagePresentation({
       ...draft,
       name: trimmedName,
       imageUrl: trimmedImageUrl,
+      imageFrameScale: normalizedImageFrameScale,
       imageScale: normalizedImageScale,
       imageOffsetX: normalizedImageOffsetX,
       imageOffsetY: normalizedImageOffsetY,
+      imageCropX: normalizedImageCrop.x,
+      imageCropY: normalizedImageCrop.y,
+      imageCropWidth: normalizedImageCrop.width,
+      imageCropHeight: normalizedImageCrop.height,
       brand: trimmedBrand,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
@@ -2488,7 +2827,7 @@ export default function App() {
       quantity: normalizedQuantity,
       styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
       climateTags: normalizeTagList(draft.climateTags, editableClimateTagOptions)
-    };
+    });
 
     const nextItem = {
       ...normalizedDraft,
@@ -2579,7 +2918,18 @@ export default function App() {
     try {
       setImageUploadError("");
       const imageUrl = await compressImageSource(file);
-      setDraft((current) => ({ ...current, imageUrl }));
+      setDraft((current) => ({
+        ...current,
+        imageUrl,
+        imageFrameScale: 100,
+        imageScale: 100,
+        imageOffsetX: 0,
+        imageOffsetY: 0,
+        imageCropX: 0,
+        imageCropY: 0,
+        imageCropWidth: 100,
+        imageCropHeight: 100
+      }));
       if (options.ignoredExtraFiles) {
         setImageUploadError("Using the first image only. Additional files were ignored.");
       }
@@ -2653,8 +3003,33 @@ export default function App() {
   }
 
   function removeDraftImage() {
-    setDraft((current) => ({ ...current, imageUrl: "" }));
+    setDraft((current) => ({
+      ...current,
+      imageUrl: "",
+      imageFrameScale: 100,
+      imageScale: 100,
+      imageOffsetX: 0,
+      imageOffsetY: 0,
+      imageCropX: 0,
+      imageCropY: 0,
+      imageCropWidth: 100,
+      imageCropHeight: 100
+    }));
     setImageUploadError("");
+  }
+
+  function resetDraftImageCrop() {
+    setDraft((current) => ({
+      ...current,
+      imageFrameScale: 100,
+      imageScale: 100,
+      imageOffsetX: 0,
+      imageOffsetY: 0,
+      imageCropX: 0,
+      imageCropY: 0,
+      imageCropWidth: 100,
+      imageCropHeight: 100
+    }));
   }
 
   async function removeDraftBackground() {
@@ -2678,7 +3053,18 @@ export default function App() {
         }
       });
       const compressedImageUrl = await compressImageSource(transparentBlob);
-      setDraft((current) => ({ ...current, imageUrl: compressedImageUrl }));
+      setDraft((current) => ({
+        ...current,
+        imageUrl: compressedImageUrl,
+        imageFrameScale: 100,
+        imageScale: 100,
+        imageOffsetX: 0,
+        imageOffsetY: 0,
+        imageCropX: 0,
+        imageCropY: 0,
+        imageCropWidth: 100,
+        imageCropHeight: 100
+      }));
     } catch (error) {
       setImageUploadError(error?.message || "Background could not be removed.");
     } finally {
@@ -2807,7 +3193,7 @@ export default function App() {
 
           return (
             <div key={`${savedOutfit.id}-${slot}`} className={slotClass}>
-              <img src={item.imageUrl} alt="" style={getItemImageStyle(item)} />
+              <ManagedItemImage item={item} alt="" dataItemId={item.id} />
             </div>
           );
         })}
@@ -2827,7 +3213,7 @@ export default function App() {
         onClick={() => openAccessoryPicker(slot)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
-        {item ? <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} /> : null}
+        {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale useCrop usePresentation /> : null}
       </button>
     );
   }
@@ -3039,7 +3425,7 @@ export default function App() {
                     className="slot-picker-select"
                     onClick={() => setOutfitSlot(activeOutfitSlot, item.id)}
                   >
-                    <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
+                    <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
                     <span>{buildDisplayName(item)}</span>
                   </button>
                   <button
@@ -3116,7 +3502,7 @@ export default function App() {
                 className={`accessory-picker-item ${outfit[activeAccessorySlot] === item.id ? "is-current" : ""}`}
                 onClick={() => swapAccessory(activeAccessorySlot, item.id)}
               >
-                <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
+                <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
                 <span>{buildDisplayName(item)}</span>
               </button>
             ))}
@@ -3357,7 +3743,7 @@ export default function App() {
       >
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
-            <img src={resolveImageUrl(draft.imageUrl.trim())} alt="" style={getItemImageStyle(draft)} />
+            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} useCrop usePresentation />
           ) : (
             <span>No image selected</span>
           )}
@@ -3367,6 +3753,11 @@ export default function App() {
             {draft.imageUrl.trim() ? "Change image" : "Choose image"}
             <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
           </label>
+          {draft.imageUrl.trim() ? (
+            <button type="button" className="ghost-button" onClick={resetDraftImageCrop} disabled={imageProcessing}>
+              Reset crop
+            </button>
+          ) : null}
           <button
             type="button"
             className="secondary-button"
@@ -3676,7 +4067,7 @@ export default function App() {
             onClick={() => openOutfitSlotPicker(slot)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} /> : <span aria-hidden="true" />}
+            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
           </button>
         </article>
       </div>
@@ -4349,7 +4740,7 @@ export default function App() {
                       </button>
 
                       <button type="button" className="wardrobe-preview" onClick={() => equipItem(item)}>
-                        <img src={item.imageUrl} alt={item.name} style={getItemImageStyle(item)} />
+                        <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
                       </button>
 
                       <div className="wardrobe-meta">
