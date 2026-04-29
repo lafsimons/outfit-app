@@ -1649,6 +1649,39 @@ export default function App() {
       return true;
     });
   }, [items]);
+  const brandSuggestions = useMemo(() => {
+    const seen = new Set();
+    return items.map((item) => item.brand).filter((value) => {
+      const key = value?.trim?.().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [items]);
+  const colorSuggestions = useMemo(() => {
+    const seen = new Set();
+    return items.map((item) => item.color).filter((value) => {
+      const key = value?.trim?.().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [items]);
+  const nameSuggestions = useMemo(() => {
+    const seen = new Set();
+    return items.map((item) => item.name).filter((value) => {
+      const key = value?.trim?.().toLowerCase();
+      if (!key || seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+  }, [items]);
   const resolvedTypeDefaults = useMemo(() => resolveTypeDefaults(draft.type), [draft.type]);
   const advancedOverrideFields = useMemo(
     () => getAdvancedOverrideFields(draft, resolvedTypeDefaults),
@@ -4017,11 +4050,17 @@ export default function App() {
         <label>
           Color
           <input
+            list="item-color-suggestions"
             value={draft.color}
             onChange={(event) => setDraft((current) => ({ ...current, color: event.target.value }))}
             placeholder="Black"
           />
         </label>
+        <datalist id="item-color-suggestions">
+          {colorSuggestions.map((color) => (
+            <option key={color} value={color} />
+          ))}
+        </datalist>
       </div>
 
       <div className="editor-advanced-toggle-row">
@@ -4098,13 +4137,33 @@ export default function App() {
 
           <label>
             {renderAdvancedLabel("Brand", "brand")}
-            <input value={draft.brand} onChange={(event) => setAdvancedField("brand", event.target.value)} placeholder="Brand" />
+            <input
+              list="item-brand-suggestions"
+              value={draft.brand}
+              onChange={(event) => setAdvancedField("brand", event.target.value)}
+              placeholder="Brand"
+            />
           </label>
+          <datalist id="item-brand-suggestions">
+            {brandSuggestions.map((brand) => (
+              <option key={brand} value={brand} />
+            ))}
+          </datalist>
 
           <label>
             {renderAdvancedLabel("Name", "name")}
-            <input value={draft.name} onChange={(event) => setAdvancedField("name", event.target.value)} placeholder="Grey wool beanie" />
+            <input
+              list="item-name-suggestions"
+              value={draft.name}
+              onChange={(event) => setAdvancedField("name", event.target.value)}
+              placeholder="Grey wool beanie"
+            />
           </label>
+          <datalist id="item-name-suggestions">
+            {nameSuggestions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
 
           <label>
             {renderAdvancedLabel("Size", "size")}
