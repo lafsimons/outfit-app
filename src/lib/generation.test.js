@@ -5,9 +5,11 @@ import {
   applyContextValidityRulesToPool,
   buildNextOutfit,
   getCurrentOutfitClimateChip,
+  getEligibleSlotPool,
   getGuidedScoreBreakdown,
   getOutfitDominantStyle,
   getPool,
+  pickNextItemForGeneration,
   rememberRecentOutfit,
   summarizeGuidedExplanation
 } from "./generation.js";
@@ -59,6 +61,17 @@ function withSeed(seed, run) {
     state = (state * 1664525 + 1013904223) >>> 0;
     return state / 0x100000000;
   };
+
+  try {
+    return run();
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
+function withMockRandom(value, run) {
+  const originalRandom = Math.random;
+  Math.random = () => value;
 
   try {
     return run();
@@ -138,6 +151,22 @@ function climateItems(...entries) {
   return entries.map(([slot, itemId]) => ({ slot, item: itemsById[itemId] }));
 }
 
+function eligiblePoolIds(slot, outfitFilters = { style: [], climate: [] }, outfit = {}, layering = true) {
+  return getEligibleSlotPool(
+    syntheticWardrobe,
+    slot,
+    {},
+    { Wardrobe: true, Wishlist: true },
+    layering,
+    outfitFilters,
+    null,
+    outfit,
+    itemsById
+  )
+    .map((item) => item.id)
+    .sort();
+}
+
 test("no-filter generation uses weighted variety instead of collapsing into casual", () => {
   const outfits = generateBatch();
   const counts = countByDominantStyle(outfits);
@@ -211,6 +240,108 @@ test("explicit formal filter stays formal instead of collapsing into smart casua
     assert.notEqual(itemsById[outfit.Footwear]?.type, "Sneakers");
     assert.notEqual(itemsById[outfit.TopInner]?.type, "Hoodie");
   });
+});
+
+test("formal footwear eligible pool includes smart-casual bridge shoes and excludes sporty footwear", () => {
+  const actual = eligiblePoolIds("Footwear", { style: ["Formal"], climate: [] });
+
+  assert.deepEqual(actual, ["shoe_boots", "shoe_derby", "shoe_formal_derby", "shoe_leather"]);
+  assert.ok(!actual.includes("shoe_sneakers"));
+  assert.ok(!actual.includes("shoe_slides"));
+});
+
+test("random formal generation can select relaxed formal-compatible footwear from the eligible pool", () => {
+  const formalOutfit = {
+    Headwear: "head_formal_hat",
+    TopInner: "top_formal_shirt",
+    TopOuter: "outer_formal_blazer",
+    Bottom: "bottom_formal_trousers"
+  };
+  const pool = getEligibleSlotPool(
+    syntheticWardrobe,
+    "Footwear",
+    {},
+    { Wardrobe: true, Wishlist: true },
+    true,
+    { style: ["Formal"], climate: [] },
+    null,
+    formalOutfit,
+    itemsById
+  );
+  const seenFootwear = [0, 0.26, 0.51, 0.76].map((randomValue) =>
+    withMockRandom(randomValue, () =>
+      pickNextItemForGeneration(
+        pool,
+        "Footwear",
+        formalOutfit,
+        itemsById,
+        { style: ["Formal"], climate: [] },
+        null,
+        "random",
+        {},
+        [],
+        true
+      )
+    )?.id ?? null
+  );
+
+  assert.deepEqual(seenFootwear.sort(), ["shoe_boots", "shoe_derby", "shoe_formal_derby", "shoe_leather"]);
+});
+
+test("guided formal scoring still prefers derby footwear over relaxed bridge options", () => {
+  const formalOutfit = {
+    Headwear: "head_formal_hat",
+    TopInner: "top_formal_shirt",
+    TopOuter: "outer_formal_blazer",
+    Bottom: "bottom_formal_trousers"
+  };
+
+  const derbyScore = scoreFor("shoe_formal_derby", "Footwear", formalOutfit, { style: ["Formal"], climate: [] });
+  const bridgeDerbyScore = scoreFor("shoe_derby", "Footwear", formalOutfit, { style: ["Formal"], climate: [] });
+  const leatherScore = scoreFor("shoe_leather", "Footwear", formalOutfit, { style: ["Formal"], climate: [] });
+  const bootsScore = scoreFor("shoe_boots", "Footwear", formalOutfit, { style: ["Formal"], climate: [] });
+
+  assert.ok(derbyScore > leatherScore);
+  assert.ok(bridgeDerbyScore > leatherScore);
+  assert.ok(derbyScore > bootsScore);
+});
+
+test("shared eligible slot pool matches formal generation footwear outcomes", () => {
+  const formalOutfit = {
+    Headwear: "head_formal_hat",
+    TopInner: "top_formal_shirt",
+    TopOuter: "outer_formal_blazer",
+    Bottom: "bottom_formal_trousers"
+  };
+  const eligibleIds = eligiblePoolIds("Footwear", { style: ["Formal"], climate: [] }, formalOutfit);
+  const seenGeneratedIds = [0, 0.26, 0.51, 0.76].map((randomValue) =>
+    withMockRandom(randomValue, () =>
+      pickNextItemForGeneration(
+        getEligibleSlotPool(
+          syntheticWardrobe,
+          "Footwear",
+          {},
+          { Wardrobe: true, Wishlist: true },
+          true,
+          { style: ["Formal"], climate: [] },
+          null,
+          formalOutfit,
+          itemsById
+        ),
+        "Footwear",
+        formalOutfit,
+        itemsById,
+        { style: ["Formal"], climate: [] },
+        null,
+        "random",
+        {},
+        [],
+        true
+      )
+    )?.id ?? null
+  );
+
+  assert.deepEqual(seenGeneratedIds.sort(), eligibleIds);
 });
 
 test("explicit smart casual filter stays elevated instead of collapsing into casual", () => {

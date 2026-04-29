@@ -43,6 +43,7 @@ import {
   generationModes,
   getCurrentOutfitClimateChip,
   getCurrentOutfitStyleChip,
+  getEligibleSlotPool,
   getItemStyleTags,
   getOtherTopSlot,
   getOutfitKey,
@@ -2130,21 +2131,7 @@ export default function App() {
   }
 
   function getSlotOptions(slot) {
-    let pool = getPool(items, slot, excluded, generationLists, layering);
-
-    if (layering && (slot === "TopInner" || slot === "TopOuter")) {
-      const otherTopSlot = getOtherTopSlot(slot);
-      const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-      if (otherItem?.layerType === "Both") {
-        pool = pool.filter((item) => item.layerType !== "Both");
-      }
-
-      pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
-    }
-
-    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById);
-    return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
+    return getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
   }
 
   function getSlotPickerOptions(slot) {
@@ -2539,28 +2526,8 @@ export default function App() {
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
-    let pool = getPool(items, slot, excluded, generationLists, true);
-
-    if (slot === "TopInner" || slot === "TopOuter") {
-      const otherTopSlot = getOtherTopSlot(slot);
-      const otherItem = otherTopSlot ? itemsById[nextOutfit[otherTopSlot]] : null;
-
-      if (otherItem?.layerType === "Both") {
-        pool = pool.filter((item) => item.layerType !== "Both");
-      }
-
-      pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
-    }
-
-    pool = applyContextValidityRulesToPool(
-      pool.filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]),
-      slot,
-      outfitFilters,
-      weatherData,
-      nextOutfit,
-      itemsById
-    );
-    return filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
+    return getEligibleSlotPool(items, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
+      .filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]);
   }
 
   function toggleAccessories() {

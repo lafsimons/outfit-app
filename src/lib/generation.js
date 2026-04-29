@@ -281,6 +281,34 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
   });
 }
 
+export function getEligibleSlotPool(
+  items,
+  slot,
+  excluded = {},
+  generationLists = defaultGenerationLists,
+  layering = true,
+  outfitFilters = emptyOutfitFilters,
+  weatherData = null,
+  outfit = {},
+  itemsById = {}
+) {
+  let pool = getPool(items, slot, excluded, generationLists, layering);
+
+  if (layering && (slot === "TopInner" || slot === "TopOuter")) {
+    const otherTopSlot = getOtherTopSlot(slot);
+    const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
+
+    if (otherItem?.layerType === "Both") {
+      pool = pool.filter((item) => item.layerType !== "Both");
+    }
+
+    pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
+  }
+
+  pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById);
+  return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
+}
+
 function inferStyleTags(item) {
   const manualTags = normalizeTagList(item.styleTags, styleTagOptions);
 
@@ -604,6 +632,12 @@ function resolveDominantStyleFromCounts(counts, selectedStyles = []) {
   }
 
   const topScore = ranked[0][1];
+  const closeSelectedMatch = (selectedStyles ?? []).find((style) => (counts.get(style) ?? 0) >= topScore - 1);
+
+  if (closeSelectedMatch) {
+    return closeSelectedMatch;
+  }
+
   const tiedStyles = ranked.filter(([, score]) => score === topScore).map(([style]) => style);
   const selectedMatch = (selectedStyles ?? []).find((style) => tiedStyles.includes(style));
   return selectedMatch ?? tiedStyles[0];
@@ -805,7 +839,7 @@ function getAnchoredStyle(outfit, itemsById, selectedStyles = []) {
   return dominantEntry[0];
 }
 
-function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById = {}) {
+function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, itemsById = {}) {
   const styleMode = resolveSelectedStyleMode(selectedStyles);
   const profile = getStyleBlockProfile(styleMode);
   const anchoredStyle = getAnchoredStyle(outfit, itemsById, selectedStyles);
@@ -832,11 +866,27 @@ function passesSelectedStyleRules(item, selectedStyles, outfit = {}, itemsById =
   }
 
   if (profile.blockFormalSet) {
-    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "leather sneakers", "boots", "knit", "knit sweater", "wool shirt", "fleece sweater")) {
+    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "knit", "knit sweater", "wool shirt", "fleece sweater")) {
       return false;
     }
     if (isAthleisureOnly || isAthleisureSneaker(item)) {
       return false;
+    }
+    if (slot === "Footwear") {
+      const itemStyles = getItemStyleTags(item);
+      const hasSmartCasual = itemStyles.includes("Smart Casual");
+      const hasFormal = itemStyles.includes("Formal");
+      const hasCasual = itemStyles.includes("Casual");
+      const hasAthleisure = itemStyles.includes("Athleisure");
+      const isBridgeFootwear =
+        hasFormal ||
+        hasSmartCasual ||
+        (hasCasual && hasSmartCasual && !hasAthleisure) ||
+        (hasType("leather sneakers") && !hasAthleisure);
+
+      if (!isBridgeFootwear) {
+        return false;
+      }
     }
   }
 
@@ -929,7 +979,7 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
     return false;
   }
 
-  return passesSelectedStyleRules(item, selectedStyles, outfit, itemsById);
+  return passesSelectedStyleRules(item, slot, selectedStyles, outfit, itemsById);
 }
 
 export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}) {
@@ -1094,6 +1144,7 @@ function getStyleCompletionScore(item, slot, styleMode) {
     if (slot === "TopInner" && hasType("shirt")) score += 6;
     if (slot === "Bottom" && hasType("trousers", "light trousers", "heavy wool trousers")) score += 6;
     if (slot === "Footwear" && hasType("derby")) score += 6;
+    if (slot === "Footwear" && getItemStyleTags(item).includes("Formal")) score += 2.4;
     if (slot === "TopOuter" && hasType("blazer", "wool coat")) score += 6;
     if (item.garmentType === "Accessory" && item.accessorySlot === "LeftHand" && hasType("watch")) score += 1.5;
     if (item.garmentType === "Accessory" && item.accessorySlot === "Belt" && hasType("belt")) score += 1.2;
@@ -1320,7 +1371,7 @@ function getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selecte
   };
 }
 
-function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterData) {
+function getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles, noFilterData) {
   const itemStyles = getItemStyleTags(item);
   const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
   const isFormalOnly = isFormalOnlyItem(item);
@@ -1345,6 +1396,10 @@ function getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterD
 
     if (styleMode === "formal" && hasType("cap", "jeans")) {
       score -= hasType("cap") ? 2.6 : 2;
+    }
+
+    if (styleMode === "formal" && slot === "Footwear" && !itemStyles.includes("Formal")) {
+      score -= hasType("leather sneakers") ? 5.4 : 6;
     }
 
     if (styleMode === "smart-casual" && hasType("sport t-shirt", "sport ls t-shirt", "sport shorts", "sport cap", "slides", "sandals", "fleece jacket", "shell jacket")) {
@@ -1423,7 +1478,7 @@ export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFil
   const styleMode = getDominantStyleMode(selectedStyles, pickedItems, noFilterData);
   const breakdown = {
     climate: getClimateScore(item, slot, climatePreferences),
-    styleCoherence: getStyleCoherenceScore(item, selectedStyles, preferredStyles, noFilterData),
+    styleCoherence: getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles, noFilterData),
     styleCompletion: getStyleCompletionScore(item, slot, styleMode),
     dominance: getDominancePenaltyScore(item, pickedItems, styleMode),
     ...getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selectedStyles, climatePreferences),
@@ -1577,7 +1632,6 @@ export function buildNextOutfit(
   recentOutfits = []
 ) {
   const nextOutfit = { ...currentOutfit };
-  let usedTopBoth = false;
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
   const generationContext = !(outfitFilters.style ?? []).length
     ? buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById)
@@ -1589,12 +1643,6 @@ export function buildNextOutfit(
 
   visibleSlots.forEach((slot) => {
     if (locked[slot]) {
-      if (slot === "TopInner" || slot === "TopOuter") {
-        const lockedItem = itemsById[nextOutfit[slot]];
-        if ((lockedItem?.garmentType === "Top" || lockedItem?.garmentType === "Outerwear") && lockedItem.layerType === "Both") {
-          usedTopBoth = true;
-        }
-      }
       return;
     }
 
@@ -1603,24 +1651,7 @@ export function buildNextOutfit(
       return;
     }
 
-    let pool = getPool(items, slot, excluded, generationLists, layering);
-
-    if (slot === "TopInner" || slot === "TopOuter") {
-      if (layering && usedTopBoth) pool = pool.filter((item) => item.layerType !== "Both");
-      if (layering) pool = filterPoolForLayeringRules(pool, slot, nextOutfit, itemsById);
-
-      pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, nextOutfit, itemsById);
-      pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
-
-      const nextItem = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext);
-      nextOutfit[slot] = nextItem?.id ?? null;
-
-      if (nextItem?.layerType === "Both") usedTopBoth = true;
-      return;
-    }
-
-    pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, nextOutfit, itemsById);
-    pool = filterPoolForCompatibilityRules(pool, slot, nextOutfit, itemsById);
+    const pool = getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, nextOutfit, itemsById);
     nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext)?.id ?? null;
   });
 
