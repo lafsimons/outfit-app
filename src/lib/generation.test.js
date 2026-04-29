@@ -23,14 +23,17 @@ const syntheticWardrobe = [
   { id: "head_hat", type: "Hat", garmentType: "Headwear", layerType: "Both", weight: "Light", styleTags: ["Smart Casual", "Formal"] },
   { id: "head_formal_hat", type: "Hat", garmentType: "Headwear", layerType: "Both", weight: "Light", styleTags: ["Formal"] },
   { id: "top_tee", type: "T-Shirt", garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Casual"] },
+  { id: "top_casual_shirt", type: "Casual Shirt", garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Casual"] },
   { id: "top_shirt", type: "Shirt", garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Smart Casual", "Formal"] },
   { id: "top_formal_shirt", type: "Shirt", garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Formal"] },
   { id: "top_knit", type: "Knit Sweater", garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Smart Casual"] },
+  { id: "top_knit_vest", type: "Knit Vest", garmentType: "Top", layerType: "Both", weight: "Light", styleTags: ["Smart Casual", "Formal"] },
   { id: "top_sport_ls", type: "Sport LS T-Shirt", garmentType: "Top", layerType: "Inner", weight: "Light", styleTags: ["Athleisure"] },
   { id: "top_hoodie", type: "Hoodie", garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
   { id: "top_fleece_sweater", type: "Fleece Sweater", garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
   { id: "top_wool_shirt", type: "Wool Shirt", garmentType: "Top", layerType: "Both", weight: "Medium", styleTags: ["Smart Casual"] },
   { id: "outer_jacket", type: "Jacket", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Casual"] },
+  { id: "outer_twill", type: "Twill Jacket", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Casual", "Smart Casual"] },
   { id: "outer_blazer", type: "Blazer", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Smart Casual", "Formal"] },
   { id: "outer_formal_blazer", type: "Blazer", garmentType: "Outerwear", layerType: "Outer", weight: "Medium", styleTags: ["Formal"] },
   { id: "outer_shell", type: "Shell Jacket", garmentType: "Outerwear", layerType: "Outer", weight: "Light", styleTags: ["Athleisure"] },
@@ -84,7 +87,8 @@ function generateBatch({
   count = 60,
   outfitFilters = { style: [], climate: [] },
   seed = 42,
-  weatherData = null
+  weatherData = null,
+  generationMode = "guided"
 } = {}) {
   return withSeed(seed, () => {
     const results = [];
@@ -100,7 +104,7 @@ function generateBatch({
         { Wardrobe: true, Wishlist: true },
         outfitFilters,
         weatherData,
-        "guided",
+        generationMode,
         {},
         recentOutfits
       );
@@ -165,6 +169,38 @@ function eligiblePoolIds(slot, outfitFilters = { style: [], climate: [] }, outfi
   )
     .map((item) => item.id)
     .sort();
+}
+
+function isStrongFormalAnchorForTest(item, slot) {
+  if (!item) return false;
+
+  if (slot === "TopInner") return ["Shirt"].includes(item.type);
+  if (slot === "Bottom") return ["Trousers", "Light trousers", "Heavy Wool Trousers"].includes(item.type);
+  if (slot === "Footwear") return item.type === "Derby";
+  if (slot === "TopOuter") return ["Blazer", "Wool Coat", "Wool Jacket"].includes(item.type);
+  return false;
+}
+
+function isBridgeItemForTest(item, slot) {
+  if (!item || isStrongFormalAnchorForTest(item, slot)) return false;
+  if (item.styleTags.includes("Athleisure")) return false;
+  if (["Leather Sneakers", "Boots", "Light Boots", "Boots (chunky, winter, lined)", "Knit Sweater", "Thick Knit Sweater", "Knit Vest"].includes(item.type)) {
+    return true;
+  }
+  return item.styleTags.includes("Smart Casual") && item.styleTags.includes("Casual") && !item.styleTags.includes("Formal");
+}
+
+function getFormalStructureCounts(outfit, layering = true) {
+  const slots = layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
+  return slots.reduce(
+    (counts, slot) => {
+      const item = itemsById[outfit[slot]];
+      if (isStrongFormalAnchorForTest(item, slot)) counts.formal += 1;
+      else if (isBridgeItemForTest(item, slot)) counts.bridge += 1;
+      return counts;
+    },
+    { formal: 0, bridge: 0 }
+  );
 }
 
 test("no-filter generation uses weighted variety instead of collapsing into casual", () => {
@@ -248,6 +284,81 @@ test("formal footwear eligible pool includes smart-casual bridge shoes and exclu
   assert.deepEqual(actual, ["shoe_boots", "shoe_derby", "shoe_formal_derby", "shoe_leather"]);
   assert.ok(!actual.includes("shoe_sneakers"));
   assert.ok(!actual.includes("shoe_slides"));
+});
+
+test("formal footwear stays valid with strong formal shirt and trousers plus bridge shoes", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_formal_shirt",
+      Bottom: "bottom_formal_trousers"
+    }
+  );
+
+  assert.ok(actual.includes("shoe_formal_derby"));
+  assert.ok(actual.includes("shoe_derby"));
+  assert.ok(actual.includes("shoe_leather"));
+});
+
+test("formal structure rejects shirt with jeans and bridge footwear", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_formal_shirt",
+      Bottom: "bottom_jeans"
+    }
+  );
+
+  assert.ok(actual.includes("shoe_formal_derby"));
+  assert.ok(actual.includes("shoe_derby"));
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
+});
+
+test("formal structure rejects knit with jeans and leather sneakers", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_knit",
+      Bottom: "bottom_jeans"
+    }
+  );
+
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
+});
+
+test("formal structure rejects casual shirt with smart-casual footwear", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_casual_shirt",
+      Bottom: "bottom_formal_trousers"
+    }
+  );
+
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
+});
+
+test("formal structure treats knit-vest as bridge instead of a formal anchor", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_knit_vest",
+      Bottom: "bottom_formal_trousers"
+    }
+  );
+
+  assert.ok(actual.includes("shoe_formal_derby"));
+  assert.ok(actual.includes("shoe_derby"));
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
 });
 
 test("random formal generation can select relaxed formal-compatible footwear from the eligible pool", () => {
@@ -344,6 +455,51 @@ test("shared eligible slot pool matches formal generation footwear outcomes", ()
   assert.deepEqual(seenGeneratedIds.sort(), eligibleIds);
 });
 
+test("formal forward-check keeps early bridge footwear eligible when remaining slots can still anchor", () => {
+  const actual = eligiblePoolIds("Footwear", { style: ["Formal"], climate: [] }, {});
+
+  assert.ok(actual.includes("shoe_leather"));
+  assert.ok(actual.includes("shoe_boots"));
+});
+
+test("formal forward-check rejects bridge footwear when remaining slots cannot reach two formal anchors", () => {
+  const actual = eligiblePoolIds(
+    "Footwear",
+    { style: ["Formal"], climate: [] },
+    {
+      TopInner: "top_knit",
+      Bottom: "bottom_jeans"
+    }
+  );
+
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
+});
+
+test("formal forward-check rejects candidates when only bridge outerwear remains", () => {
+  const actual = getEligibleSlotPool(
+    syntheticWardrobe,
+    "Footwear",
+    {
+      outer_blazer: true,
+      outer_formal_blazer: true,
+      outer_wool: true
+    },
+    { Wardrobe: true, Wishlist: true },
+    true,
+    { style: ["Formal"], climate: [] },
+    null,
+    {
+      TopInner: "top_knit",
+      Bottom: "bottom_formal_trousers"
+    },
+    itemsById
+  ).map((item) => item.id);
+
+  assert.ok(!actual.includes("shoe_leather"));
+  assert.ok(!actual.includes("shoe_boots"));
+});
+
 test("explicit smart casual filter stays elevated instead of collapsing into casual", () => {
   const outfits = generateBatch({ count: 35, outfitFilters: { style: ["Smart Casual"], climate: [] }, seed: 17 });
 
@@ -354,6 +510,31 @@ test("explicit smart casual filter stays elevated instead of collapsing into cas
     assert.notEqual(itemsById[outfit.Headwear]?.type, "Sport Cap");
     assert.ok(["Shirt", "Knit Sweater", "Wool Shirt", "Fleece Sweater", "Hoodie"].includes(top?.type) === false || top?.type !== "Hoodie");
     assert.ok(["Leather Sneakers", "Boots", "Derby"].includes(shoes?.type));
+  });
+});
+
+test("formal random and guided generation obey the same structure constraints", () => {
+  const guidedOutfits = generateBatch({ count: 30, outfitFilters: { style: ["Formal"], climate: [] }, seed: 31, generationMode: "guided" });
+  const randomOutfits = generateBatch({ count: 30, outfitFilters: { style: ["Formal"], climate: [] }, seed: 31, generationMode: "random" });
+
+  [...guidedOutfits, ...randomOutfits].forEach((outfit) => {
+    const counts = getFormalStructureCounts(outfit);
+    const topInner = itemsById[outfit.TopInner];
+    const bottom = itemsById[outfit.Bottom];
+    const footwear = itemsById[outfit.Footwear];
+
+    assert.ok(counts.formal >= 2);
+    assert.ok(counts.bridge <= 2);
+    assert.ok(counts.formal >= counts.bridge);
+
+    if (isBridgeItemForTest(footwear, "Footwear")) {
+      assert.equal(isStrongFormalAnchorForTest(topInner, "TopInner"), true);
+      assert.equal(isStrongFormalAnchorForTest(bottom, "Bottom"), true);
+    }
+
+    if (!isStrongFormalAnchorForTest(bottom, "Bottom")) {
+      assert.equal(isStrongFormalAnchorForTest(footwear, "Footwear"), true);
+    }
   });
 });
 

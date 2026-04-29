@@ -281,7 +281,7 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
   });
 }
 
-export function getEligibleSlotPool(
+function getEligibleSlotPoolInternal(
   items,
   slot,
   excluded = {},
@@ -290,7 +290,8 @@ export function getEligibleSlotPool(
   outfitFilters = emptyOutfitFilters,
   weatherData = null,
   outfit = {},
-  itemsById = {}
+  itemsById = {},
+  ruleOptions = {}
 ) {
   let pool = getPool(items, slot, excluded, generationLists, layering);
 
@@ -305,8 +306,29 @@ export function getEligibleSlotPool(
     pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
   }
 
-  pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById);
+  pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById, {
+    ...ruleOptions,
+    excluded,
+    generationLists,
+    items,
+    layering
+  });
   return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
+}
+
+export function getEligibleSlotPool(
+  items,
+  slot,
+  excluded = {},
+  generationLists = defaultGenerationLists,
+  layering = true,
+  outfitFilters = emptyOutfitFilters,
+  weatherData = null,
+  outfit = {},
+  itemsById = {},
+  ruleOptions = {}
+) {
+  return getEligibleSlotPoolInternal(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById, ruleOptions);
 }
 
 function inferStyleTags(item) {
@@ -785,6 +807,157 @@ function isAthleisureSneaker(item) {
   return typeMatches.has("sneakers") && itemStyles.includes("Athleisure");
 }
 
+function getFormalCoreSlots(layering) {
+  return layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
+}
+
+function isStrongFormalAnchor(item, slot) {
+  if (!item) return false;
+
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+
+  if (slot === "TopInner") {
+    return hasType("shirt");
+  }
+
+  if (slot === "Bottom") {
+    return hasType("trousers", "light trousers", "heavy wool trousers");
+  }
+
+  if (slot === "Footwear") {
+    return hasType("derby");
+  }
+
+  if (slot === "TopOuter") {
+    return hasType("blazer", "wool coat", "wool jacket");
+  }
+
+  return false;
+}
+
+function isFormalBridgeItem(item, slot) {
+  if (!item || isStrongFormalAnchor(item, slot)) return false;
+
+  const typeMatches = getTypeMatchKeys(item.type);
+  const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  const itemStyles = getItemStyleTags(item);
+  const hasSmartCasual = itemStyles.includes("Smart Casual");
+  const hasFormal = itemStyles.includes("Formal");
+  const hasCasual = itemStyles.includes("Casual");
+  const hasAthleisure = itemStyles.includes("Athleisure");
+
+  if (hasAthleisure) return false;
+  if (hasType("leather sneakers", "boots", "light boots", "boots (chunky, winter, lined)", "knit", "knit sweater", "thick knit sweater", "knit vest")) {
+    return true;
+  }
+
+  return hasSmartCasual && !hasFormal && hasCasual;
+}
+
+function countFormalStructure(outfit, itemsById, layering) {
+  return getFormalCoreSlots(layering).reduce(
+    (counts, slot) => {
+      const item = itemsById[outfit[slot]];
+
+      if (isStrongFormalAnchor(item, slot)) counts.formal += 1;
+      else if (isFormalBridgeItem(item, slot)) counts.bridge += 1;
+
+      return counts;
+    },
+    { formal: 0, bridge: 0 }
+  );
+}
+
+function hasPotentialFormalAnchorForSlot(slot, outfit, itemsById, context) {
+  const pool = getEligibleSlotPoolInternal(
+    context.items ?? Object.values(itemsById),
+    slot,
+    context.excluded ?? {},
+    context.generationLists ?? defaultGenerationLists,
+    context.layering ?? true,
+    context.outfitFilters ?? emptyOutfitFilters,
+    context.weatherData ?? null,
+    outfit,
+    itemsById,
+    {
+      skipFormalStructure: true
+    }
+  );
+
+  return pool.some((candidate) => isStrongFormalAnchor(candidate, slot));
+}
+
+function hasPotentialNonBridgeForSlot(slot, outfit, itemsById, context) {
+  const pool = getEligibleSlotPoolInternal(
+    context.items ?? Object.values(itemsById),
+    slot,
+    context.excluded ?? {},
+    context.generationLists ?? defaultGenerationLists,
+    context.layering ?? true,
+    context.outfitFilters ?? emptyOutfitFilters,
+    context.weatherData ?? null,
+    outfit,
+    itemsById,
+    {
+      skipFormalStructure: true
+    }
+  );
+
+  return pool.some((candidate) => !isFormalBridgeItem(candidate, slot));
+}
+
+function passesFormalStructureRules(item, currentOutfit, slot, itemsById, context = {}) {
+  const layering = context.layering ?? true;
+  const nextOutfit = {
+    ...currentOutfit,
+    [slot]: item.id
+  };
+  const topInner = itemsById[nextOutfit.TopInner];
+  const bottom = itemsById[nextOutfit.Bottom];
+  const footwear = itemsById[nextOutfit.Footwear];
+  const counts = countFormalStructure(nextOutfit, itemsById, layering);
+  const remainingSlots = getFormalCoreSlots(layering).filter((coreSlot) => !nextOutfit[coreSlot]);
+  const potentialFormalAnchors = remainingSlots.filter((coreSlot) => hasPotentialFormalAnchorForSlot(coreSlot, nextOutfit, itemsById, context)).length;
+  const forcedBridgeSlots = remainingSlots.filter((coreSlot) => !hasPotentialNonBridgeForSlot(coreSlot, nextOutfit, itemsById, context)).length;
+  const topInnerNeedsFormalAnchor = !topInner ? hasPotentialFormalAnchorForSlot("TopInner", nextOutfit, itemsById, context) : isStrongFormalAnchor(topInner, "TopInner");
+  const bottomNeedsFormalAnchor = !bottom ? hasPotentialFormalAnchorForSlot("Bottom", nextOutfit, itemsById, context) : isStrongFormalAnchor(bottom, "Bottom");
+
+  if (counts.bridge > 2) {
+    return false;
+  }
+
+  if (counts.formal + potentialFormalAnchors < 2) {
+    return false;
+  }
+
+  if (counts.bridge + forcedBridgeSlots > 2) {
+    return false;
+  }
+
+  if (counts.formal + potentialFormalAnchors < counts.bridge + forcedBridgeSlots) {
+    return false;
+  }
+
+  if (footwear && isFormalBridgeItem(footwear, "Footwear")) {
+    if (!topInnerNeedsFormalAnchor || !bottomNeedsFormalAnchor) {
+      return false;
+    }
+  }
+
+  if (bottom && !isStrongFormalAnchor(bottom, "Bottom")) {
+    if (footwear) {
+      if (!isStrongFormalAnchor(footwear, "Footwear")) {
+        return false;
+      }
+    } else if (!hasPotentialFormalAnchorForSlot("Footwear", nextOutfit, itemsById, context)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function resolveSelectedStyleMode(selectedStyles) {
   const uniqueStyles = [...new Set((selectedStyles ?? []).filter(Boolean))];
 
@@ -839,7 +1012,7 @@ function getAnchoredStyle(outfit, itemsById, selectedStyles = []) {
   return dominantEntry[0];
 }
 
-function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, itemsById = {}) {
+function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, itemsById = {}, context = {}) {
   const styleMode = resolveSelectedStyleMode(selectedStyles);
   const profile = getStyleBlockProfile(styleMode);
   const anchoredStyle = getAnchoredStyle(outfit, itemsById, selectedStyles);
@@ -866,7 +1039,7 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
   }
 
   if (profile.blockFormalSet) {
-    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "knit", "knit sweater", "wool shirt", "fleece sweater")) {
+    if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "fleece sweater")) {
       return false;
     }
     if (isAthleisureOnly || isAthleisureSneaker(item)) {
@@ -887,6 +1060,9 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
       if (!isBridgeFootwear) {
         return false;
       }
+    }
+    if (!context.skipFormalStructure && !passesFormalStructureRules(item, outfit, slot, itemsById, context)) {
+      return false;
     }
   }
 
@@ -928,7 +1104,7 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
   return true;
 }
 
-function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}) {
+function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}, context = {}) {
   const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
   const selectedStyles = outfitFilters.style ?? [];
   const typeMatches = getTypeMatchKeys(item.type);
@@ -979,11 +1155,15 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
     return false;
   }
 
-  return passesSelectedStyleRules(item, slot, selectedStyles, outfit, itemsById);
+  return passesSelectedStyleRules(item, slot, selectedStyles, outfit, itemsById, {
+    ...context,
+    outfitFilters,
+    weatherData
+  });
 }
 
-export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}) {
-  const filtered = pool.filter((item) => passesHardContextRules(item, slot, outfitFilters, weatherData, outfit, itemsById));
+export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}, context = {}) {
+  const filtered = pool.filter((item) => passesHardContextRules(item, slot, outfitFilters, weatherData, outfit, itemsById, context));
   return filtered.length ? filtered : pool;
 }
 
