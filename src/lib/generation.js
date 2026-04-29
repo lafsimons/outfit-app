@@ -1712,9 +1712,12 @@ function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfit
   return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool, generationContext).score;
 }
 
-export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
+function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
   if (!pool.length) return null;
-  if (normalizeGenerationMode(generationMode) === "random") return pickRandom(pool);
+  if (normalizeGenerationMode(generationMode) === "random") {
+    const item = pickRandom(pool);
+    return item ? { item, score: null, breakdown: null } : null;
+  }
 
   let candidatePool = pool;
   const selectedStyles = outfitFilters.style ?? [];
@@ -1732,12 +1735,66 @@ export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitF
     }
   }
 
-  return pickWeightedRandom(
-    candidatePool.map((item) => ({
+  const weightedCandidates = candidatePool.map((item) => {
+    const result = getGuidedScoreBreakdown(
       item,
-      weight: scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, candidatePool, generationContext)
-    }))
-  );
+      slot,
+      outfit,
+      itemsById,
+      outfitFilters,
+      weatherData,
+      outfitAffinity,
+      recentOutfits,
+      layering,
+      candidatePool,
+      generationContext
+    );
+
+    return {
+      item,
+      weight: result.score,
+      score: result.score,
+      breakdown: result.breakdown
+    };
+  });
+  const pickedItem = pickWeightedRandom(weightedCandidates);
+  return pickedItem ? weightedCandidates.find((entry) => entry.item.id === pickedItem.id) ?? null : null;
+}
+
+export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
+  return selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext)?.item ?? null;
+}
+
+function summarizeGuidedReasonEntries(entries = []) {
+  const aggregated = {};
+  const seenKeys = new Set();
+
+  entries.forEach((entry) => {
+    Object.entries(entry.breakdown ?? {}).forEach(([key, value]) => {
+      seenKeys.add(key);
+      if (!value) return;
+      const current = aggregated[key] ?? { total: 0, count: 0 };
+      current.total += value;
+      current.count += 1;
+      aggregated[key] = current;
+    });
+  });
+
+  const averagedEntries = Object.entries(aggregated)
+    .map(([key, entry]) => [key, entry.total / entry.count])
+    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]));
+  const thresholdedEntries = averagedEntries.filter(([, value]) => Math.abs(value) >= 0.2);
+  const fallbackZeroEntries =
+    !averagedEntries.length && seenKeys.size
+      ? [...seenKeys].map((key) => [key, 0])
+      : averagedEntries;
+  const displayEntries = (thresholdedEntries.length ? thresholdedEntries : fallbackZeroEntries).slice(0, 6);
+
+  return displayEntries.map(([key, value]) => ({
+      key,
+      label: guidedExplanationLabels[key] ?? key,
+      value
+    }));
 }
 
 export function isNonStackableTopType(item) {
@@ -1798,7 +1855,7 @@ export function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
   return filtered.length ? filtered : pool;
 }
 
-export function buildNextOutfit(
+function buildNextOutfitResult(
   items,
   currentOutfit,
   locked,
@@ -1809,9 +1866,11 @@ export function buildNextOutfit(
   weatherData = null,
   generationMode = defaultGenerationMode,
   outfitAffinity = {},
-  recentOutfits = []
+  recentOutfits = [],
+  options = {}
 ) {
   const nextOutfit = { ...currentOutfit };
+  const guidedDebugPayload = [];
   const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
   const generationContext = !(outfitFilters.style ?? []).length
     ? buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById)
@@ -1832,44 +1891,103 @@ export function buildNextOutfit(
     }
 
     const pool = getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, nextOutfit, itemsById);
-    nextOutfit[slot] = pickNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext)?.id ?? null;
+    const selection = selectNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext);
+    nextOutfit[slot] = selection?.item?.id ?? null;
+
+    if (options.includeGuidedDebug && normalizeGenerationMode(generationMode) === "guided" && selection?.item && selection?.breakdown) {
+      guidedDebugPayload.push({
+        slot,
+        itemId: selection.item.id,
+        breakdown: selection.breakdown,
+        score: selection.score
+      });
+    }
   });
 
-  return nextOutfit;
+  return {
+    outfit: nextOutfit,
+    guidedDebugPayload
+  };
+}
+
+export function buildNextOutfit(
+  items,
+  currentOutfit,
+  locked,
+  layering,
+  excluded = {},
+  generationLists = defaultGenerationLists,
+  outfitFilters = emptyOutfitFilters,
+  weatherData = null,
+  generationMode = defaultGenerationMode,
+  outfitAffinity = {},
+  recentOutfits = []
+) {
+  return buildNextOutfitResult(items, currentOutfit, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits).outfit;
+}
+
+export function buildNextOutfitWithDebug(
+  items,
+  currentOutfit,
+  locked,
+  layering,
+  excluded = {},
+  generationLists = defaultGenerationLists,
+  outfitFilters = emptyOutfitFilters,
+  weatherData = null,
+  generationMode = defaultGenerationMode,
+  outfitAffinity = {},
+  recentOutfits = []
+) {
+  return buildNextOutfitResult(
+    items,
+    currentOutfit,
+    locked,
+    layering,
+    excluded,
+    generationLists,
+    outfitFilters,
+    weatherData,
+    generationMode,
+    outfitAffinity,
+    recentOutfits,
+    {
+      includeGuidedDebug: true
+    }
+  );
 }
 
 export function summarizeGuidedExplanation(outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering) {
-  const aggregated = {};
   const contextOutfit = {};
+  const breakdownEntries = [];
 
   visibleSlots.forEach((slot) => {
     const itemId = outfit?.[slot];
     const item = itemId ? itemsById[itemId] : null;
     if (!item) return;
 
-    const { breakdown } = getGuidedScoreBreakdown(item, slot, contextOutfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering);
-
-    Object.entries(breakdown).forEach(([key, value]) => {
-      if (!value) return;
-      const current = aggregated[key] ?? { total: 0, count: 0 };
-      current.total += value;
-      current.count += 1;
-      aggregated[key] = current;
-    });
+    const pool = getEligibleSlotPool(
+      Object.values(itemsById),
+      slot,
+      {},
+      defaultGenerationLists,
+      layering,
+      outfitFilters,
+      weatherData,
+      contextOutfit,
+      itemsById
+    );
+    const { breakdown } = getGuidedScoreBreakdown(item, slot, contextOutfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool);
+    breakdownEntries.push({ slot, itemId, breakdown });
 
     contextOutfit[slot] = itemId;
   });
 
-  return Object.entries(aggregated)
-    .map(([key, entry]) => [key, entry.total / entry.count])
-    .filter(([, value]) => Math.abs(value) >= 0.2)
-    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
-    .slice(0, 6)
-    .map(([key, value]) => ({
-      key,
-      label: guidedExplanationLabels[key] ?? key,
-      value
-    }));
+  return summarizeGuidedReasonEntries(breakdownEntries);
+}
+
+export function summarizeGuidedDebugPayload(guidedDebugPayload = []) {
+  return summarizeGuidedReasonEntries(guidedDebugPayload);
 }
 
 export function normalizeOutfitFilters(outfitFilters) {

@@ -33,6 +33,7 @@ import {
   applyOutfitAffinityDelta,
   applyContextValidityRulesToPool,
   buildNextOutfit,
+  buildNextOutfitWithDebug,
   climateTagOptions,
   defaultGenerationLists,
   defaultGenerationMode,
@@ -61,6 +62,7 @@ import {
   pickRandom,
   rememberRecentOutfit,
   summarizeGuidedExplanation,
+  summarizeGuidedDebugPayload,
   visibleSlots
 } from "./lib/generation";
 
@@ -1523,6 +1525,7 @@ export default function App() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState("");
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
+  const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1581,6 +1584,12 @@ export default function App() {
         : recentOutfits,
     [recentOutfits, currentOutfitKey]
   );
+  const guidedDebugPayloadMatchesOutfit = useMemo(
+    () =>
+      guidedDebugPayload.length > 0 &&
+      guidedDebugPayload.every((entry) => entry?.slot && outfit?.[entry.slot] === entry.itemId),
+    [guidedDebugPayload, outfit]
+  );
   const currentOutfitStyleChip = useMemo(
     () => getCurrentOutfitStyleChip(currentOutfitItems, outfitFilters.style ?? []),
     [currentOutfitItems, outfitFilters.style]
@@ -1604,17 +1613,19 @@ export default function App() {
   const currentOutfitDebugReasons = useMemo(
     () =>
       generationMode === "guided"
-        ? summarizeGuidedExplanation(
-            outfit,
-            itemsById,
-            outfitFilters,
-            weatherData,
-            outfitAffinity,
-            explanationRecentOutfits,
-            layering
-          )
+        ? guidedDebugPayloadMatchesOutfit
+          ? summarizeGuidedDebugPayload(guidedDebugPayload)
+          : summarizeGuidedExplanation(
+              outfit,
+              itemsById,
+              outfitFilters,
+              weatherData,
+              outfitAffinity,
+              explanationRecentOutfits,
+              layering
+            )
         : [],
-    [outfit, itemsById, outfitFilters, weatherData, outfitAffinity, explanationRecentOutfits, layering, generationMode]
+    [outfit, itemsById, outfitFilters, weatherData, outfitAffinity, explanationRecentOutfits, layering, generationMode, guidedDebugPayload, guidedDebugPayloadMatchesOutfit]
   );
   const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
@@ -1898,6 +1909,7 @@ export default function App() {
         setLocked(storedAppState.locked ?? {});
         setExcluded(storedAppState.excluded ?? {});
         setOutfit(storedAppState.outfit ?? {});
+        setGuidedDebugPayload([]);
         setIgnoredImportImages(storedAppState.ignoredImportImages ?? []);
         setSavedOutfits(normalizeSavedOutfits(storedAppState.savedOutfits));
         setLikedOutfitKeys(normalizeLikedOutfitKeys(storedAppState.likedOutfitKeys));
@@ -1919,6 +1931,7 @@ export default function App() {
         setLocked(defaultState.locked ?? {});
         setExcluded(defaultState.excluded ?? {});
         setOutfit(defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits)));
+        setGuidedDebugPayload([]);
         setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
         setSavedOutfits(normalizeSavedOutfits(defaultState.savedOutfits));
         setLikedOutfitKeys(normalizeLikedOutfitKeys(defaultState.likedOutfitKeys));
@@ -1994,7 +2007,9 @@ export default function App() {
         }
       });
 
-      return buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const nextOutfit = buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      setGuidedDebugPayload([]);
+      return nextOutfit;
     });
   }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
 
@@ -2104,7 +2119,9 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setOutfit((current) => {
-      const nextOutfit = buildNextOutfit(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const result = buildNextOutfitWithDebug(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const nextOutfit = result.outfit;
+      setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
       if (generationMode === "guided") {
         setRecentOutfits((currentRecentOutfits) =>
           rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
@@ -2285,6 +2302,7 @@ export default function App() {
     setLocked(nextAppState?.locked ?? {});
     setExcluded(nextAppState?.excluded ?? {});
     setOutfit(nextAppState?.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity), normalizeRecentOutfits(nextAppState?.recentOutfits)));
+    setGuidedDebugPayload([]);
     setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
     setSavedOutfits(normalizeSavedOutfits(nextAppState?.savedOutfits));
     setLikedOutfitKeys(normalizeLikedOutfitKeys(nextAppState?.likedOutfitKeys));
@@ -4559,7 +4577,11 @@ export default function App() {
                         </div>
                       ))
                     ) : (
-                      <p className="outfit-debug-empty">No guided scoring reasons available.</p>
+                      <p className="outfit-debug-empty">
+                        {generationMode === "random"
+                          ? "Guided scoring is disabled in Random mode."
+                          : "No guided scoring reasons available."}
+                      </p>
                     )}
                   </div>
                 ) : null}

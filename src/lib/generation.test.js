@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   applyContextValidityRulesToPool,
   buildNextOutfit,
+  buildNextOutfitWithDebug,
   getCurrentOutfitClimateChip,
   getEligibleSlotPool,
   getGuidedScoreBreakdown,
@@ -11,6 +12,7 @@ import {
   getPool,
   pickNextItemForGeneration,
   rememberRecentOutfit,
+  summarizeGuidedDebugPayload,
   summarizeGuidedExplanation
 } from "./generation.js";
 import { resolveTypeDefaults } from "./typeDefaults.js";
@@ -149,6 +151,22 @@ function breakdownFor(itemId, slot, outfit = {}, outfitFilters = { style: [], cl
 function scoreFor(itemId, slot, outfit = {}, outfitFilters = { style: [], climate: [] }, recentOutfits = [], outfitAffinity = {}) {
   const item = itemsById[itemId];
   return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, null, outfitAffinity, recentOutfits, true, [item]).score;
+}
+
+function breakdownWithPoolFor(itemId, slot, outfit = {}, outfitFilters = { style: [], climate: [] }, recentOutfits = [], layering = true) {
+  const item = itemsById[itemId];
+  const pool = getEligibleSlotPool(
+    syntheticWardrobe,
+    slot,
+    {},
+    { Wardrobe: true, Wishlist: true },
+    layering,
+    outfitFilters,
+    null,
+    outfit,
+    itemsById
+  );
+  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, null, {}, recentOutfits, layering, pool);
 }
 
 function climateItems(...entries) {
@@ -536,6 +554,198 @@ test("formal random and guided generation obey the same structure constraints", 
       assert.equal(isStrongFormalAnchorForTest(footwear, "Footwear"), true);
     }
   });
+});
+
+test("guided generation with formal filter captures non-empty guided debug payload", () => {
+  const result = withSeed(31, () =>
+    buildNextOutfitWithDebug(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+
+  assert.ok(result.guidedDebugPayload.length > 0);
+  result.guidedDebugPayload.forEach((entry) => {
+    assert.ok(entry.slot);
+    assert.ok(entry.itemId);
+    assert.ok(typeof entry.score === "number");
+    assert.ok(entry.breakdown && typeof entry.breakdown === "object");
+    assert.ok(Object.keys(entry.breakdown).length > 0);
+  });
+});
+
+test("guided debug payload breakdowns match the scoring pass used for selection", () => {
+  const result = withSeed(31, () =>
+    buildNextOutfitWithDebug(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+  const contextOutfit = {};
+
+  result.guidedDebugPayload.forEach((entry) => {
+    const expected = breakdownWithPoolFor(entry.itemId, entry.slot, contextOutfit, { style: ["Formal"], climate: [] });
+    assert.equal(entry.score, expected.score);
+    assert.deepEqual(entry.breakdown, expected.breakdown);
+    contextOutfit[entry.slot] = entry.itemId;
+  });
+});
+
+test("guided debug payload can be summarized into non-empty debug reasons", () => {
+  const result = withSeed(31, () =>
+    buildNextOutfitWithDebug(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+  const reasons = summarizeGuidedDebugPayload(result.guidedDebugPayload);
+
+  assert.ok(reasons.length > 0);
+});
+
+test("guided debug summary falls back to low-signal components instead of returning empty", () => {
+  const reasons = summarizeGuidedDebugPayload([
+    {
+      slot: "TopInner",
+      itemId: "top_formal_shirt",
+      score: 0.5,
+      breakdown: {
+        baseline: 0.12,
+        affinity: 0.08,
+        climate: 0
+      }
+    }
+  ]);
+
+  assert.ok(reasons.length > 0);
+  assert.equal(reasons[0].key, "baseline");
+});
+
+test("guided debug summary falls back to zero-valued breakdown keys instead of returning empty", () => {
+  const reasons = summarizeGuidedDebugPayload([
+    {
+      slot: "TopInner",
+      itemId: "top_formal_shirt",
+      score: 0.3,
+      breakdown: {
+        climate: 0,
+        styleCoherence: 0,
+        styleCompletion: 0
+      }
+    }
+  ]);
+
+  assert.ok(reasons.length > 0);
+  assert.deepEqual(
+    reasons.map((reason) => reason.key),
+    ["climate", "styleCoherence", "styleCompletion"]
+  );
+  reasons.forEach((reason) => {
+    assert.equal(reason.value, 0);
+  });
+});
+
+test("guided explanation fallback still returns reasons for formal guided outfits", () => {
+  const outfit = withSeed(31, () =>
+    buildNextOutfit(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+  const reasons = summarizeGuidedExplanation(outfit, itemsById, { style: ["Formal"], climate: [] }, null, {}, [], true);
+
+  assert.ok(reasons.length > 0);
+});
+
+test("random generation returns no guided debug payload", () => {
+  const result = withSeed(31, () =>
+    buildNextOutfitWithDebug(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "random",
+      {},
+      []
+    )
+  );
+
+  assert.deepEqual(result.guidedDebugPayload, []);
+});
+
+test("buildNextOutfitWithDebug preserves generation output for the same seed", () => {
+  const baseOutfit = withSeed(31, () =>
+    buildNextOutfit(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+  const debugResult = withSeed(31, () =>
+    buildNextOutfitWithDebug(
+      syntheticWardrobe,
+      {},
+      {},
+      true,
+      {},
+      { Wardrobe: true, Wishlist: true },
+      { style: ["Formal"], climate: [] },
+      null,
+      "guided",
+      {},
+      []
+    )
+  );
+
+  assert.deepEqual(debugResult.outfit, baseOutfit);
 });
 
 test("cold generation avoids light or sport tops with boots or heavy outerwear", () => {
