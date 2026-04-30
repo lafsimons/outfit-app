@@ -15,7 +15,7 @@ import {
   summarizeGuidedDebugPayload,
   summarizeGuidedExplanation
 } from "./generation.js";
-import { resolveTypeDefaults } from "./typeDefaults.js";
+import { hasTypeDefaults, resolveTypeDefaults } from "./typeDefaults.js";
 
 const syntheticWardrobe = [
   { id: "head_cap", type: "Cap", garmentType: "Headwear", layerType: "Both", weight: "Light", styleTags: ["Casual"] },
@@ -580,6 +580,7 @@ test("guided generation with formal filter captures non-empty guided debug paylo
     assert.ok(typeof entry.score === "number");
     assert.ok(entry.breakdown && typeof entry.breakdown === "object");
     assert.ok(Object.keys(entry.breakdown).length > 0);
+    assert.ok(Array.isArray(entry.topCandidates));
   });
 });
 
@@ -605,6 +606,21 @@ test("guided debug payload breakdowns match the scoring pass used for selection"
     const expected = breakdownWithPoolFor(entry.itemId, entry.slot, contextOutfit, { style: ["Formal"], climate: [] });
     assert.equal(entry.score, expected.score);
     assert.deepEqual(entry.breakdown, expected.breakdown);
+    assert.ok(entry.topCandidates.length <= 5);
+    assert.deepEqual(
+      entry.topCandidates.map((candidate) => candidate.score),
+      [...entry.topCandidates.map((candidate) => candidate.score)].sort((left, right) => right - left)
+    );
+
+    const selectedCandidate = entry.topCandidates.find((candidate) => candidate.itemId === entry.itemId);
+    assert.ok(selectedCandidate);
+    assert.equal(selectedCandidate.score, entry.score);
+
+    entry.topCandidates.forEach((candidate) => {
+      const candidateBreakdown = breakdownWithPoolFor(candidate.itemId, entry.slot, contextOutfit, { style: ["Formal"], climate: [] });
+      assert.equal(candidate.score, candidateBreakdown.score);
+    });
+
     contextOutfit[entry.slot] = entry.itemId;
   });
 });
@@ -1094,4 +1110,16 @@ test("type defaults include beanie light and new athletic types", () => {
   assert.deepEqual(resolveTypeDefaults("Track Pants").styleTags, ["Athleisure"]);
   assert.deepEqual(resolveTypeDefaults("Sweatpants").styleTags, ["Casual", "Athleisure"]);
   assert.deepEqual(resolveTypeDefaults("Fleece Pullover").styleTags, ["Casual", "Athleisure"]);
+  assert.equal(resolveTypeDefaults("Swim Shorts").garmentType, "Bottom");
+  assert.equal(resolveTypeDefaults("Swim Shorts").weight, "Light");
+  assert.deepEqual(resolveTypeDefaults("Swim Shorts").styleTags, ["Athleisure"]);
+  assert.deepEqual(resolveTypeDefaults("running sneakers").styleTags, resolveTypeDefaults("Sneakers").styleTags);
+  assert.deepEqual(resolveTypeDefaults("linen pants").styleTags, resolveTypeDefaults("Trousers").styleTags);
+  assert.equal(resolveTypeDefaults("linen pants").garmentType, "Bottom");
+  assert.deepEqual(resolveTypeDefaults("heavy winter coat").styleTags, resolveTypeDefaults("Coat").styleTags);
+  assert.deepEqual(resolveTypeDefaults("gym hoodie").styleTags, resolveTypeDefaults("Hoodie").styleTags);
+  assert.deepEqual(resolveTypeDefaults("boardshort hybrid").styleTags, resolveTypeDefaults("Swim Shorts").styleTags);
+  assert.equal(hasTypeDefaults("mystery thing"), false);
+  assert.equal(resolveTypeDefaults("mystery thing").weight, "");
+  assert.deepEqual(resolveTypeDefaults("mystery thing").styleTags, []);
 });

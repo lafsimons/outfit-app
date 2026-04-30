@@ -47,8 +47,10 @@ import {
   getEligibleSlotPool,
   getItemStyleTags,
   getOtherTopSlot,
+  getOutfitDominantStyle,
   getOutfitKey,
   getPool,
+  getGuidedBreakdownDisplayEntries,
   hasActiveOutfitFilters,
   isEligibleForGeneration,
   isNonStackableTopType,
@@ -137,6 +139,14 @@ function getIsMobileViewport() {
   }
 
   return window.matchMedia("(max-width: 960px)").matches;
+}
+
+function getCanUseDebugPopout() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return window.matchMedia("(min-width: 1180px)").matches;
 }
 
 const garmentTypes = [
@@ -446,6 +456,7 @@ function getManagedImageFrameStyle(item, metrics, options = {}) {
 
   return {
     aspectRatio: `${cropAspectRatio || 1}`,
+    "--managed-crop-aspect": `${cropAspectRatio || 1}`,
     "--managed-base-width": `${100 / cropWidth}%`,
     "--managed-base-height": `${100 / cropHeight}%`,
     "--managed-base-left": `${(-crop.x / crop.width) * 100}%`,
@@ -841,6 +852,23 @@ function matchesMetadataFilter(value, filterValue) {
   return value === filterValue;
 }
 
+function normalizeItemColor(value) {
+  const trimmed = value?.trim?.() ?? "";
+
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("#")) {
+    return trimmed.toUpperCase();
+  }
+
+  return trimmed
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
 function getNumericValue(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -970,10 +998,15 @@ function normalizeItem(item) {
     styleTags: normalizeTagList(item.styleTags, styleTagOptions),
     climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
+    color: normalizeItemColor(correction?.color ?? item.color ?? ""),
     list: normalizeList(correction?.list ?? item.list)
   };
 
   return normalizedItem;
+}
+
+function itemNeedsColorMigration(originalItem, normalizedItem) {
+  return normalizeItemColor(originalItem.color) !== normalizedItem.color;
 }
 
 function itemNeedsRetailMigration(originalItem, normalizedItem) {
@@ -1471,6 +1504,7 @@ export default function App() {
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const outfitDebugRef = useRef(null);
   const editorImageFrameRef = useRef(null);
   const editorImageRef = useRef(null);
   const paletteCacheRef = useRef(new Map());
@@ -1526,6 +1560,7 @@ export default function App() {
   const [weatherError, setWeatherError] = useState("");
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
   const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
+  const [canUseDebugPopout, setCanUseDebugPopout] = useState(getCanUseDebugPopout);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1554,6 +1589,27 @@ export default function App() {
     mediaQuery.addListener(handleChange);
     return () => mediaQuery.removeListener(handleChange);
   }, [activePanel, controlsOpen]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 1180px)");
+    const handleChange = (event) => {
+      setCanUseDebugPopout(event.matches);
+    };
+
+    handleChange(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
 
   const currentOutfitItems = useMemo(() => {
     const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
@@ -1610,6 +1666,19 @@ export default function App() {
       ),
     [itemsById, outfit]
   );
+  const currentOutfitDominantStyle = useMemo(
+    () => getOutfitDominantStyle(outfit, itemsById),
+    [outfit, itemsById]
+  );
+  const currentOutfitStyleTarget = useMemo(
+    () => ((outfitFilters.style ?? []).length ? outfitFilters.style.join(", ") : currentOutfitStyleChip),
+    [currentOutfitStyleChip, outfitFilters.style]
+  );
+  const guidedDebugDetails = useMemo(
+    () => (generationMode === "guided" && guidedDebugPayloadMatchesOutfit ? guidedDebugPayload : []),
+    [generationMode, guidedDebugPayload, guidedDebugPayloadMatchesOutfit]
+  );
+  const showDebugPopout = outfitDebugOpen && canUseDebugPopout && !isMobileViewport;
   const currentOutfitDebugReasons = useMemo(
     () =>
       generationMode === "guided"
@@ -1649,6 +1718,104 @@ export default function App() {
       return true;
     });
   }, [items]);
+
+  function renderOutfitDebugPanel(panelClassName = "") {
+    const className = ["outfit-debug-panel", panelClassName].filter(Boolean).join(" ");
+
+    return (
+      <div className={className}>
+        {generationMode === "guided" ? (
+          <>
+            <div className="outfit-debug-context">
+              <div className="outfit-debug-row">
+                <span>Mode</span>
+                <strong>Guided</strong>
+              </div>
+              <div className="outfit-debug-row">
+                <span>Style target</span>
+                <strong>{currentOutfitStyleTarget || "Unspecified"}</strong>
+              </div>
+              <div className="outfit-debug-row">
+                <span>Climate</span>
+                <strong>{currentOutfitClimateChip}</strong>
+              </div>
+              {currentOutfitDominantStyle ? (
+                <div className="outfit-debug-row">
+                  <span>Dominant style</span>
+                  <strong>{currentOutfitDominantStyle}</strong>
+                </div>
+              ) : null}
+            </div>
+
+            {guidedDebugDetails.length ? (
+              <div className="outfit-debug-slot-grid">
+                {guidedDebugDetails.map((entry) => {
+                  const selectedItem = itemsById[entry.itemId];
+                  const reasons = getGuidedBreakdownDisplayEntries(entry.breakdown, 3);
+                  const topCandidates = (entry.topCandidates ?? []).slice(0, 5);
+
+                  return (
+                    <section key={entry.slot} className="outfit-debug-slot">
+                      <h4 className="outfit-debug-slot-title">{entry.slot}</h4>
+                      <div className="outfit-debug-slot-block">
+                        <span className="outfit-debug-label">Selected</span>
+                        <div className="outfit-debug-value-list">
+                          <div className="outfit-debug-value-row">
+                            <span>{selectedItem?.name ?? entry.itemId}</span>
+                            <strong>{entry.score.toFixed(1)}</strong>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="outfit-debug-slot-block">
+                        <span className="outfit-debug-label">Reasons</span>
+                        <div className="outfit-debug-value-list">
+                          {reasons.map((reason) => (
+                            <div key={`${entry.slot}-${reason.key}`} className="outfit-debug-value-row">
+                              <span>{reason.label}</span>
+                              <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="outfit-debug-slot-block">
+                        <span className="outfit-debug-label">Top alternatives</span>
+                        <div className="outfit-debug-value-list">
+                          {topCandidates.map((candidate) => (
+                            <div key={`${entry.slot}-${candidate.itemId}`} className="outfit-debug-value-row">
+                              <span>{itemsById[candidate.itemId]?.name ?? candidate.itemId}</span>
+                              <strong>{candidate.score.toFixed(1)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            ) : currentOutfitDebugReasons.length ? (
+              <>
+                <p className="outfit-debug-note">
+                  Detailed slot rankings are only available for the exact generated outfit. This view is showing a fallback summary.
+                </p>
+                {currentOutfitDebugReasons.map((reason) => (
+                  <div key={reason.key} className="outfit-debug-row">
+                    <span>{reason.label}</span>
+                    <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p className="outfit-debug-empty">No guided scoring reasons available.</p>
+            )}
+          </>
+        ) : (
+          <p className="outfit-debug-empty">Guided scoring is disabled in Random mode.</p>
+        )}
+      </div>
+    );
+  }
   const brandSuggestions = useMemo(() => {
     const seen = new Set();
     return items.map((item) => item.brand).filter((value) => {
@@ -1918,6 +2085,7 @@ export default function App() {
           itemNeedsImageCropMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
+          itemNeedsColorMigration(storedItems[index], item) ||
           (!shouldApplyStyleWeightMigration && itemNeedsWeightMigration(storedItems[index], item)) ||
           itemNeedsGarmentTypeMigration(storedItems[index], item) ||
           (!shouldApplyStyleWeightMigration && itemNeedsTagMigration(storedItems[index], item)) ||
@@ -2062,6 +2230,23 @@ export default function App() {
     document.addEventListener("pointerdown", handleDocumentPointerDown, true);
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
   }, [activeOutfitSlot, activeAccessorySlot]);
+
+  useEffect(() => {
+    if (!outfitDebugOpen) {
+      return undefined;
+    }
+
+    function handleDocumentPointerDown(event) {
+      if (outfitDebugRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setOutfitDebugOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }, [outfitDebugOpen]);
 
   useEffect(() => {
     function handleDocumentKeyDown(event) {
@@ -2318,6 +2503,7 @@ export default function App() {
         itemNeedsImageCropMigration(nextItems[index], item) ||
         itemNeedsFavoriteMigration(nextItems[index], item) ||
         itemNeedsQuantityMigration(nextItems[index], item) ||
+        itemNeedsColorMigration(nextItems[index], item) ||
         itemNeedsWeightMigration(nextItems[index], item) ||
         itemNeedsGarmentTypeMigration(nextItems[index], item) ||
         itemNeedsTagMigration(nextItems[index], item) ||
@@ -2909,7 +3095,7 @@ export default function App() {
     const trimmedImageUrl = draft.imageUrl.trim();
     const trimmedBrand = draft.brand.trim();
     const trimmedType = draft.type.trim();
-    const trimmedColor = draft.color.trim();
+    const trimmedColor = normalizeItemColor(draft.color);
     const trimmedSize = draft.size.trim();
     const normalizedWeight = normalizeWeight(draft.weight);
     const normalizedValue = String(draft.value ?? "").replace(/[^\d]/g, "");
@@ -3367,7 +3553,11 @@ export default function App() {
         onClick={() => openAccessoryPicker(slot)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
-        {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : null}
+        {item ? (
+          <span className="item-figure accessory-figure has-item">
+            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation />
+          </span>
+        ) : null}
       </button>
     );
   }
@@ -4610,7 +4800,7 @@ export default function App() {
             </div>
 
             <div className="controls-group">
-              <div className="outfit-feedback-panel">
+              <div ref={outfitDebugRef} className="outfit-feedback-panel">
                 <div className="outfit-feedback-header">
                   <div className="outfit-feedback-chips" aria-label="Outfit reasons">
                     <span className="active-filter-chip">{currentOutfitStyleChip}</span>
@@ -4626,24 +4816,8 @@ export default function App() {
                   </button>
                 </div>
 
-                {outfitDebugOpen ? (
-                  <div className="outfit-debug-panel">
-                    {currentOutfitDebugReasons.length ? (
-                      currentOutfitDebugReasons.map((reason) => (
-                        <div key={reason.key} className="outfit-debug-row">
-                          <span>{reason.label}</span>
-                          <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="outfit-debug-empty">
-                        {generationMode === "random"
-                          ? "Guided scoring is disabled in Random mode."
-                          : "No guided scoring reasons available."}
-                      </p>
-                    )}
-                  </div>
-                ) : null}
+                {outfitDebugOpen && !showDebugPopout ? renderOutfitDebugPanel("is-inline") : null}
+                {showDebugPopout ? renderOutfitDebugPanel("outfit-debug-popout") : null}
               </div>
             </div>
 

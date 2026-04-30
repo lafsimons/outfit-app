@@ -58,6 +58,7 @@ export const defaultTypeSuggestions = [
   "Trousers",
   "Pants",
   "Shorts",
+  "Swim Shorts",
   "Sport Shorts",
   "Sport Pants",
   "Sweat Pants",
@@ -150,6 +151,7 @@ export const typeDefaultsByKey = {
   jeans: { garmentType: "Bottom", weight: "Medium", styleTags: ["Casual"] },
   "jeans (light)": { garmentType: "Bottom", weight: "Light", styleTags: ["Casual"] },
   shorts: { garmentType: "Bottom", weight: "Light", styleTags: ["Casual"] },
+  "swim shorts": { garmentType: "Bottom", weight: "Light", styleTags: ["Athleisure"] },
   "sport shorts": { garmentType: "Bottom", weight: "Light", styleTags: ["Athleisure"] },
   "sport pants": { garmentType: "Bottom", weight: "Medium", styleTags: ["Athleisure"] },
   "sweat pants": { garmentType: "Bottom", weight: "Medium", styleTags: ["Casual", "Athleisure"] },
@@ -201,7 +203,67 @@ export function normalizeType(type) {
   return type?.trim().toLowerCase() ?? "";
 }
 
-export function getTypePresetKey(type) {
+const TYPE_KEYWORD_FALLBACKS = [
+  { match: ["swim shorts", "board shorts"], map: "swim shorts" },
+  { match: ["swim", "boardshort"], map: "swim shorts" },
+  { match: ["tank"], map: "t-shirt" },
+  { match: ["polo"], map: "shirt" },
+  { match: ["tee", "t shirt"], map: "t-shirt" },
+  { match: ["long sleeve", "longsleeve"], map: "ls t-shirt" },
+  { match: ["shirt"], map: "shirt" },
+  { match: ["overshirt", "flannel", "rugby"], map: "overshirt" },
+  { match: ["hoodie"], map: "hoodie" },
+  { match: ["sweatshirt", "crewneck"], map: "sweatshirt" },
+  { match: ["jumper", "pullover"], map: "knit sweater" },
+  { match: ["knit", "sweater", "cardigan"], map: "knit sweater" },
+  { match: ["short"], map: "shorts" },
+  { match: ["trouser", "pants", "chino", "slack"], map: "trousers" },
+  { match: ["jean", "denim"], map: "jeans" },
+  { match: ["cargo"], map: "trousers" },
+  { match: ["jogger", "sweatpants", "track pants"], map: "sport pants" },
+  { match: ["leather sneaker"], map: "leather sneakers" },
+  { match: ["sneaker", "trainer", "runner", "running shoe"], map: "sneakers" },
+  { match: ["loafer"], map: "derby" },
+  { match: ["derby", "oxford"], map: "derby" },
+  { match: ["chelsea"], map: "boots" },
+  { match: ["boot"], map: "boots" },
+  { match: ["sandal"], map: "sandals" },
+  { match: ["slide", "flip flop"], map: "slides" },
+  { match: ["running", "training", "gym", "sport", "athletic", "track", "workout"], map: "sport t-shirt" },
+  { match: ["wool coat"], map: "wool coat" },
+  { match: ["coat", "trench", "parka", "mac"], map: "coat" },
+  { match: ["blazer"], map: "blazer" },
+  { match: ["puffer"], map: "puffer" },
+  { match: ["rain jacket", "shell", "windbreaker"], map: "shell jacket" },
+  { match: ["fleece"], map: "fleece jacket" },
+  { match: ["jacket"], map: "jacket" },
+  { match: ["sport cap", "baseball cap"], map: "sport cap" },
+  { match: ["cap"], map: "cap" },
+  { match: ["beanie"], map: "beanie" },
+  { match: ["bucket hat"], map: "hat" },
+  { match: ["hat"], map: "hat" },
+  { match: ["belt"], map: "belt" },
+  { match: ["tote", "backpack", "bag"], map: "bag" },
+  { match: ["scarf"], map: "scarf" },
+  { match: ["watch"], map: "watch" },
+  { match: ["sunglasses", "glasses"], map: "sunglasses" },
+  { match: ["ring", "necklace", "bracelet", "jewelry"], map: "jewelry" },
+  { match: ["sock"], map: "socks" }
+];
+
+export function normalizeTypeForKeywordFallback(type) {
+  return normalizeType(type)
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function resolveExactTypePresetKey(type) {
+  const normalized = normalizeType(type).replace(/[_\s]+/g, " ");
+  return typeDefaultsByKey[normalized] ? normalized : "";
+}
+
+export function resolveAliasTypePresetKey(type) {
   const normalized = normalizeType(type).replace(/[_\s]+/g, " ");
 
   if (["t-shirt", "t shirt", "tshirt", "tee"].includes(normalized)) return "t-shirt";
@@ -242,7 +304,30 @@ export function getTypePresetKey(type) {
   if (["heavy wool layers"].includes(normalized)) return "heavy wool layers";
   if (["thick scarf"].includes(normalized)) return "thick scarf";
 
-  return typeDefaultsByKey[normalized] ? normalized : "";
+  return "";
+}
+
+export function resolveKeywordFallbackPresetKey(type) {
+  const normalized = normalizeTypeForKeywordFallback(type);
+
+  if (!normalized) {
+    return "";
+  }
+
+  const compact = normalized.replace(/\s+/g, "");
+
+  const matchedFallback = TYPE_KEYWORD_FALLBACKS.find((entry) =>
+    entry.match.some((match) => {
+      const normalizedMatch = normalizeTypeForKeywordFallback(match);
+      return normalized.includes(normalizedMatch) || compact.includes(normalizedMatch.replace(/\s+/g, ""));
+    })
+  );
+
+  return matchedFallback?.map ?? "";
+}
+
+export function getTypePresetKey(type) {
+  return resolveExactTypePresetKey(type) || resolveAliasTypePresetKey(type) || resolveKeywordFallbackPresetKey(type) || "";
 }
 
 export function getTypeMatchKeys(type) {

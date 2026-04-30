@@ -32,6 +32,7 @@ export const noFilterStyleWeights = {
 };
 const GUIDED_BASE_SCORE = 0.8;
 const GUIDED_SCORE_FLOOR = 0.3;
+const GUIDED_DEBUG_TOP_CANDIDATE_LIMIT = 5;
 const MAX_RECENT_ITEM_PENALTY = -0.8;
 const MAX_RECENT_EXACT_PENALTY = -0.5;
 const MAX_STYLE_STREAK_PENALTY = -0.5;
@@ -1758,11 +1759,46 @@ function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilter
     };
   });
   const pickedItem = pickWeightedRandom(weightedCandidates);
-  return pickedItem ? weightedCandidates.find((entry) => entry.item.id === pickedItem.id) ?? null : null;
+  if (!pickedItem) {
+    return null;
+  }
+
+  const selectedEntry = weightedCandidates.find((entry) => entry.item.id === pickedItem.id) ?? null;
+  const topCandidates = selectedEntry
+    ? [
+        selectedEntry,
+        ...weightedCandidates
+          .filter((entry) => entry.item.id !== selectedEntry.item.id)
+          .sort((left, right) => right.score - left.score)
+          .slice(0, GUIDED_DEBUG_TOP_CANDIDATE_LIMIT - 1)
+      ]
+        .sort((left, right) => right.score - left.score)
+        .map((entry) => ({
+          itemId: entry.item.id,
+          score: entry.score
+        }))
+    : [];
+  return selectedEntry
+    ? {
+        ...selectedEntry,
+        topCandidates
+      }
+    : null;
 }
 
 export function pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
   return selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext)?.item ?? null;
+}
+
+export function getGuidedBreakdownDisplayEntries(breakdown = {}, limit = 3) {
+  return Object.entries(breakdown)
+    .sort((left, right) => Math.abs(right[1]) - Math.abs(left[1]))
+    .slice(0, limit)
+    .map(([key, value]) => ({
+      key,
+      label: guidedExplanationLabels[key] ?? key,
+      value
+    }));
 }
 
 function summarizeGuidedReasonEntries(entries = []) {
@@ -1899,7 +1935,8 @@ function buildNextOutfitResult(
         slot,
         itemId: selection.item.id,
         breakdown: selection.breakdown,
-        score: selection.score
+        score: selection.score,
+        topCandidates: selection.topCandidates ?? []
       });
     }
   });

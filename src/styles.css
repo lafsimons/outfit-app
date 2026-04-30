@@ -137,6 +137,8 @@ button:disabled {
 .outfit-feedback-panel {
   display: grid;
   gap: 6px;
+  position: relative;
+  overflow: visible;
 }
 
 .outfit-feedback-header {
@@ -170,6 +172,23 @@ button:disabled {
   background: var(--surface-soft);
 }
 
+.outfit-debug-panel.is-inline {
+  position: relative;
+}
+
+.outfit-debug-popout {
+  position: absolute;
+  left: calc(100% + 12px);
+  bottom: 0;
+  z-index: 33;
+  width: min(700px, calc(100vw - 330px));
+  max-width: calc(100vw - 330px);
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
 .outfit-debug-row {
   display: flex;
   align-items: center;
@@ -178,10 +197,74 @@ button:disabled {
   font-size: 0.72rem;
 }
 
+.outfit-debug-context {
+  display: grid;
+  gap: 4px;
+}
+
+.outfit-debug-slot-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.outfit-debug-slot {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.outfit-debug-slot-title {
+  margin: 0;
+  font-size: 0.74rem;
+}
+
+.outfit-debug-slot-block {
+  display: grid;
+  gap: 4px;
+}
+
+.outfit-debug-label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.outfit-debug-value-list {
+  display: grid;
+  gap: 4px;
+}
+
+.outfit-debug-value-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.72rem;
+}
+
+.outfit-debug-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
 .outfit-debug-empty {
   margin: 0;
   font-size: 0.72rem;
   color: var(--muted);
+}
+
+@media (min-width: 1180px) {
+  .outfit-debug-popout .outfit-debug-slot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .outfit-debug-popout .outfit-debug-slot {
+    height: 100%;
+  }
 }
 
 .current-outfit-panel {
@@ -863,6 +946,8 @@ button:disabled {
 }
 
 .accessory-slot {
+  --accessory-frame-width: 118px;
+  --accessory-frame-height: 88px;
   position: absolute;
   z-index: 1;
   width: 126px;
@@ -895,6 +980,16 @@ button:disabled {
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.18));
 }
 
+.accessory-slot .accessory-figure {
+  width: 100%;
+  min-height: inherit;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  display: grid;
+  place-items: center;
+}
+
 .managed-image {
   position: relative;
   display: block;
@@ -924,23 +1019,27 @@ button:disabled {
   transform-origin: center;
 }
 
-.accessory-slot .managed-image {
-  width: calc(118px * var(--managed-frame-scale, 1));
-  max-width: calc(118px * var(--managed-frame-scale, 1));
-  max-height: calc(88px * var(--managed-frame-scale, 1));
+.accessory-slot .accessory-figure .managed-image {
+  width: min(
+    100%,
+    calc(var(--accessory-frame-width) * var(--managed-frame-scale, 1)),
+    calc(var(--accessory-frame-height) * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(var(--accessory-frame-width) * var(--managed-frame-scale, 1)),
+    calc(var(--accessory-frame-height) * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: min(100%, calc(var(--accessory-frame-height) * var(--managed-frame-scale, 1)));
 }
 
 .accessory-slot-neck {
+  --accessory-frame-width: 180px;
+  --accessory-frame-height: 160px;
   top: 104px;
   left: 166px;
   width: 180px;
   min-height: 180px;
-}
-
-.accessory-slot-neck .managed-image {
-  width: calc(180px * var(--managed-frame-scale, 1));
-  max-width: calc(180px * var(--managed-frame-scale, 1));
-  max-height: calc(160px * var(--managed-frame-scale, 1));
 }
 
 .accessory-slot-lefthand {
@@ -954,16 +1053,12 @@ button:disabled {
 }
 
 .accessory-slot-bag {
+  --accessory-frame-width: 190px;
+  --accessory-frame-height: 170px;
   top: 396px;
   right: 174px;
   width: 190px;
   min-height: 190px;
-}
-
-.accessory-slot-bag .managed-image {
-  width: calc(190px * var(--managed-frame-scale, 1));
-  max-width: calc(190px * var(--managed-frame-scale, 1));
-  max-height: calc(170px * var(--managed-frame-scale, 1));
 }
 
 .accessory-slot-glasses {
