@@ -972,7 +972,6 @@ function normalizeGarmentType(item) {
 function normalizeItem(item) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
-  const shouldMoveValueToRetail = value !== "" && retailValue === "";
   const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
   const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
 
@@ -980,8 +979,8 @@ function normalizeItem(item) {
     ...emptyForm,
     ...item,
     ...correction,
-    value: shouldMoveValueToRetail ? "" : value,
-    retailValue: shouldMoveValueToRetail ? value : correction?.retailValue ?? retailValue,
+    value,
+    retailValue: correction?.retailValue ?? retailValue,
     imageUrl,
     imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
     imageScale: normalizeImageScale(item.imageScale),
@@ -1010,7 +1009,7 @@ function itemNeedsColorMigration(originalItem, normalizedItem) {
 }
 
 function itemNeedsRetailMigration(originalItem, normalizedItem) {
-  return originalItem.value !== "" && originalItem.value !== undefined && !originalItem.retailValue && normalizedItem.retailValue === originalItem.value;
+  return originalItem.retailValue !== normalizedItem.retailValue;
 }
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
