@@ -160,6 +160,7 @@ const garmentTypes = [
 ];
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
+const DEFAULT_WARDROBE_SORT = "newest";
 const emptyWardrobeFilters = {
   brand: "",
   type: "",
@@ -969,11 +970,27 @@ function normalizeGarmentType(item) {
   return garmentTypes.includes(item.garmentType) ? item.garmentType : "Top";
 }
 
-function normalizeItem(item) {
+function normalizeTimestamp(value) {
+  const timestamp = typeof value === "string" ? value : "";
+  return Number.isFinite(Date.parse(timestamp)) ? timestamp : "";
+}
+
+function createFallbackItemTimestamp(baseMs, index) {
+  return new Date(baseMs + index * 1000).toISOString();
+}
+
+function getItemSortTimestamp(item, field = "createdAt") {
+  const parsed = Date.parse(item?.[field] ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeItem(item, fallbackCreatedAt) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
   const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
   const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
+  const createdAt = normalizeTimestamp(item.createdAt) || fallbackCreatedAt || new Date().toISOString();
+  const updatedAt = normalizeTimestamp(item.updatedAt) || createdAt;
 
   const normalizedItem = {
     ...emptyForm,
@@ -998,7 +1015,9 @@ function normalizeItem(item) {
     climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     color: normalizeItemColor(correction?.color ?? item.color ?? ""),
-    list: normalizeList(correction?.list ?? item.list)
+    list: normalizeList(correction?.list ?? item.list),
+    createdAt,
+    updatedAt
   };
 
   return normalizedItem;
@@ -1085,6 +1104,31 @@ function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
   }
 
   return Object.keys(correction).some((key) => originalItem[key] !== normalizedItem[key]);
+}
+
+function itemNeedsTimestampMigration(originalItem, normalizedItem) {
+  return (
+    normalizeTimestamp(originalItem.createdAt) !== normalizedItem.createdAt ||
+    normalizeTimestamp(originalItem.updatedAt) !== normalizedItem.updatedAt
+  );
+}
+
+function normalizeWardrobeSort(value) {
+  const allowed = [
+    DEFAULT_WARDROBE_SORT,
+    "oldest",
+    "garmentType",
+    "brand",
+    "type",
+    "value",
+    "paidHigh",
+    "paidLow",
+    "retailHigh",
+    "retailLow",
+    "color"
+  ];
+
+  return allowed.includes(value) ? value : DEFAULT_WARDROBE_SORT;
 }
 
 function formatCurrency(value) {
@@ -1545,7 +1589,7 @@ export default function App() {
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
-  const [wardrobeSort, setWardrobeSort] = useState("");
+  const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
@@ -1978,11 +2022,11 @@ export default function App() {
         }
 
         if (wardrobeSort === "newest") {
-          return b.index - a.index;
+          return getItemSortTimestamp(b.item) - getItemSortTimestamp(a.item) || b.index - a.index;
         }
 
         if (wardrobeSort === "oldest") {
-          return a.index - b.index;
+          return getItemSortTimestamp(a.item) - getItemSortTimestamp(b.item) || a.index - b.index;
         }
 
         if (wardrobeSort === "color") {
@@ -2058,8 +2102,9 @@ export default function App() {
 
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
+      const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
-        .map(normalizeItem)
+        .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
         .map((item) =>
           (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
             ? restoreLegacyBakedImageScale(item)
@@ -2090,6 +2135,7 @@ export default function App() {
           (!shouldApplyStyleWeightMigration && itemNeedsTagMigration(storedItems[index], item)) ||
           itemNeedsClimateTagMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
+          itemNeedsTimestampMigration(storedItems[index], item) ||
           (shouldApplyStyleWeightMigration && itemNeedsStyleWeightMappingMigration(storedItems[index], item))
       );
 
@@ -2123,6 +2169,7 @@ export default function App() {
         setWeatherLocationDraft(storedAppState.weatherSettings?.locationName ?? "");
         setWeatherData(storedAppState.weatherData ?? null);
         setFitpics(storedAppState.fitpics ?? []);
+        setWardrobeSort(normalizeWardrobeSort(storedAppState.wardrobeSort));
       } else {
         const defaultData = getDefaultData();
         const defaultState = defaultData.appState;
@@ -2145,6 +2192,7 @@ export default function App() {
         setWeatherLocationDraft(defaultState.weatherSettings?.locationName ?? "");
         setWeatherData(defaultState.weatherData ?? null);
         setFitpics(defaultState.fitpics ?? []);
+        setWardrobeSort(normalizeWardrobeSort(defaultState.wardrobeSort));
       }
 
       setLoading(false);
@@ -2158,16 +2206,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-      if (loading) {
-        return;
-      }
+    if (loading) {
+      return;
+    }
 
-      saveAppState({
-        itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
-        imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
-        layering,
-        accessoriesEnabled,
-        locked,
+    saveAppState({
+      itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
+      imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+      layering,
+      accessoriesEnabled,
+      locked,
       excluded,
       outfit,
       ignoredImportImages,
@@ -2181,9 +2229,10 @@ export default function App() {
       outfitFilters,
       weatherSettings,
       weatherData,
-      fitpics
+      fitpics,
+      wardrobeSort
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeSort, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -2482,8 +2531,9 @@ export default function App() {
   }
 
   async function applyLoadedData(nextItems, nextAppState) {
+    const fallbackTimestampBaseMs = Date.now() - Math.max(nextItems.length - 1, 0) * 1000;
     const normalizedItems = nextItems
-      .map(normalizeItem)
+      .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
       .map((item) =>
         (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
           ? restoreLegacyBakedImageScale(item)
@@ -2507,7 +2557,8 @@ export default function App() {
         itemNeedsGarmentTypeMigration(nextItems[index], item) ||
         itemNeedsTagMigration(nextItems[index], item) ||
         itemNeedsClimateTagMigration(nextItems[index], item) ||
-        itemNeedsDefaultMetadataMigration(nextItems[index], item)
+        itemNeedsDefaultMetadataMigration(nextItems[index], item) ||
+        itemNeedsTimestampMigration(nextItems[index], item)
     );
 
     if (migratedItems.length) {
@@ -2534,7 +2585,7 @@ export default function App() {
     setWeatherData(nextAppState?.weatherData ?? null);
     setFitpics(nextAppState?.fitpics ?? []);
     setWardrobeFilters(emptyWardrobeFilters);
-    setWardrobeSort("");
+    setWardrobeSort(normalizeWardrobeSort(nextAppState?.wardrobeSort));
     setEditingId(null);
     setEditorReturnTarget(null);
     setDraft(emptyForm);
@@ -3154,8 +3205,14 @@ export default function App() {
       climateTags: normalizeTagList(draft.climateTags, editableClimateTagOptions)
     });
 
+    const timestamp = new Date().toISOString();
     const nextItem = {
       ...normalizedDraft,
+      createdAt:
+        duplicate || editingId === "new"
+          ? timestamp
+          : normalizeTimestamp(draft.createdAt) || timestamp,
+      updatedAt: timestamp,
       id:
         duplicate || editingId === "new"
           ? createUniqueItemId(
@@ -4250,6 +4307,17 @@ export default function App() {
             <option key={color} value={color} />
           ))}
         </datalist>
+
+        <label>
+          List
+          <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
+            {itemLists.map((list) => (
+              <option key={list} value={list}>
+                {list}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="editor-advanced-toggle-row">
@@ -4366,17 +4434,6 @@ export default function App() {
               {weightOptions.map((weight) => (
                 <option key={weight} value={weight}>
                   {weight}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            {renderAdvancedLabel("List", "list")}
-            <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
-              {itemLists.map((list) => (
-                <option key={list} value={list}>
-                  {list}
                 </option>
               ))}
             </select>

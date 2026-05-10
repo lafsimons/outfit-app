@@ -27,6 +27,7 @@ const defaultAppState = {
     Wishlist: true
   },
   generationMode: "guided",
+  wardrobeSort: "newest",
   outfitFilters: {
     style: [],
     climate: [],
