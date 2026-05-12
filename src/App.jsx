@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  deleteItem,
   exportBackup,
   getDefaultData,
-  loadAppState,
-  loadItems,
   replaceWithBackup,
-  resetToDefaults,
-  saveAppState,
-  saveItem
-} from "./lib/storage";
+  resetToDefaults
+} from "./repositories/backupRepository";
+import { load, save as saveAppState } from "./repositories/appStateRepository";
+import { loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
   applyMappedStyleWeightDefaults,
   defaultTypeSuggestions,
@@ -2101,7 +2098,7 @@ export default function App() {
     let cancelled = false;
 
     async function bootstrap() {
-      const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
+      const [storedItems, storedAppState] = await Promise.all([loadItems(), load()]);
       const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
         .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
