@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import ConfirmationDialog from "./components/ConfirmationDialog";
 import {
   deleteItem,
   exportBackup,
@@ -5304,25 +5305,14 @@ export default function App() {
           </aside>
         ) : null}
 
-        {confirmation ? (
-          <div className="floating-backdrop confirm-backdrop" onClick={confirmation.onCancel}>
-            <div className="confirm-dialog" onClick={(event) => event.stopPropagation()}>
-              <div>
-                <p className="eyebrow">Confirm</p>
-                <h2>{confirmation.title}</h2>
-              </div>
-              <p>{confirmation.message}</p>
-              <div className="confirm-actions">
-                <button type="button" className="ghost-button" onClick={confirmation.onCancel}>
-                  Cancel
-                </button>
-                <button type="button" className="primary-button" onClick={confirmation.onConfirm}>
-                  {confirmation.confirmLabel}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <ConfirmationDialog
+          open={Boolean(confirmation)}
+          title={confirmation?.title ?? ""}
+          message={confirmation?.message ?? ""}
+          confirmLabel={confirmation?.confirmLabel ?? "Confirm"}
+          onCancel={confirmation?.onCancel}
+          onConfirm={confirmation?.onConfirm}
+        />
 
         {fitpicPreview ? (
           <div className="floating-backdrop fitpic-preview-backdrop" onClick={() => setFitpicPreview(null)}>
