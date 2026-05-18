@@ -1,5 +1,5 @@
-import defaultWardrobe from "../data/defaultWardrobe";
-import defaultAppState from "../data/defaultAppState";
+import defaultWardrobe from "../data/defaultWardrobe.js";
+import defaultAppState from "../data/defaultAppState.js";
 
 const DB_NAME = "outfit-app-db";
 const DB_VERSION = 1;
