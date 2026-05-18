@@ -1,7 +1,8 @@
 import defaultWardrobe from "../data/defaultWardrobe.js";
 import defaultAppState from "../data/defaultAppState.js";
+import { BACKUP_SOURCE, BACKUP_VERSION, INDEXED_DB_NAME } from "./appIdentity.js";
 
-const DB_NAME = "outfit-app-db";
+const DB_NAME = INDEXED_DB_NAME;
 const DB_VERSION = 1;
 const ITEM_STORE = "items";
 const APP_STORE = "appState";
@@ -148,8 +149,8 @@ export async function exportBackup() {
   const [items, appState] = await Promise.all([loadItems(), loadAppState()]);
 
   return {
-    source: "outfit-app",
-    version: 1,
+    source: BACKUP_SOURCE,
+    version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     items,
     appState: stripLocalOnlyAppState(appState)

@@ -6,6 +6,7 @@ import {
   replaceWithBackup,
   resetToDefaults
 } from "./repositories/backupRepository";
+import { APP_ID, SUPPORTED_BACKUP_SOURCES, SUPPORTED_BACKUP_VERSIONS } from "./lib/appIdentity";
 import { load, save as saveAppState } from "./repositories/appStateRepository";
 import { loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
@@ -836,8 +837,8 @@ function readFileAsText(file) {
 function validateBackup(backup) {
   return (
     backup &&
-    backup.source === "outfit-app" &&
-    backup.version === 1 &&
+    SUPPORTED_BACKUP_SOURCES.includes(backup.source) &&
+    SUPPORTED_BACKUP_VERSIONS.includes(backup.version) &&
     Array.isArray(backup.items) &&
     backup.appState &&
     typeof backup.appState === "object" &&
@@ -2072,7 +2073,7 @@ export default function App() {
     const link = document.createElement("a");
 
     link.href = url;
-    link.download = `outfit-app-backup-${date}.json`;
+    link.download = `${APP_ID}-backup-${date}.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
