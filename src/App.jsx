@@ -1,15 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  deleteItem,
   exportBackup,
   getDefaultData,
-  loadAppState,
-  loadItems,
   replaceWithBackup,
-  resetToDefaults,
-  saveAppState,
-  saveItem
-} from "./lib/storage";
+  resetToDefaults
+} from "./repositories/backupRepository";
+import { load, save as saveAppState } from "./repositories/appStateRepository";
+import { loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
   applyMappedStyleWeightDefaults,
   defaultTypeSuggestions,
@@ -67,6 +64,57 @@ import {
   summarizeGuidedDebugPayload,
   visibleSlots
 } from "./lib/generation";
+import {
+  buildDisplayName,
+  createFallbackItemTimestamp,
+  createUniqueItemId,
+  DEFAULT_WARDROBE_SORT,
+  emptyWardrobeFilters,
+  formatCurrency,
+  garmentTypes,
+  getItemSortTimestamp,
+  getNumericValue,
+  getUniqueValues,
+  getWorthCategory,
+  itemNeedsClimateTagMigration,
+  itemNeedsColorMigration,
+  itemNeedsDefaultMetadataMigration,
+  itemNeedsFavoriteMigration,
+  itemNeedsGarmentTypeMigration,
+  itemNeedsQuantityMigration,
+  itemNeedsRetailMigration,
+  itemNeedsStyleWeightMappingMigration,
+  itemNeedsTagMigration,
+  itemNeedsTimestampMigration,
+  itemNeedsWeightMigration,
+  matchesMetadataFilter,
+  normalizeItem,
+  normalizeItemColor,
+  normalizeTimestamp,
+  normalizeWardrobeSort
+} from "./lib/itemModel";
+import {
+  normalizeHydratedAppState,
+  normalizeGenerationLists,
+  normalizeSavedOutfit,
+  normalizeSavedOutfits
+} from "./lib/appStateModel";
+import {
+  getImageFilename,
+  getItemImageStyle,
+  getManagedImageDrawBox,
+  getManagedImageFrameStyle,
+  getManagedImageSourceRect,
+  getNormalizedImageCrop,
+  getVisibleAlphaBounds,
+  itemNeedsImageBake,
+  normalizeImageCropSize,
+  normalizeImageCropStart,
+  normalizeImageFrameScale,
+  normalizeImageOffset,
+  normalizeImageScale,
+  stripViteHash
+} from "./lib/imagePresentation";
 
 const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
   eager: true,
@@ -90,35 +138,6 @@ const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
 const imageMetricsCache = new Map();
-
-function getImageFilename(imageUrl) {
-  const pathname = imageUrl.split("?")[0].split("#")[0];
-  const filename = pathname.split("/").pop() ?? "";
-
-  try {
-    return decodeURIComponent(filename);
-  } catch {
-    return filename;
-  }
-}
-
-function stripViteHash(filename) {
-  const extensionIndex = filename.lastIndexOf(".");
-
-  if (extensionIndex === -1) {
-    return filename;
-  }
-
-  const stem = filename.slice(0, extensionIndex);
-  const extension = filename.slice(extensionIndex);
-  const hashSeparatorIndex = stem.lastIndexOf("-");
-
-  if (hashSeparatorIndex === -1) {
-    return filename;
-  }
-
-  return `${stem.slice(0, hashSeparatorIndex)}${extension}`;
-}
 
 function resolveImageUrl(imageUrl) {
   if (!imageUrl || imageUrl.startsWith("data:") || /^https?:\/\//.test(imageUrl)) {
@@ -149,29 +168,8 @@ function getCanUseDebugPopout() {
   return window.matchMedia("(min-width: 1180px)").matches;
 }
 
-const garmentTypes = [
-  "Headwear",
-  "Top",
-  "Outerwear",
-  "Bottom",
-  "Footwear",
-  "Dresses/Jumpsuits",
-  "Accessory"
-];
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
-const DEFAULT_WARDROBE_SORT = "newest";
-const emptyWardrobeFilters = {
-  brand: "",
-  type: "",
-  garmentType: "",
-  color: "",
-  style: "",
-  laundry: "",
-  weight: "",
-  list: "",
-  favorite: ""
-};
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -190,60 +188,16 @@ const advancedTrackedFields = [
   "accessorySlot"
 ];
 
-function isWishlistItem(item) {
-  const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
-  return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
-}
-
-function normalizeImageScale(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 100;
-  }
-  return Math.min(180, Math.max(50, Math.round(parsed)));
-}
-
-function normalizeImageFrameScale(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 100;
-  }
-  return Math.min(300, Math.max(20, Math.round(parsed)));
-}
-
-function normalizeImageOffset(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-  return Math.min(50, Math.max(-50, Math.round(parsed)));
-}
-
-function normalizeImageCropSize(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 100;
-  }
-
-  return Math.min(100, Math.max(1, Math.round(parsed)));
-}
-
-function normalizeImageCropStart(value, size) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  return Math.min(100 - size, Math.max(0, Math.round(parsed)));
-}
-
-function getNormalizedImageCrop(item) {
-  const width = normalizeImageCropSize(item?.imageCropWidth);
-  const height = normalizeImageCropSize(item?.imageCropHeight);
-  const x = normalizeImageCropStart(item?.imageCropX, width);
-  const y = normalizeImageCropStart(item?.imageCropY, height);
-
-  return { x, y, width, height };
+function normalizeStoredItem(item, fallbackCreatedAt) {
+  return normalizeItem(item, {
+    fallbackCreatedAt,
+    emptyForm,
+    resolveImageUrl,
+    normalizeImageFrameScale,
+    normalizeImageScale,
+    normalizeImageOffset,
+    getNormalizedImageCrop
+  });
 }
 
 function normalizeQuantity(value) {
@@ -264,48 +218,6 @@ function areEditorValuesEqual(left, right) {
   }
 
   return left === right;
-}
-
-function itemNeedsImageBake(item) {
-  const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
-
-  return Boolean(imageUrl) && (
-    normalizeImageScale(item?.imageScale) !== normalizeImageFrameScale(item?.imageFrameScale) ||
-    normalizeImageOffset(item?.imageOffsetX) !== 0 ||
-    normalizeImageOffset(item?.imageOffsetY) !== 0
-  );
-}
-
-function getVisibleAlphaBounds(imageData, width, height, alphaThreshold = 16) {
-  let minX = width;
-  let minY = height;
-  let maxX = -1;
-  let maxY = -1;
-
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const alpha = imageData[(y * width + x) * 4 + 3];
-      if (alpha < alphaThreshold) {
-        continue;
-      }
-
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x > maxX) maxX = x;
-      if (y > maxY) maxY = y;
-    }
-  }
-
-  if (maxX < minX || maxY < minY) {
-    return null;
-  }
-
-  return {
-    left: minX,
-    top: minY,
-    right: maxX + 1,
-    bottom: maxY + 1
-  };
 }
 
 async function getAutoImageCrop(item) {
@@ -413,83 +325,6 @@ async function bakeItemImagePresentation(item) {
     imageCropY: autoCrop.y,
     imageCropWidth: autoCrop.width,
     imageCropHeight: autoCrop.height
-  };
-}
-
-function getItemImageStyle(item, { useFrameScale = false, normalizeToFrameScale = false, usePresentation = false } = {}) {
-  const frameScale = useFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100;
-  const transformFrameScale = normalizeToFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100;
-  const scale = usePresentation ? normalizeImageScale(item?.imageScale) : 100;
-  const offsetX = usePresentation ? normalizeImageOffset(item?.imageOffsetX) : 0;
-  const offsetY = usePresentation ? normalizeImageOffset(item?.imageOffsetY) : 0;
-  const effectiveScale = scale / transformFrameScale;
-
-  return {
-    "--managed-frame-scale": frameScale / 100,
-    "--managed-scale": effectiveScale,
-    "--managed-offset-x": `${offsetX}%`,
-    "--managed-offset-y": `${offsetY}%`
-  };
-}
-
-function getManagedImageSourceRect(item, naturalWidth, naturalHeight, { useCrop = false } = {}) {
-  const crop = useCrop ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
-  const sourceX = (crop.x / 100) * naturalWidth;
-  const sourceY = (crop.y / 100) * naturalHeight;
-  const sourceWidth = (crop.width / 100) * naturalWidth;
-  const sourceHeight = (crop.height / 100) * naturalHeight;
-
-  return {
-    x: sourceX,
-    y: sourceY,
-    width: Math.max(sourceWidth, 1),
-    height: Math.max(sourceHeight, 1)
-  };
-}
-
-function getManagedImageFrameStyle(item, metrics, options = {}) {
-  const crop = options.useCrop && options.usePresentation ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
-  const cropWidth = crop.width / 100;
-  const cropHeight = crop.height / 100;
-  const naturalWidth = Math.max(metrics?.naturalWidth ?? 1, 1);
-  const naturalHeight = Math.max(metrics?.naturalHeight ?? 1, 1);
-  const cropAspectRatio = (naturalWidth * cropWidth) / (naturalHeight * cropHeight);
-
-  return {
-    aspectRatio: `${cropAspectRatio || 1}`,
-    "--managed-crop-aspect": `${cropAspectRatio || 1}`,
-    "--managed-base-width": `${100 / cropWidth}%`,
-    "--managed-base-height": `${100 / cropHeight}%`,
-    "--managed-base-left": `${(-crop.x / crop.width) * 100}%`,
-    "--managed-base-top": `${(-crop.y / crop.height) * 100}%`,
-    ...getItemImageStyle(item, options)
-  };
-}
-
-function getManagedImageDrawBox(item, image, frameX, frameY, frameWidth, frameHeight, { useFrameScale = false, useCrop = false, usePresentation = false } = {}) {
-  const crop = useCrop && usePresentation ? getNormalizedImageCrop(item) : { x: 0, y: 0, width: 100, height: 100 };
-  const scale = (usePresentation ? normalizeImageScale(item?.imageScale) : 100) / (usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100);
-  const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight, { useCrop: useCrop && usePresentation });
-  const drawCropWidth = image.naturalWidth * (crop.width / 100);
-  const drawCropHeight = image.naturalHeight * (crop.height / 100);
-  const cropScale = Math.min(frameWidth / drawCropWidth, frameHeight / drawCropHeight, 1_000);
-  const visibleWidth = drawCropWidth * cropScale;
-  const visibleHeight = drawCropHeight * cropScale;
-  const baseWidth = visibleWidth / (crop.width / 100);
-  const baseHeight = visibleHeight / (crop.height / 100);
-  const baseX = frameX - (crop.x / 100) * baseWidth;
-  const baseY = frameY - (crop.y / 100) * baseHeight;
-  const scaledWidth = baseWidth * scale;
-  const scaledHeight = baseHeight * scale;
-  const offsetX = ((usePresentation ? normalizeImageOffset(item?.imageOffsetX) : 0) / 100) * scaledWidth;
-  const offsetY = ((usePresentation ? normalizeImageOffset(item?.imageOffsetY) : 0) / 100) * scaledHeight;
-
-  return {
-    sourceRect,
-    drawX: baseX + offsetX - (scaledWidth - baseWidth) / 2,
-    drawY: baseY + offsetY - (scaledHeight - baseHeight) / 2,
-    drawWidth: scaledWidth,
-    drawHeight: scaledHeight
   };
 }
 
@@ -610,13 +445,6 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
   );
 }
 
-function itemNeedsStyleWeightMappingMigration(originalItem, nextItem) {
-  return (
-    normalizeWeight(originalItem.weight) !== nextItem.weight ||
-    !areEditorValuesEqual(normalizeTagList(originalItem.styleTags, styleTagOptions), nextItem.styleTags)
-  );
-}
-
 function getAdvancedOverrideFields(item, defaults) {
   return advancedTrackedFields.filter((field) => !areEditorValuesEqual(item[field], defaults[field]));
 }
@@ -714,80 +542,6 @@ function getColorRgb(item) {
   return namedMatch ? hexToRgb(namedMatch[1]) : null;
 }
 
-function slugPart(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function buildBaseItemId(item) {
-  const segments = [item.garmentType];
-
-  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
-    segments.push(item.layerType);
-  }
-
-  if (item.garmentType === "Accessory" && item.accessorySlot) {
-    segments.push(item.accessorySlot);
-  }
-
-  if (item.type) {
-    segments.push(item.type);
-  }
-
-  if (item.brand) {
-    segments.push(item.brand);
-  }
-
-  if (item.name) {
-    segments.push(item.name);
-  }
-
-  if (item.size) {
-    segments.push(item.size);
-  }
-
-  if (item.color) {
-    segments.push(item.color);
-  }
-
-  return segments
-    .map((segment) => slugPart(segment || ""))
-    .filter(Boolean)
-    .join("_");
-}
-
-function createUniqueItemId(item, items, currentId = null) {
-  const baseId = buildBaseItemId(item) || "item";
-  let candidateId = baseId;
-  let counter = 2;
-
-  while (items.some((existing) => existing.id === candidateId && existing.id !== currentId)) {
-    candidateId = `${baseId}_${counter}`;
-    counter += 1;
-  }
-
-  return candidateId;
-}
-
-function buildDisplayName(item) {
-  const parts = [item.brand, item.name]
-    .map((value) => value?.trim())
-    .filter(Boolean);
-
-  if (parts.length) {
-    return parts.join(" ");
-  }
-
-  return item.garmentType || "Untitled item";
-}
-
-function hasNamingMetadata(item) {
-  return [item.name, item.brand, item.type, item.color].some((value) => value?.trim());
-}
-
 function getAccessoryLabel(slot) {
   const labels = {
     Glasses: "Glasses",
@@ -817,12 +571,6 @@ function hasAccessoryItems(outfit) {
   return accessorySlots.some((slot) => Boolean(outfit?.[slot]));
 }
 
-function getUniqueValues(items, key) {
-  return [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b)
-  );
-}
-
 function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
   const ignored = new Set(ignoredKeys);
   const itemStyles = getItemStyleTags(item);
@@ -839,196 +587,6 @@ function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
       !filters.favorite ||
       (filters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
   );
-}
-
-function matchesMetadataFilter(value, filterValue) {
-  if (!filterValue) {
-    return true;
-  }
-
-  if (filterValue === "__none__") {
-    return !value;
-  }
-
-  return value === filterValue;
-}
-
-function normalizeItemColor(value) {
-  const trimmed = value?.trim?.() ?? "";
-
-  if (!trimmed) {
-    return "";
-  }
-
-  if (trimmed.startsWith("#")) {
-    return trimmed.toUpperCase();
-  }
-
-  return trimmed
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-function getNumericValue(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-const defaultMetadataCorrections = {
-  headwear_cap_beige: {
-    name: "R18C1 Shallow Cap Reed Linen",
-    retailValue: "94",
-    brand: "Man-tle",
-    type: "Cap",
-    size: "OS",
-    garmentType: "Headwear",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "Beige",
-    list: "Wardrobe"
-  },
-  top_shirt_111: {
-    name: "Lot.111 Work Shirt",
-    retailValue: "263",
-    brand: "Taiga Takahashi",
-    type: "Shirt",
-    size: "16",
-    garmentType: "Top",
-    layerType: "Inner",
-    accessorySlot: "",
-    color: "Indigo",
-    list: "Wardrobe"
-  },
-  top_jacket_303sumi: {
-    name: "Lot.303 Coverall",
-    retailValue: "316",
-    brand: "Taiga Takahashi",
-    type: "Jacket",
-    size: "40",
-    garmentType: "Top",
-    layerType: "Outer",
-    accessorySlot: "",
-    color: "Sumi",
-    list: "Wardrobe"
-  },
-  bottom_204_brown: {
-    name: "Lot.204 Engineer Trousers",
-    retailValue: "228",
-    brand: "Taiga Takahashi",
-    type: "Trousers",
-    size: "34",
-    garmentType: "Bottom",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "Brown",
-    list: "Wardrobe"
-  },
-  footwear_sneaker_gat: {
-    name: "GAT",
-    retailValue: "30",
-    brand: "Vintage",
-    type: "Sneakers",
-    size: "45",
-    garmentType: "Footwear",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "White",
-    list: "Wardrobe"
-  }
-};
-
-const defaultMetadataCorrectionById = {
-  headwear_cap_default_beige_os_beige: defaultMetadataCorrections.headwear_cap_beige,
-  headwear_cap_man_tle_r18c1_shallow_cap_reed_linen_os_beige: defaultMetadataCorrections.headwear_cap_beige,
-  top_inner_shirt_default_white_size_m: defaultMetadataCorrections.top_shirt_111,
-  top_inner_shirt_taiga_takahashi_lot_111_work_shirt_16_indigo: defaultMetadataCorrections.top_shirt_111,
-  top_outer_jacket_default_sumi_size_m: defaultMetadataCorrections.top_jacket_303sumi,
-  top_outer_jacket_taiga_takahashi_lot_303_coverall_40_sumi: defaultMetadataCorrections.top_jacket_303sumi,
-  bottom_trousers_default_brown_size_m: defaultMetadataCorrections.bottom_204_brown,
-  bottom_trousers_brown_trousers_m_brown: defaultMetadataCorrections.bottom_204_brown,
-  bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown: defaultMetadataCorrections.bottom_204_brown,
-  footwear_sneakers_default_gat_size_42: defaultMetadataCorrections.footwear_sneaker_gat,
-  footwear_sneakers_vintage_gat_45_white: defaultMetadataCorrections.footwear_sneaker_gat
-};
-
-function getImageStem(imageUrl) {
-  const filename = stripViteHash(getImageFilename(imageUrl));
-  const extensionIndex = filename.lastIndexOf(".");
-  return extensionIndex > 0 ? filename.slice(0, extensionIndex) : filename;
-}
-
-function getDefaultMetadataCorrection(item) {
-  return defaultMetadataCorrectionById[item.id] ?? defaultMetadataCorrections[getImageStem(item.imageUrl)];
-}
-
-function normalizeGarmentType(item) {
-  if (item.garmentType === "Top" && item.layerType === "Outer") {
-    return "Outerwear";
-  }
-
-  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Top";
-}
-
-function normalizeTimestamp(value) {
-  const timestamp = typeof value === "string" ? value : "";
-  return Number.isFinite(Date.parse(timestamp)) ? timestamp : "";
-}
-
-function createFallbackItemTimestamp(baseMs, index) {
-  return new Date(baseMs + index * 1000).toISOString();
-}
-
-function getItemSortTimestamp(item, field = "createdAt") {
-  const parsed = Date.parse(item?.[field] ?? "");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeItem(item, fallbackCreatedAt) {
-  const value = item.value ?? "";
-  const retailValue = item.retailValue ?? "";
-  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
-  const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
-  const createdAt = normalizeTimestamp(item.createdAt) || fallbackCreatedAt || new Date().toISOString();
-  const updatedAt = normalizeTimestamp(item.updatedAt) || createdAt;
-
-  const normalizedItem = {
-    ...emptyForm,
-    ...item,
-    ...correction,
-    value,
-    retailValue: correction?.retailValue ?? retailValue,
-    imageUrl,
-    imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
-    imageScale: normalizeImageScale(item.imageScale),
-    imageOffsetX: normalizeImageOffset(item.imageOffsetX),
-    imageOffsetY: normalizeImageOffset(item.imageOffsetY),
-    imageCropX: getNormalizedImageCrop(item).x,
-    imageCropY: getNormalizedImageCrop(item).y,
-    imageCropWidth: getNormalizedImageCrop(item).width,
-    imageCropHeight: getNormalizedImageCrop(item).height,
-    favorite: Boolean(item.favorite),
-    quantity: normalizeQuantity(item.quantity),
-    garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
-    weight: normalizeWeight(item.weight),
-    styleTags: normalizeTagList(item.styleTags, styleTagOptions),
-    climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
-    type: normalizeItemType(correction?.type ?? item.type ?? ""),
-    color: normalizeItemColor(correction?.color ?? item.color ?? ""),
-    list: normalizeList(correction?.list ?? item.list),
-    createdAt,
-    updatedAt
-  };
-
-  return normalizedItem;
-}
-
-function itemNeedsColorMigration(originalItem, normalizedItem) {
-  return normalizeItemColor(originalItem.color) !== normalizedItem.color;
-}
-
-function itemNeedsRetailMigration(originalItem, normalizedItem) {
-  return originalItem.retailValue !== normalizedItem.retailValue;
 }
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
@@ -1064,79 +622,6 @@ function itemNeedsImageCropMigration(originalItem, normalizedItem) {
     originalCrop.width !== normalizedItem.imageCropWidth ||
     originalCrop.height !== normalizedItem.imageCropHeight
   );
-}
-
-function itemNeedsFavoriteMigration(originalItem, normalizedItem) {
-  return originalItem.favorite === undefined && normalizedItem.favorite === false;
-}
-
-function itemNeedsQuantityMigration(originalItem, normalizedItem) {
-  return originalItem.quantity === undefined || normalizeQuantity(originalItem.quantity) !== normalizedItem.quantity;
-}
-
-function itemNeedsWeightMigration(originalItem, normalizedItem) {
-  return originalItem.weight === undefined || normalizeWeight(originalItem.weight) !== normalizedItem.weight;
-}
-
-function itemNeedsGarmentTypeMigration(originalItem, normalizedItem) {
-  return originalItem.garmentType !== normalizedItem.garmentType;
-}
-
-function itemNeedsTagMigration(originalItem, normalizedItem) {
-  return (
-    !Array.isArray(originalItem.styleTags) ||
-    normalizeTagList(originalItem.styleTags, styleTagOptions).length !== normalizedItem.styleTags.length
-  );
-}
-
-function itemNeedsClimateTagMigration(originalItem, normalizedItem) {
-  return (
-    !Array.isArray(originalItem.climateTags) ||
-    normalizeTagList(originalItem.climateTags, editableClimateTagOptions).length !== normalizedItem.climateTags.length
-  );
-}
-
-function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
-  const correction = getDefaultMetadataCorrection(normalizedItem);
-
-  if (!correction) {
-    return false;
-  }
-
-  return Object.keys(correction).some((key) => originalItem[key] !== normalizedItem[key]);
-}
-
-function itemNeedsTimestampMigration(originalItem, normalizedItem) {
-  return (
-    normalizeTimestamp(originalItem.createdAt) !== normalizedItem.createdAt ||
-    normalizeTimestamp(originalItem.updatedAt) !== normalizedItem.updatedAt
-  );
-}
-
-function normalizeWardrobeSort(value) {
-  const allowed = [
-    DEFAULT_WARDROBE_SORT,
-    "oldest",
-    "garmentType",
-    "brand",
-    "type",
-    "value",
-    "paidHigh",
-    "paidLow",
-    "retailHigh",
-    "retailLow",
-    "color"
-  ];
-
-  return allowed.includes(value) ? value : DEFAULT_WARDROBE_SORT;
-}
-
-function formatCurrency(value) {
-  if (value === "" || value === null || value === undefined) {
-    return "No value";
-  }
-
-  return `${new Intl.NumberFormat("de-DE").format(getNumericValue(value))} €`;
 }
 
 function createSavedOutfitName(savedOutfits) {
@@ -1178,48 +663,6 @@ function clearItemIdFromOutfit(outfit, itemIdToClear) {
       itemId === itemIdToClear ? null : itemId
     ])
   );
-}
-
-function normalizeGenerationLists(generationLists) {
-  return {
-    ...defaultGenerationLists,
-    ...(generationLists ?? {})
-  };
-}
-
-function normalizeSavedOutfit(savedOutfit) {
-  return {
-    id: savedOutfit.id,
-    name: savedOutfit.name ?? "Saved outfit",
-    description: savedOutfit.description ?? "",
-    outfit: savedOutfit.outfit ?? {},
-    layering: Boolean(savedOutfit.layering)
-  };
-}
-
-function normalizeSavedOutfits(savedOutfits) {
-  if (!Array.isArray(savedOutfits)) {
-    return [];
-  }
-
-  const seenOutfitKeys = new Set();
-
-  return savedOutfits.reduce((normalized, savedOutfit) => {
-    const nextSavedOutfit = normalizeSavedOutfit(savedOutfit);
-    const outfitKey = getOutfitKey(nextSavedOutfit.outfit, nextSavedOutfit.layering);
-
-    if (seenOutfitKeys.has(outfitKey)) {
-      return normalized;
-    }
-
-    seenOutfitKeys.add(outfitKey);
-    normalized.push(nextSavedOutfit);
-    return normalized;
-  }, []);
-}
-
-function getWorthCategory(item) {
-  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Accessory";
 }
 
 function createFitpicId() {
@@ -2101,10 +1544,10 @@ export default function App() {
     let cancelled = false;
 
     async function bootstrap() {
-      const [storedItems, storedAppState] = await Promise.all([loadItems(), loadAppState()]);
+      const [storedItems, storedAppState] = await Promise.all([loadItems(), load()]);
       const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
-        .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
+        .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
         .map((item) =>
           (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
             ? restoreLegacyBakedImageScale(item)
@@ -2136,7 +1579,8 @@ export default function App() {
           itemNeedsClimateTagMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
           itemNeedsTimestampMigration(storedItems[index], item) ||
-          (shouldApplyStyleWeightMigration && itemNeedsStyleWeightMappingMigration(storedItems[index], item))
+          (shouldApplyStyleWeightMigration &&
+            itemNeedsStyleWeightMappingMigration(storedItems[index], item, areEditorValuesEqual))
       );
 
       if (cancelled) {
@@ -2150,49 +1594,58 @@ export default function App() {
       setItems(effectiveItems);
 
       if (storedAppState) {
-        setLayering(Boolean(storedAppState.layering));
-        setAccessoriesEnabled(storedAppState.accessoriesEnabled ?? true);
-        setLocked(storedAppState.locked ?? {});
-        setExcluded(storedAppState.excluded ?? {});
-        setOutfit(storedAppState.outfit ?? {});
-        setGuidedDebugPayload([]);
-        setIgnoredImportImages(storedAppState.ignoredImportImages ?? []);
-        setSavedOutfits(normalizeSavedOutfits(storedAppState.savedOutfits));
-        setLikedOutfitKeys(normalizeLikedOutfitKeys(storedAppState.likedOutfitKeys));
-        setOutfitAffinity(normalizeOutfitAffinity(storedAppState.outfitAffinity));
-        setRecentOutfits(normalizeRecentOutfits(storedAppState.recentOutfits));
-        setGenerateCount(Math.max(0, Math.round(Number(storedAppState.generateCount) || 0)));
-        setGenerationLists(normalizeGenerationLists(storedAppState.generationLists));
-        setGenerationMode(normalizeGenerationMode(storedAppState.generationMode));
-        setOutfitFilters(normalizeOutfitFilters(storedAppState.outfitFilters));
-        setWeatherSettings(normalizeWeatherSettings(storedAppState.weatherSettings));
-        setWeatherLocationDraft(storedAppState.weatherSettings?.locationName ?? "");
-        setWeatherData(storedAppState.weatherData ?? null);
-        setFitpics(storedAppState.fitpics ?? []);
-        setWardrobeSort(normalizeWardrobeSort(storedAppState.wardrobeSort));
+        const hydratedAppState = normalizeHydratedAppState(storedAppState, {
+          fallbackOutfit: {},
+          normalizeWeatherSettings
+        });
+        setLayering(hydratedAppState.layering);
+        setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
+        setLocked(hydratedAppState.locked);
+        setExcluded(hydratedAppState.excluded);
+        setOutfit(hydratedAppState.outfit);
+        setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
+        setIgnoredImportImages(hydratedAppState.ignoredImportImages);
+        setSavedOutfits(hydratedAppState.savedOutfits);
+        setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
+        setOutfitAffinity(hydratedAppState.outfitAffinity);
+        setRecentOutfits(hydratedAppState.recentOutfits);
+        setGenerateCount(hydratedAppState.generateCount);
+        setGenerationLists(hydratedAppState.generationLists);
+        setGenerationMode(hydratedAppState.generationMode);
+        setOutfitFilters(hydratedAppState.outfitFilters);
+        setWeatherSettings(hydratedAppState.weatherSettings);
+        setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
+        setWeatherData(hydratedAppState.weatherData);
+        setFitpics(hydratedAppState.fitpics);
+        setWardrobeSort(hydratedAppState.wardrobeSort);
       } else {
         const defaultData = getDefaultData();
         const defaultState = defaultData.appState;
-        setLayering(Boolean(defaultState.layering));
-        setAccessoriesEnabled(defaultState.accessoriesEnabled ?? true);
-        setLocked(defaultState.locked ?? {});
-        setExcluded(defaultState.excluded ?? {});
-        setOutfit(defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits)));
-        setGuidedDebugPayload([]);
-        setIgnoredImportImages(defaultState.ignoredImportImages ?? []);
-        setSavedOutfits(normalizeSavedOutfits(defaultState.savedOutfits));
-        setLikedOutfitKeys(normalizeLikedOutfitKeys(defaultState.likedOutfitKeys));
-        setOutfitAffinity(normalizeOutfitAffinity(defaultState.outfitAffinity));
-        setRecentOutfits(normalizeRecentOutfits(defaultState.recentOutfits));
-        setGenerateCount(Math.max(0, Math.round(Number(defaultState.generateCount) || 0)));
-        setGenerationLists(normalizeGenerationLists(defaultState.generationLists));
-        setGenerationMode(normalizeGenerationMode(defaultState.generationMode));
-        setOutfitFilters(normalizeOutfitFilters(defaultState.outfitFilters));
-        setWeatherSettings(normalizeWeatherSettings(defaultState.weatherSettings));
-        setWeatherLocationDraft(defaultState.weatherSettings?.locationName ?? "");
-        setWeatherData(defaultState.weatherData ?? null);
-        setFitpics(defaultState.fitpics ?? []);
-        setWardrobeSort(normalizeWardrobeSort(defaultState.wardrobeSort));
+        const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
+        const hydratedAppState = normalizeHydratedAppState(defaultState, {
+          fallbackOutfit,
+          normalizeWeatherSettings
+        });
+        setLayering(hydratedAppState.layering);
+        setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
+        setLocked(hydratedAppState.locked);
+        setExcluded(hydratedAppState.excluded);
+        setOutfit(hydratedAppState.outfit);
+        setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
+        setIgnoredImportImages(hydratedAppState.ignoredImportImages);
+        setSavedOutfits(hydratedAppState.savedOutfits);
+        setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
+        setOutfitAffinity(hydratedAppState.outfitAffinity);
+        setRecentOutfits(hydratedAppState.recentOutfits);
+        setGenerateCount(hydratedAppState.generateCount);
+        setGenerationLists(hydratedAppState.generationLists);
+        setGenerationMode(hydratedAppState.generationMode);
+        setOutfitFilters(hydratedAppState.outfitFilters);
+        setWeatherSettings(hydratedAppState.weatherSettings);
+        setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
+        setWeatherData(hydratedAppState.weatherData);
+        setFitpics(hydratedAppState.fitpics);
+        setWardrobeSort(hydratedAppState.wardrobeSort);
       }
 
       setLoading(false);
@@ -2533,7 +1986,7 @@ export default function App() {
   async function applyLoadedData(nextItems, nextAppState) {
     const fallbackTimestampBaseMs = Date.now() - Math.max(nextItems.length - 1, 0) * 1000;
     const normalizedItems = nextItems
-      .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
+      .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
       .map((item) =>
         (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
           ? restoreLegacyBakedImageScale(item)
@@ -2565,27 +2018,34 @@ export default function App() {
       await Promise.all(migratedItems.map((item) => saveItem(item)));
     }
 
+    const fallbackOutfit = nextAppState?.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity), normalizeRecentOutfits(nextAppState?.recentOutfits));
+    const hydratedAppState = normalizeHydratedAppState(nextAppState, {
+      fallbackOutfit,
+      normalizeWeatherSettings
+    });
+
     setItems(effectiveItems);
-    setLayering(Boolean(nextAppState?.layering));
-    setAccessoriesEnabled(nextAppState?.accessoriesEnabled ?? true);
-    setLocked(nextAppState?.locked ?? {});
-    setExcluded(nextAppState?.excluded ?? {});
-    setOutfit(nextAppState?.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity), normalizeRecentOutfits(nextAppState?.recentOutfits)));
-    setGuidedDebugPayload([]);
-    setIgnoredImportImages(nextAppState?.ignoredImportImages ?? []);
-    setSavedOutfits(normalizeSavedOutfits(nextAppState?.savedOutfits));
-    setLikedOutfitKeys(normalizeLikedOutfitKeys(nextAppState?.likedOutfitKeys));
-    setOutfitAffinity(normalizeOutfitAffinity(nextAppState?.outfitAffinity));
-    setRecentOutfits(normalizeRecentOutfits(nextAppState?.recentOutfits));
-    setGenerationLists(normalizeGenerationLists(nextAppState?.generationLists));
-    setGenerationMode(normalizeGenerationMode(nextAppState?.generationMode));
-    setOutfitFilters(normalizeOutfitFilters(nextAppState?.outfitFilters));
-    setWeatherSettings(normalizeWeatherSettings(nextAppState?.weatherSettings));
-    setWeatherLocationDraft(nextAppState?.weatherSettings?.locationName ?? "");
-    setWeatherData(nextAppState?.weatherData ?? null);
-    setFitpics(nextAppState?.fitpics ?? []);
+    setLayering(hydratedAppState.layering);
+    setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
+    setLocked(hydratedAppState.locked);
+    setExcluded(hydratedAppState.excluded);
+    setOutfit(hydratedAppState.outfit);
+    setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
+    setIgnoredImportImages(hydratedAppState.ignoredImportImages);
+    setSavedOutfits(hydratedAppState.savedOutfits);
+    setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
+    setOutfitAffinity(hydratedAppState.outfitAffinity);
+    setRecentOutfits(hydratedAppState.recentOutfits);
+    setGenerateCount(hydratedAppState.generateCount);
+    setGenerationLists(hydratedAppState.generationLists);
+    setGenerationMode(hydratedAppState.generationMode);
+    setOutfitFilters(hydratedAppState.outfitFilters);
+    setWeatherSettings(hydratedAppState.weatherSettings);
+    setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
+    setWeatherData(hydratedAppState.weatherData);
+    setFitpics(hydratedAppState.fitpics);
     setWardrobeFilters(emptyWardrobeFilters);
-    setWardrobeSort(normalizeWardrobeSort(nextAppState?.wardrobeSort));
+    setWardrobeSort(hydratedAppState.wardrobeSort);
     setEditingId(null);
     setEditorReturnTarget(null);
     setDraft(emptyForm);
@@ -2935,7 +2395,7 @@ export default function App() {
   }
 
   function startEdit(item, options = {}) {
-    const normalizedItem = normalizeItem(item);
+    const normalizedItem = normalizeStoredItem(item);
     const shouldOpenAdvanced = getAdvancedOverrideFields(
       normalizedItem,
       resolveTypeDefaults(normalizedItem.type)
