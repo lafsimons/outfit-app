@@ -64,6 +64,35 @@ import {
   summarizeGuidedDebugPayload,
   visibleSlots
 } from "./lib/generation";
+import {
+  buildDisplayName,
+  createFallbackItemTimestamp,
+  createUniqueItemId,
+  DEFAULT_WARDROBE_SORT,
+  emptyWardrobeFilters,
+  formatCurrency,
+  garmentTypes,
+  getItemSortTimestamp,
+  getNumericValue,
+  getUniqueValues,
+  getWorthCategory,
+  itemNeedsClimateTagMigration,
+  itemNeedsColorMigration,
+  itemNeedsDefaultMetadataMigration,
+  itemNeedsFavoriteMigration,
+  itemNeedsGarmentTypeMigration,
+  itemNeedsQuantityMigration,
+  itemNeedsRetailMigration,
+  itemNeedsStyleWeightMappingMigration,
+  itemNeedsTagMigration,
+  itemNeedsTimestampMigration,
+  itemNeedsWeightMigration,
+  matchesMetadataFilter,
+  normalizeItem,
+  normalizeItemColor,
+  normalizeTimestamp,
+  normalizeWardrobeSort
+} from "./lib/itemModel";
 
 const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
   eager: true,
@@ -146,29 +175,8 @@ function getCanUseDebugPopout() {
   return window.matchMedia("(min-width: 1180px)").matches;
 }
 
-const garmentTypes = [
-  "Headwear",
-  "Top",
-  "Outerwear",
-  "Bottom",
-  "Footwear",
-  "Dresses/Jumpsuits",
-  "Accessory"
-];
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
-const DEFAULT_WARDROBE_SORT = "newest";
-const emptyWardrobeFilters = {
-  brand: "",
-  type: "",
-  garmentType: "",
-  color: "",
-  style: "",
-  laundry: "",
-  weight: "",
-  list: "",
-  favorite: ""
-};
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -186,11 +194,6 @@ const advancedTrackedFields = [
   "layerType",
   "accessorySlot"
 ];
-
-function isWishlistItem(item) {
-  const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
-  return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
-}
 
 function normalizeImageScale(value) {
   const parsed = Number(value);
@@ -241,6 +244,18 @@ function getNormalizedImageCrop(item) {
   const y = normalizeImageCropStart(item?.imageCropY, height);
 
   return { x, y, width, height };
+}
+
+function normalizeStoredItem(item, fallbackCreatedAt) {
+  return normalizeItem(item, {
+    fallbackCreatedAt,
+    emptyForm,
+    resolveImageUrl,
+    normalizeImageFrameScale,
+    normalizeImageScale,
+    normalizeImageOffset,
+    getNormalizedImageCrop
+  });
 }
 
 function normalizeQuantity(value) {
@@ -607,13 +622,6 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
   );
 }
 
-function itemNeedsStyleWeightMappingMigration(originalItem, nextItem) {
-  return (
-    normalizeWeight(originalItem.weight) !== nextItem.weight ||
-    !areEditorValuesEqual(normalizeTagList(originalItem.styleTags, styleTagOptions), nextItem.styleTags)
-  );
-}
-
 function getAdvancedOverrideFields(item, defaults) {
   return advancedTrackedFields.filter((field) => !areEditorValuesEqual(item[field], defaults[field]));
 }
@@ -711,80 +719,6 @@ function getColorRgb(item) {
   return namedMatch ? hexToRgb(namedMatch[1]) : null;
 }
 
-function slugPart(value) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function buildBaseItemId(item) {
-  const segments = [item.garmentType];
-
-  if (item.garmentType === "Top" || item.garmentType === "Outerwear") {
-    segments.push(item.layerType);
-  }
-
-  if (item.garmentType === "Accessory" && item.accessorySlot) {
-    segments.push(item.accessorySlot);
-  }
-
-  if (item.type) {
-    segments.push(item.type);
-  }
-
-  if (item.brand) {
-    segments.push(item.brand);
-  }
-
-  if (item.name) {
-    segments.push(item.name);
-  }
-
-  if (item.size) {
-    segments.push(item.size);
-  }
-
-  if (item.color) {
-    segments.push(item.color);
-  }
-
-  return segments
-    .map((segment) => slugPart(segment || ""))
-    .filter(Boolean)
-    .join("_");
-}
-
-function createUniqueItemId(item, items, currentId = null) {
-  const baseId = buildBaseItemId(item) || "item";
-  let candidateId = baseId;
-  let counter = 2;
-
-  while (items.some((existing) => existing.id === candidateId && existing.id !== currentId)) {
-    candidateId = `${baseId}_${counter}`;
-    counter += 1;
-  }
-
-  return candidateId;
-}
-
-function buildDisplayName(item) {
-  const parts = [item.brand, item.name]
-    .map((value) => value?.trim())
-    .filter(Boolean);
-
-  if (parts.length) {
-    return parts.join(" ");
-  }
-
-  return item.garmentType || "Untitled item";
-}
-
-function hasNamingMetadata(item) {
-  return [item.name, item.brand, item.type, item.color].some((value) => value?.trim());
-}
-
 function getAccessoryLabel(slot) {
   const labels = {
     Glasses: "Glasses",
@@ -814,12 +748,6 @@ function hasAccessoryItems(outfit) {
   return accessorySlots.some((slot) => Boolean(outfit?.[slot]));
 }
 
-function getUniqueValues(items, key) {
-  return [...new Set(items.map((item) => item[key]).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b)
-  );
-}
-
 function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
   const ignored = new Set(ignoredKeys);
   const itemStyles = getItemStyleTags(item);
@@ -836,196 +764,6 @@ function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
       !filters.favorite ||
       (filters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
   );
-}
-
-function matchesMetadataFilter(value, filterValue) {
-  if (!filterValue) {
-    return true;
-  }
-
-  if (filterValue === "__none__") {
-    return !value;
-  }
-
-  return value === filterValue;
-}
-
-function normalizeItemColor(value) {
-  const trimmed = value?.trim?.() ?? "";
-
-  if (!trimmed) {
-    return "";
-  }
-
-  if (trimmed.startsWith("#")) {
-    return trimmed.toUpperCase();
-  }
-
-  return trimmed
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
-}
-
-function getNumericValue(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-const defaultMetadataCorrections = {
-  headwear_cap_beige: {
-    name: "R18C1 Shallow Cap Reed Linen",
-    retailValue: "94",
-    brand: "Man-tle",
-    type: "Cap",
-    size: "OS",
-    garmentType: "Headwear",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "Beige",
-    list: "Wardrobe"
-  },
-  top_shirt_111: {
-    name: "Lot.111 Work Shirt",
-    retailValue: "263",
-    brand: "Taiga Takahashi",
-    type: "Shirt",
-    size: "16",
-    garmentType: "Top",
-    layerType: "Inner",
-    accessorySlot: "",
-    color: "Indigo",
-    list: "Wardrobe"
-  },
-  top_jacket_303sumi: {
-    name: "Lot.303 Coverall",
-    retailValue: "316",
-    brand: "Taiga Takahashi",
-    type: "Jacket",
-    size: "40",
-    garmentType: "Top",
-    layerType: "Outer",
-    accessorySlot: "",
-    color: "Sumi",
-    list: "Wardrobe"
-  },
-  bottom_204_brown: {
-    name: "Lot.204 Engineer Trousers",
-    retailValue: "228",
-    brand: "Taiga Takahashi",
-    type: "Trousers",
-    size: "34",
-    garmentType: "Bottom",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "Brown",
-    list: "Wardrobe"
-  },
-  footwear_sneaker_gat: {
-    name: "GAT",
-    retailValue: "30",
-    brand: "Vintage",
-    type: "Sneakers",
-    size: "45",
-    garmentType: "Footwear",
-    layerType: "Both",
-    accessorySlot: "",
-    color: "White",
-    list: "Wardrobe"
-  }
-};
-
-const defaultMetadataCorrectionById = {
-  headwear_cap_default_beige_os_beige: defaultMetadataCorrections.headwear_cap_beige,
-  headwear_cap_man_tle_r18c1_shallow_cap_reed_linen_os_beige: defaultMetadataCorrections.headwear_cap_beige,
-  top_inner_shirt_default_white_size_m: defaultMetadataCorrections.top_shirt_111,
-  top_inner_shirt_taiga_takahashi_lot_111_work_shirt_16_indigo: defaultMetadataCorrections.top_shirt_111,
-  top_outer_jacket_default_sumi_size_m: defaultMetadataCorrections.top_jacket_303sumi,
-  top_outer_jacket_taiga_takahashi_lot_303_coverall_40_sumi: defaultMetadataCorrections.top_jacket_303sumi,
-  bottom_trousers_default_brown_size_m: defaultMetadataCorrections.bottom_204_brown,
-  bottom_trousers_brown_trousers_m_brown: defaultMetadataCorrections.bottom_204_brown,
-  bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown: defaultMetadataCorrections.bottom_204_brown,
-  footwear_sneakers_default_gat_size_42: defaultMetadataCorrections.footwear_sneaker_gat,
-  footwear_sneakers_vintage_gat_45_white: defaultMetadataCorrections.footwear_sneaker_gat
-};
-
-function getImageStem(imageUrl) {
-  const filename = stripViteHash(getImageFilename(imageUrl));
-  const extensionIndex = filename.lastIndexOf(".");
-  return extensionIndex > 0 ? filename.slice(0, extensionIndex) : filename;
-}
-
-function getDefaultMetadataCorrection(item) {
-  return defaultMetadataCorrectionById[item.id] ?? defaultMetadataCorrections[getImageStem(item.imageUrl)];
-}
-
-function normalizeGarmentType(item) {
-  if (item.garmentType === "Top" && item.layerType === "Outer") {
-    return "Outerwear";
-  }
-
-  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Top";
-}
-
-function normalizeTimestamp(value) {
-  const timestamp = typeof value === "string" ? value : "";
-  return Number.isFinite(Date.parse(timestamp)) ? timestamp : "";
-}
-
-function createFallbackItemTimestamp(baseMs, index) {
-  return new Date(baseMs + index * 1000).toISOString();
-}
-
-function getItemSortTimestamp(item, field = "createdAt") {
-  const parsed = Date.parse(item?.[field] ?? "");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeItem(item, fallbackCreatedAt) {
-  const value = item.value ?? "";
-  const retailValue = item.retailValue ?? "";
-  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
-  const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
-  const createdAt = normalizeTimestamp(item.createdAt) || fallbackCreatedAt || new Date().toISOString();
-  const updatedAt = normalizeTimestamp(item.updatedAt) || createdAt;
-
-  const normalizedItem = {
-    ...emptyForm,
-    ...item,
-    ...correction,
-    value,
-    retailValue: correction?.retailValue ?? retailValue,
-    imageUrl,
-    imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
-    imageScale: normalizeImageScale(item.imageScale),
-    imageOffsetX: normalizeImageOffset(item.imageOffsetX),
-    imageOffsetY: normalizeImageOffset(item.imageOffsetY),
-    imageCropX: getNormalizedImageCrop(item).x,
-    imageCropY: getNormalizedImageCrop(item).y,
-    imageCropWidth: getNormalizedImageCrop(item).width,
-    imageCropHeight: getNormalizedImageCrop(item).height,
-    favorite: Boolean(item.favorite),
-    quantity: normalizeQuantity(item.quantity),
-    garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
-    weight: normalizeWeight(item.weight),
-    styleTags: normalizeTagList(item.styleTags, styleTagOptions),
-    climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
-    type: normalizeItemType(correction?.type ?? item.type ?? ""),
-    color: normalizeItemColor(correction?.color ?? item.color ?? ""),
-    list: normalizeList(correction?.list ?? item.list),
-    createdAt,
-    updatedAt
-  };
-
-  return normalizedItem;
-}
-
-function itemNeedsColorMigration(originalItem, normalizedItem) {
-  return normalizeItemColor(originalItem.color) !== normalizedItem.color;
-}
-
-function itemNeedsRetailMigration(originalItem, normalizedItem) {
-  return originalItem.retailValue !== normalizedItem.retailValue;
 }
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
@@ -1061,79 +799,6 @@ function itemNeedsImageCropMigration(originalItem, normalizedItem) {
     originalCrop.width !== normalizedItem.imageCropWidth ||
     originalCrop.height !== normalizedItem.imageCropHeight
   );
-}
-
-function itemNeedsFavoriteMigration(originalItem, normalizedItem) {
-  return originalItem.favorite === undefined && normalizedItem.favorite === false;
-}
-
-function itemNeedsQuantityMigration(originalItem, normalizedItem) {
-  return originalItem.quantity === undefined || normalizeQuantity(originalItem.quantity) !== normalizedItem.quantity;
-}
-
-function itemNeedsWeightMigration(originalItem, normalizedItem) {
-  return originalItem.weight === undefined || normalizeWeight(originalItem.weight) !== normalizedItem.weight;
-}
-
-function itemNeedsGarmentTypeMigration(originalItem, normalizedItem) {
-  return originalItem.garmentType !== normalizedItem.garmentType;
-}
-
-function itemNeedsTagMigration(originalItem, normalizedItem) {
-  return (
-    !Array.isArray(originalItem.styleTags) ||
-    normalizeTagList(originalItem.styleTags, styleTagOptions).length !== normalizedItem.styleTags.length
-  );
-}
-
-function itemNeedsClimateTagMigration(originalItem, normalizedItem) {
-  return (
-    !Array.isArray(originalItem.climateTags) ||
-    normalizeTagList(originalItem.climateTags, editableClimateTagOptions).length !== normalizedItem.climateTags.length
-  );
-}
-
-function itemNeedsDefaultMetadataMigration(originalItem, normalizedItem) {
-  const correction = getDefaultMetadataCorrection(normalizedItem);
-
-  if (!correction) {
-    return false;
-  }
-
-  return Object.keys(correction).some((key) => originalItem[key] !== normalizedItem[key]);
-}
-
-function itemNeedsTimestampMigration(originalItem, normalizedItem) {
-  return (
-    normalizeTimestamp(originalItem.createdAt) !== normalizedItem.createdAt ||
-    normalizeTimestamp(originalItem.updatedAt) !== normalizedItem.updatedAt
-  );
-}
-
-function normalizeWardrobeSort(value) {
-  const allowed = [
-    DEFAULT_WARDROBE_SORT,
-    "oldest",
-    "garmentType",
-    "brand",
-    "type",
-    "value",
-    "paidHigh",
-    "paidLow",
-    "retailHigh",
-    "retailLow",
-    "color"
-  ];
-
-  return allowed.includes(value) ? value : DEFAULT_WARDROBE_SORT;
-}
-
-function formatCurrency(value) {
-  if (value === "" || value === null || value === undefined) {
-    return "No value";
-  }
-
-  return `${new Intl.NumberFormat("de-DE").format(getNumericValue(value))} €`;
 }
 
 function createSavedOutfitName(savedOutfits) {
@@ -1213,10 +878,6 @@ function normalizeSavedOutfits(savedOutfits) {
     normalized.push(nextSavedOutfit);
     return normalized;
   }, []);
-}
-
-function getWorthCategory(item) {
-  return garmentTypes.includes(item.garmentType) ? item.garmentType : "Accessory";
 }
 
 function createFitpicId() {
@@ -2101,7 +1762,7 @@ export default function App() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), load()]);
       const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
-        .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
+        .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
         .map((item) =>
           (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
             ? restoreLegacyBakedImageScale(item)
@@ -2133,7 +1794,8 @@ export default function App() {
           itemNeedsClimateTagMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
           itemNeedsTimestampMigration(storedItems[index], item) ||
-          (shouldApplyStyleWeightMigration && itemNeedsStyleWeightMappingMigration(storedItems[index], item))
+          (shouldApplyStyleWeightMigration &&
+            itemNeedsStyleWeightMappingMigration(storedItems[index], item, areEditorValuesEqual))
       );
 
       if (cancelled) {
@@ -2530,7 +2192,7 @@ export default function App() {
   async function applyLoadedData(nextItems, nextAppState) {
     const fallbackTimestampBaseMs = Date.now() - Math.max(nextItems.length - 1, 0) * 1000;
     const normalizedItems = nextItems
-      .map((item, index) => normalizeItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
+      .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
       .map((item) =>
         (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
           ? restoreLegacyBakedImageScale(item)
@@ -2932,7 +2594,7 @@ export default function App() {
   }
 
   function startEdit(item, options = {}) {
-    const normalizedItem = normalizeItem(item);
+    const normalizedItem = normalizeStoredItem(item);
     const shouldOpenAdvanced = getAdvancedOverrideFields(
       normalizedItem,
       resolveTypeDefaults(normalizedItem.type)
