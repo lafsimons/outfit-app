@@ -443,6 +443,7 @@ test("item create and update dirty marking increments version and preserves sync
     recordVersion: 4,
     syncStatus: "synced",
     lastSyncedAt: "2024-02-01T00:00:00.000Z",
+    lastLocalChangeAt: "2024-02-02T00:00:00.000Z",
     lastSyncError: { message: "stale", at: "2024-02-02T00:00:00.000Z" }
   });
 
@@ -460,7 +461,7 @@ test("item create and update dirty marking increments version and preserves sync
   assert.equal(updatedMetadata.lastSyncError, "");
   assert.equal(updatedMetadata.localId, "item_1");
   assert.equal(updatedMetadata.lastModifiedByDevice, createdMetadata.lastModifiedByDevice);
-  assert.notEqual(updatedMetadata.lastLocalChangeAt, createdMetadata.lastLocalChangeAt);
+  assert.notEqual(updatedMetadata.lastLocalChangeAt, "2024-02-02T00:00:00.000Z");
 });
 
 test("item delete preserves metadata row as a pending-upload tombstone", async () => {
