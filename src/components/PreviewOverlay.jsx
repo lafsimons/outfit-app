@@ -4,6 +4,7 @@ export default function PreviewOverlay({
   title,
   meta = null,
   onClose,
+  actions = null,
   children
 }) {
   if (!open) {
@@ -25,9 +26,12 @@ export default function PreviewOverlay({
             <h2>{title}</h2>
             {meta ? <p className="preview-overlay-subtitle">{meta}</p> : null}
           </div>
-          <button type="button" className="ghost-button" onClick={onClose}>
-            Close
-          </button>
+          <div className="preview-overlay-header-actions">
+            {actions}
+            <button type="button" className="ghost-button" onClick={onClose}>
+              Close
+            </button>
+          </div>
         </div>
         <div className="preview-overlay-body">{children}</div>
       </div>

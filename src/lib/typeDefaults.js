@@ -18,6 +18,7 @@ export const emptyForm = {
   sourceRelativePath: "",
   relinkStatus: "unknown",
   name: "",
+  description: "",
   imageUrl: "",
   images: {
     original: { src: "" },

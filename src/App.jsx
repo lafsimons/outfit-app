@@ -23,7 +23,6 @@ import {
   hasTypeDefaults,
   itemLists,
   layerTypes,
-  matchesListFilter,
   normalizeItemType,
   normalizeList,
   normalizeTagList,
@@ -51,7 +50,6 @@ import {
   getCurrentOutfitClimateChip,
   getCurrentOutfitStyleChip,
   getEligibleSlotPool,
-  getItemStyleTags,
   getOtherTopSlot,
   getOutfitDominantStyle,
   getOutfitKey,
@@ -78,17 +76,13 @@ import {
   createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
-  DEFAULT_WARDROBE_SORT,
-  emptyWardrobeFilters,
   formatCurrency,
   garmentTypes,
-  getItemSortTimestamp,
   getNumericValue,
-  getWardrobePreviewMetadata,
-  getUniqueValues,
   getWorthCategory,
   itemNeedsClimateTagMigration,
   itemNeedsColorMigration,
+  itemNeedsDescriptionMigration,
   itemNeedsDefaultMetadataMigration,
   itemNeedsFavoriteMigration,
   itemNeedsGarmentTypeMigration,
@@ -101,13 +95,10 @@ import {
   itemNeedsTagMigration,
   itemNeedsTimestampMigration,
   itemNeedsWeightMigration,
-  matchesMetadataFilter,
   normalizeItem,
   normalizeItemColor,
   normalizeItemUuid,
-  normalizeTimestamp,
-  normalizeWardrobeFilters,
-  normalizeWardrobeSort
+  normalizeTimestamp
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
@@ -119,6 +110,18 @@ import {
   normalizeSavedOutfits
 } from "./lib/appStateModel";
 import { prepareBackupImport } from "./lib/backupImport";
+import {
+  DEFAULT_WARDROBE_SORT,
+  emptyWardrobeFilters,
+  filterWardrobeItems,
+  getWardrobeFilterOptions,
+  getWardrobeSearchText,
+  matchesWardrobeFilters,
+  normalizeWardrobeFilters,
+  normalizeWardrobeSort,
+  sortWardrobeItems,
+  wardrobeMultiValueFilterKeys
+} from "./lib/wardrobeLibrary";
 import {
   addTagToItemTags,
   hasMeaningfulItemChange,
@@ -202,6 +205,7 @@ const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
+  "description",
   "brand",
   "size",
   "weight",
@@ -598,24 +602,6 @@ function getSlotLabel(slot) {
 
 function hasAccessoryItems(outfit) {
   return accessorySlots.some((slot) => Boolean(outfit?.[slot]));
-}
-
-function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
-  const ignored = new Set(ignoredKeys);
-  const itemStyles = getItemStyleTags(item);
-
-  return (
-    (ignored.has("brand") || matchesMetadataFilter(item.brand, filters.brand)) &&
-    (ignored.has("type") || matchesMetadataFilter(item.type, filters.type)) &&
-    (ignored.has("garmentType") || matchesMetadataFilter(item.garmentType, filters.garmentType)) &&
-    (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
-    (ignored.has("style") || !filters.style || itemStyles.includes(filters.style)) &&
-    (ignored.has("weight") || matchesMetadataFilter(item.weight, filters.weight)) &&
-    (ignored.has("list") || matchesListFilter(item.list, filters.list)) &&
-    (ignored.has("favorite") ||
-      !filters.favorite ||
-      (filters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
-  );
 }
 
 function itemNeedsImageScaleMigration(originalItem, normalizedItem) {
@@ -1063,12 +1049,12 @@ export default function App() {
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
-  const [wardrobeWorthOpen, setWardrobeWorthOpen] = useState(false);
   const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [wardrobeSelectMode, setWardrobeSelectMode] = useState(false);
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
+  const [bulkListDraft, setBulkListDraft] = useState(defaultItemList);
   const [bulkStyleTagDraft, setBulkStyleTagDraft] = useState(styleTagOptions[0] ?? "");
   const [bulkClimateTagDraft, setBulkClimateTagDraft] = useState(editableClimateTagOptions[0] ?? "");
   const [editingId, setEditingId] = useState(null);
@@ -1079,6 +1065,7 @@ export default function App() {
   const [imageProcessing, setImageProcessing] = useState(false);
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [wardrobeSearch, setWardrobeSearch] = useState("");
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
   const [outfitPalette, setOutfitPalette] = useState([]);
@@ -1098,16 +1085,14 @@ export default function App() {
   const [canUseDebugPopout, setCanUseDebugPopout] = useState(getCanUseDebugPopout);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const outfitItemPreviewClickTimeoutRef = useRef(null);
+  const pendingOutfitItemPreviewRef = useRef(null);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
-  const wardrobePreviewMetadata = useMemo(
-    () => (wardrobePreviewItem ? getWardrobePreviewMetadata(wardrobePreviewItem) : []),
-    [wardrobePreviewItem]
-  );
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
 
   useEffect(() => {
@@ -1159,6 +1144,11 @@ export default function App() {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       }
       wardrobePendingSelectionRef.current = null;
+
+      if (outfitItemPreviewClickTimeoutRef.current !== null) {
+        window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
+      }
+      pendingOutfitItemPreviewRef.current = null;
     };
   }, []);
 
@@ -1411,37 +1401,27 @@ export default function App() {
       ...items.map((item) => item.list),
       ...Object.keys(generationLists ?? {}),
       draft.list,
-      wardrobeFilters.list
+      ...(wardrobeFilters.list ?? [])
     ]),
     [draft.list, generationLists, items, wardrobeFilters.list]
   );
+  const wardrobeSearchTextById = useMemo(
+    () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
+    [items]
+  );
   const wardrobeFilterOptions = useMemo(
-    () => {
-      const typeItems = items.filter((item) =>
-        matchesWardrobeFilters(item, wardrobeFilters, ["type"])
-      );
-      const brandItems = items.filter((item) =>
-        matchesWardrobeFilters(item, wardrobeFilters, ["brand"])
-      );
-      const colorItems = items.filter((item) =>
-        matchesWardrobeFilters(item, wardrobeFilters, ["color"])
-      );
-      const styleItems = items.filter((item) =>
-        matchesWardrobeFilters(item, wardrobeFilters, ["style"])
-      );
-
-      return {
-        brand: getUniqueValues(brandItems, "brand"),
-        type: getUniqueValues(typeItems, "type"),
-        garmentType: getUniqueValues(items, "garmentType"),
-        color: getUniqueValues(colorItems, "color"),
-        style: styleTagOptions.filter((style) => styleItems.some((item) => getItemStyleTags(item).includes(style)))
-      };
-    },
-    [items, wardrobeFilters]
+    () =>
+      getWardrobeFilterOptions(items, wardrobeFilters, {
+        itemListOptions,
+        styleTagOptions
+      }),
+    [itemListOptions, items, wardrobeFilters]
   );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
-  const activeWardrobeFilterCount = Object.values(wardrobeFilters).filter(Boolean).length;
+  const activeWardrobeFilterCount = Object.entries(wardrobeFilters).reduce(
+    (count, [key, value]) => count + (wardrobeMultiValueFilterKeys.includes(key) ? value.length : value ? 1 : 0),
+    0
+  );
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
   const includedGenerationLists = useMemo(
     () => itemListOptions.filter((list) => isGenerationListEnabled(list)),
@@ -1459,17 +1439,21 @@ export default function App() {
     return `${includedGenerationLists.length} included`;
   }, [includedGenerationLists]);
   const activeWardrobeFilterChips = [
-    ["Brand", wardrobeFilters.brand],
-    ["Type", wardrobeFilters.type],
-    ["Garment", wardrobeFilters.garmentType],
-    ["Color", wardrobeFilters.color],
-    ["Style", wardrobeFilters.style],
-    ["Weight", wardrobeFilters.weight],
-    ["List", wardrobeFilters.list],
+    ...[
+      ["Brand", wardrobeFilters.brand],
+      ["Type", wardrobeFilters.type],
+      ["Garment", wardrobeFilters.garmentType],
+      ["Color", wardrobeFilters.color],
+      ["Style", wardrobeFilters.style],
+      ["Weight", wardrobeFilters.weight],
+      ["List", wardrobeFilters.list]
+    ].flatMap(([label, values]) =>
+      values.map((value) => [label, value])
+    ),
     ["Exclude", wardrobeFilters.laundry],
     ["Favorite", wardrobeFilters.favorite]
   ]
-    .filter(([, value]) => Boolean(value))
+    .filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
     .map(([label, value]) => ({
       label,
       value:
@@ -1485,18 +1469,6 @@ export default function App() {
                 : "Hide excluded"
             : value
     }));
-
-  useEffect(() => {
-    if (!wardrobeFilters.type || wardrobeFilters.type === "__none__") {
-      return;
-    }
-
-    if (wardrobeFilterOptions.type.includes(wardrobeFilters.type)) {
-      return;
-    }
-
-    setWardrobeFilters((current) => ({ ...current, type: "" }));
-  }, [wardrobeFilterOptions.type, wardrobeFilters.type]);
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -1581,6 +1553,14 @@ export default function App() {
     }));
   }
 
+  function editSelectedWardrobeItem() {
+    if (selectedWardrobeItems.length !== 1) {
+      return;
+    }
+
+    startEdit(selectedWardrobeItems[0]);
+  }
+
   async function setSelectedItemsFavoriteState(favorite) {
     await persistBulkSelectionUpdate((item) => ({
       ...item,
@@ -1654,64 +1634,18 @@ export default function App() {
   }
 
   const visibleWardrobeItems = useMemo(() => {
-    const filtered = items.filter((item) =>
-      matchesWardrobeFilters(item, wardrobeFilters) &&
-      (!wardrobeFilters.laundry ||
-        (wardrobeFilters.laundry === "show" ? Boolean(excluded[item.id]) : !excluded[item.id]))
-    );
-
-    return filtered
-      .map((item, index) => ({ item, index }))
-      .sort((a, b) => {
-        if (wardrobeSort === "garmentType") {
-          return a.item.garmentType.localeCompare(b.item.garmentType) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "brand") {
-          return (a.item.brand || "").localeCompare(b.item.brand || "") || a.index - b.index;
-        }
-
-        if (wardrobeSort === "type") {
-          return (a.item.type || "").localeCompare(b.item.type || "") || a.index - b.index;
-        }
-
-        if (wardrobeSort === "value" || wardrobeSort === "paidHigh") {
-          return getNumericValue(b.item.value) - getNumericValue(a.item.value) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "paidLow") {
-          return getNumericValue(a.item.value) - getNumericValue(b.item.value) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "retailHigh") {
-          return getNumericValue(b.item.retailValue) - getNumericValue(a.item.retailValue) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "retailLow") {
-          return getNumericValue(a.item.retailValue) - getNumericValue(b.item.retailValue) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "newest") {
-          return getItemSortTimestamp(b.item) - getItemSortTimestamp(a.item) || b.index - a.index;
-        }
-
-        if (wardrobeSort === "oldest") {
-          return getItemSortTimestamp(a.item) - getItemSortTimestamp(b.item) || a.index - b.index;
-        }
-
-        if (wardrobeSort === "color") {
-          return (a.item.color || "").localeCompare(b.item.color || "") || a.index - b.index;
-        }
-
-        return a.index - b.index;
-      })
-      .map(({ item }) => item);
-  }, [items, wardrobeFilters, wardrobeSort, excluded]);
+    const filtered = filterWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById);
+    return sortWardrobeItems(filtered, wardrobeSort);
+  }, [excluded, items, wardrobeFilters, wardrobeSearch, wardrobeSearchTextById, wardrobeSort]);
   const visibleWardrobeItemIds = useMemo(
     () => visibleWardrobeItems.map((item) => item.id),
     [visibleWardrobeItems]
   );
   const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
+  const selectedWardrobeItems = useMemo(
+    () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
+    [itemsById, selectedWardrobeItemIds]
+  );
 
   const wardrobeWorth = useMemo(() => {
     const categories = garmentTypes;
@@ -1805,6 +1739,7 @@ export default function App() {
           itemNeedsImageContractMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
+          itemNeedsDescriptionMigration(storedItems[index], item) ||
           itemNeedsColorMigration(storedItems[index], item) ||
           (!shouldApplyStyleWeightMigration && itemNeedsWeightMigration(storedItems[index], item)) ||
           itemNeedsGarmentTypeMigration(storedItems[index], item) ||
@@ -1965,6 +1900,12 @@ export default function App() {
   }, [items]);
 
   useEffect(() => {
+    if (!itemListOptions.includes(bulkListDraft)) {
+      setBulkListDraft(itemListOptions[0] ?? defaultItemList);
+    }
+  }, [bulkListDraft, itemListOptions]);
+
+  useEffect(() => {
     if (wardrobeSelectMode) {
       return;
     }
@@ -2077,12 +2018,6 @@ export default function App() {
         return;
       }
 
-      if (wardrobeWorthOpen) {
-        event.preventDefault();
-        setWardrobeWorthOpen(false);
-        return;
-      }
-
       if (wardrobeSavedOpen) {
         event.preventDefault();
         cancelEditSavedOutfit();
@@ -2127,7 +2062,6 @@ export default function App() {
     wardrobePreviewItemId,
     wardrobeSelectMode,
     wardrobeFiltersOpen,
-    wardrobeWorthOpen,
     wardrobeSavedOpen,
     wardrobeManageOpen,
     generationListsOpen
@@ -2139,7 +2073,6 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
@@ -2325,7 +2258,6 @@ export default function App() {
     setPickerAnchorSlot(null);
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
   }
@@ -2715,6 +2647,66 @@ export default function App() {
     openWardrobePreview(item.id);
   }
 
+  function editWardrobePreviewItem() {
+    if (!wardrobePreviewItem) {
+      return;
+    }
+
+    const previewedItem = wardrobePreviewItem;
+    closeWardrobePreview();
+    startEdit(previewedItem);
+  }
+
+  async function deleteWardrobePreviewItem() {
+    if (!wardrobePreviewItem) {
+      return;
+    }
+
+    const deleted = await handleDelete(wardrobePreviewItem.id);
+
+    if (deleted) {
+      closeWardrobePreview();
+    }
+  }
+
+  function handleOutfitItemPreviewClick(item, openPicker) {
+    if (!item) {
+      openPicker();
+      return;
+    }
+
+    if (outfitItemPreviewClickTimeoutRef.current !== null) {
+      window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
+    }
+
+    pendingOutfitItemPreviewRef.current = {
+      itemId: item.id,
+      openPicker
+    };
+
+    outfitItemPreviewClickTimeoutRef.current = window.setTimeout(() => {
+      const pendingPreview = pendingOutfitItemPreviewRef.current;
+      outfitItemPreviewClickTimeoutRef.current = null;
+      pendingOutfitItemPreviewRef.current = null;
+
+      pendingPreview?.openPicker?.();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+  }
+
+  function handleOutfitItemPreviewDoubleClick(item) {
+    if (!item) {
+      return;
+    }
+
+    if (outfitItemPreviewClickTimeoutRef.current !== null) {
+      window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
+      outfitItemPreviewClickTimeoutRef.current = null;
+    }
+
+    pendingOutfitItemPreviewRef.current = null;
+    openWardrobePreview(item.id);
+  }
+
   function resolveSlotForItem(item) {
     if (item.garmentType === "Headwear") {
       return "Headwear";
@@ -2750,13 +2742,12 @@ export default function App() {
   function startCreate() {
     closeUtilityWindows();
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
-    setEditorReturnTarget(isMobileViewport ? "outfit" : "wardrobe");
+    setEditorReturnTarget("wardrobe");
     setEditorAdvancedOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
@@ -2771,14 +2762,13 @@ export default function App() {
 
     closeUtilityWindows();
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
     const requestedReturnTarget = options.returnTarget ?? "wardrobe";
-    setEditorReturnTarget(isMobileViewport ? "outfit" : requestedReturnTarget);
+    setEditorReturnTarget(requestedReturnTarget);
     setEditorAdvancedOpen(shouldOpenAdvanced);
     setEditingId(item.id);
     setDraft(normalizedItem);
@@ -2798,7 +2788,6 @@ export default function App() {
     startEdit(item, { returnTarget: "outfit" });
     closePickerOverlay();
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
   }
@@ -2836,6 +2825,27 @@ export default function App() {
 
   function clearWardrobeFilters() {
     setWardrobeFilters(emptyWardrobeFilters);
+  }
+
+  function toggleWardrobeFilterValue(key, value) {
+    setWardrobeFilters((current) => {
+      const selectedValues = current[key] ?? [];
+      const isSelected = selectedValues.includes(value);
+
+      return {
+        ...current,
+        [key]: isSelected
+          ? selectedValues.filter((selectedValue) => selectedValue !== value)
+          : [...selectedValues, value]
+      };
+    });
+  }
+
+  function setWardrobeToggleFilter(key, value) {
+    setWardrobeFilters((current) => ({
+      ...current,
+      [key]: value
+    }));
   }
 
   function toggleOutfitFilter(group, value) {
@@ -2990,6 +3000,7 @@ export default function App() {
 
   async function persistDraftItem({ duplicate = false } = {}) {
     const trimmedName = draft.name.trim();
+    const trimmedDescription = draft.description.trim();
     const trimmedImageUrl = draft.imageUrl.trim();
     const trimmedBrand = draft.brand.trim();
     const trimmedType = draft.type.trim();
@@ -3040,6 +3051,7 @@ export default function App() {
       imageCropWidth: normalizedImageCrop.width,
       imageCropHeight: normalizedImageCrop.height,
       brand: trimmedBrand,
+      description: trimmedDescription,
       type: normalizeItemType(trimmedType),
       color: trimmedColor,
       weight: normalizedWeight,
@@ -3484,7 +3496,8 @@ export default function App() {
         key={slot}
         type="button"
         className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${item ? "has-item" : ""} ${isActive ? "is-active" : ""}`}
-        onClick={() => openAccessoryPicker(slot)}
+        onClick={() => handleOutfitItemPreviewClick(item, () => openAccessoryPicker(slot))}
+        onDoubleClick={() => handleOutfitItemPreviewDoubleClick(item)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
         {item ? (
@@ -3568,7 +3581,6 @@ export default function App() {
       setActiveAccessorySlot(null);
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
-      setWardrobeWorthOpen(false);
       setWardrobeSavedOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
@@ -3591,7 +3603,6 @@ export default function App() {
       setDockExpanded(isMobileViewport ? false : true);
     }
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
@@ -3616,7 +3627,6 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
-    setWardrobeWorthOpen(false);
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
@@ -3642,14 +3652,6 @@ export default function App() {
     setWardrobeManageOpen(false);
     cancelEditSavedOutfit();
     setWardrobeFiltersOpen((current) => !current);
-  }
-
-  function toggleWardrobeWorth() {
-    closeUtilityWindows();
-    setWardrobeSavedOpen(false);
-    setWardrobeManageOpen(false);
-    cancelEditSavedOutfit();
-    setWardrobeWorthOpen((current) => !current);
   }
 
   function toggleWardrobeSaved() {
@@ -3939,6 +3941,15 @@ export default function App() {
   }
 
   function renderWardrobeGrid() {
+    if (!visibleWardrobeItems.length) {
+      return (
+        <div className="editor-placeholder wardrobe-empty-state">
+          <p>No wardrobe items match the current search and filters.</p>
+          <p>Clear filters or add a new item to broaden the library view.</p>
+        </div>
+      );
+    }
+
     return (
       <div className="wardrobe-grid">
         {visibleWardrobeItems.map((item) => {
@@ -3978,18 +3989,10 @@ export default function App() {
 
               <div className="wardrobe-meta">
                 <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                <span title={`${item.color || "No color"} · Paid ${formatCurrency(item.value)}`}>
-                  {item.color || "No color"} · Paid {formatCurrency(item.value)}
+                <span title={`${item.brand || item.type || "No brand"} · ${item.color || "No color"}`}>
+                  {item.brand || item.type || "No brand"} · {item.color || "No color"}
                 </span>
-              </div>
-
-              <div className="card-actions">
-                <button type="button" className="ghost-button" onClick={() => startEdit(item)}>
-                  Edit
-                </button>
-                <button type="button" className="ghost-button danger" onClick={() => handleDelete(item.id)}>
-                  Delete
-                </button>
+                {item.description ? <span title={item.description}>{item.description}</span> : null}
               </div>
             </article>
           );
@@ -4339,6 +4342,16 @@ export default function App() {
           </datalist>
 
           <label>
+            {renderAdvancedLabel("Description", "description")}
+            <textarea
+              value={draft.description}
+              onChange={(event) => setAdvancedField("description", event.target.value)}
+              rows={3}
+              placeholder="Notes, context, fabric, fit, or styling details"
+            />
+          </label>
+
+          <label>
             {renderAdvancedLabel("Size", "size")}
             <input value={draft.size} onChange={(event) => setAdvancedField("size", event.target.value)} placeholder="M" />
           </label>
@@ -4472,7 +4485,8 @@ export default function App() {
           <button
             type="button"
             className={`item-figure ${item ? "has-item" : "is-empty"}`}
-            onClick={() => openOutfitSlotPicker(slot)}
+            onClick={() => handleOutfitItemPreviewClick(item, () => openOutfitSlotPicker(slot))}
+            onDoubleClick={() => handleOutfitItemPreviewDoubleClick(item)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
@@ -4837,26 +4851,24 @@ export default function App() {
               <div className="wardrobe-subview-header">
                 <div>
                   <p className="eyebrow">Wardrobe</p>
-                  <h2>Saved outfits</h2>
+                  <h2>Saved Outfits</h2>
                 </div>
                 <button type="button" className="ghost-button" onClick={closeSavedOutfitsView}>
                   Back to wardrobe
                 </button>
               </div>
             ) : (
-              <>
-                <div>
-                  <p className="eyebrow">Wardrobe</p>
-                </div>
-                <div className="wardrobe-header-actions">
-                  <button
-                    type="button"
-                    className={`secondary-button ${wardrobeSelectMode ? "is-active" : ""}`}
-                    onClick={toggleWardrobeSelectMode}
-                    aria-pressed={wardrobeSelectMode}
-                  >
-                    {wardrobeSelectMode ? `Selecting ${selectedWardrobeItemCount}` : "Select"}
-                  </button>
+              <div className="wardrobe-toolbar">
+                <div className="wardrobe-toolbar-main">
+                  <label className="wardrobe-search-field">
+                    <span>Search</span>
+                    <input
+                      type="search"
+                      value={wardrobeSearch}
+                      onChange={(event) => setWardrobeSearch(event.target.value)}
+                      placeholder="Search wardrobe"
+                    />
+                  </label>
                   <button
                     type="button"
                     className={`secondary-button filter-button ${wardrobeFiltersOpen || hasActiveWardrobeFilters ? "is-active" : ""}`}
@@ -4870,13 +4882,35 @@ export default function App() {
                   >
                     {hasActiveWardrobeFilters ? `Filter ${activeWardrobeFilterCount}` : "Filter"}
                   </button>
+                  <label className="wardrobe-sort-field">
+                    <span>Sort</span>
+                    <select value={wardrobeSort} onChange={(event) => setWardrobeSort(event.target.value)}>
+                      <option value="">Default</option>
+                      <option value="garmentType">Garment type</option>
+                      <option value="brand">Brand A-Z</option>
+                      <option value="type">Type A-Z</option>
+                      <option value="value">Value</option>
+                      <option value="paidHigh">Paid high-low</option>
+                      <option value="paidLow">Paid low-high</option>
+                      <option value="retailHigh">Retail high-low</option>
+                      <option value="retailLow">Retail low-high</option>
+                      <option value="color">Color</option>
+                      <option value="newest">Newest</option>
+                      <option value="oldest">Oldest</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="wardrobe-header-actions">
                   <button
                     type="button"
-                    className={`secondary-button ${wardrobeWorthOpen ? "is-active" : ""}`}
-                    onClick={toggleWardrobeWorth}
-                    aria-expanded={wardrobeWorthOpen}
+                    className={`secondary-button ${wardrobeSelectMode ? "is-active" : ""}`}
+                    onClick={toggleWardrobeSelectMode}
+                    aria-pressed={wardrobeSelectMode}
                   >
-                    Worth
+                    Select
+                    {wardrobeSelectMode ? (
+                      <span className="wardrobe-toolbar-badge">{selectedWardrobeItemCount}</span>
+                    ) : null}
                   </button>
                   <button
                     type="button"
@@ -4884,7 +4918,7 @@ export default function App() {
                     onClick={toggleWardrobeSaved}
                     aria-expanded={wardrobeSavedOpen}
                   >
-                    Saved
+                    Saved Outfits
                   </button>
                   <button
                     type="button"
@@ -4895,34 +4929,113 @@ export default function App() {
                     Manage
                   </button>
                   <button type="button" className="primary-button" onClick={startCreate}>
-                    Add item
+                    Add Item
                   </button>
                 </div>
-              </>
+              </div>
             )}
             </div>
+
+            {wardrobeFiltersOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeFiltersOpen(false)} />
+            ) : null}
 
             {wardrobeManageOpen ? (
               <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeManageOpen(false)} />
             ) : null}
 
             <div className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`} aria-label="Wardrobe management">
-              <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeManageOpen(false)}>
-                Close
-              </button>
-              <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
-                Export wardrobe image
-              </button>
-              <button type="button" className="ghost-button" onClick={handleExportBackup}>
-                Export backup
-              </button>
-              <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
-                Import backup
-              </button>
-              <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
-                Reset to default
-              </button>
+              <div className="wardrobe-panel-window-header">
+                <div>
+                  <p className="eyebrow">Wardrobe</p>
+                  <h2>Manage Library</h2>
+                </div>
+                <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeManageOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <div className="wardrobe-manage-grid">
+                <section className="wardrobe-manage-section wardrobe-worth-window is-open" aria-label="Wardrobe worth">
+                  <div className="wardrobe-worth-summary">
+                    <p className="eyebrow">Wardrobe worth</p>
+                    <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
+                    <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
+                  </div>
+
+                  <div className="worth-chart">
+                    {wardrobeWorth.rows.map((row) => (
+                      <div key={row.category} className="worth-row">
+                        <div className="worth-row-header">
+                          <strong>{row.category}</strong>
+                          <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
+                        </div>
+                        <div className="worth-bar-stack" aria-hidden="true">
+                          <div className="worth-bar-track">
+                            <div
+                              className="worth-bar worth-bar-retail"
+                              style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
+                            />
+                          </div>
+                          <div className="worth-bar-track">
+                            <div
+                              className="worth-bar"
+                              style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="wardrobe-manage-section">
+                  <p className="eyebrow">Library actions</p>
+                  <div className="wardrobe-manage-actions">
+                    <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
+                      Export wardrobe image
+                    </button>
+                    <button type="button" className="ghost-button" onClick={handleExportBackup}>
+                      Export backup
+                    </button>
+                    <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
+                      Import backup
+                    </button>
+                    <button type="button" className="ghost-button secondary-button" onClick={clearExcluded}>
+                      Clear excluded
+                    </button>
+                    <button type="button" className="ghost-button danger" onClick={handleResetToDefault}>
+                      Reset to default
+                    </button>
+                  </div>
+                </section>
+              </div>
             </div>
+
+            {wardrobeSelectMode && !wardrobeSavedOpen ? (
+              <WardrobeSelectionBar
+                selectedCount={selectedWardrobeItemCount}
+                bulkListDraft={bulkListDraft}
+                setBulkListDraft={setBulkListDraft}
+                bulkStyleTagDraft={bulkStyleTagDraft}
+                setBulkStyleTagDraft={setBulkStyleTagDraft}
+                bulkClimateTagDraft={bulkClimateTagDraft}
+                setBulkClimateTagDraft={setBulkClimateTagDraft}
+                itemListOptions={itemListOptions}
+                styleTagOptions={styleTagOptions}
+                editableClimateTagOptions={editableClimateTagOptions}
+                onEdit={editSelectedWardrobeItem}
+                onClear={clearWardrobeSelection}
+                onDone={toggleWardrobeSelectMode}
+                onMoveToList={moveSelectedItemsToList}
+                onFavorite={() => setSelectedItemsFavoriteState(true)}
+                onUnfavorite={() => setSelectedItemsFavoriteState(false)}
+                onDelete={handleBulkDeleteSelected}
+                onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+              />
+            ) : null}
 
             <input
               ref={importBackupRef}
@@ -4937,197 +5050,109 @@ export default function App() {
                 renderSavedOutfitsContent()
               ) : (
                 <>
-                  {wardrobeSelectMode ? (
-                    <WardrobeSelectionBar
-                      selectedCount={selectedWardrobeItemCount}
-                      bulkStyleTagDraft={bulkStyleTagDraft}
-                      setBulkStyleTagDraft={setBulkStyleTagDraft}
-                      bulkClimateTagDraft={bulkClimateTagDraft}
-                      setBulkClimateTagDraft={setBulkClimateTagDraft}
-                      styleTagOptions={styleTagOptions}
-                      editableClimateTagOptions={editableClimateTagOptions}
-                      onClear={clearWardrobeSelection}
-                      onDone={toggleWardrobeSelectMode}
-                      onMoveToInterested={() => moveSelectedItemsToList("Interested")}
-                      onMoveToWishlist={() => moveSelectedItemsToList("Wishlist")}
-                      onMoveToIncoming={() => moveSelectedItemsToList("Incoming")}
-                      onMoveToWardrobe={() => moveSelectedItemsToList("Wardrobe")}
-                      onMoveToSelling={() => moveSelectedItemsToList("Selling")}
-                      onMoveToSold={() => moveSelectedItemsToList("Sold")}
-                      onFavorite={() => setSelectedItemsFavoriteState(true)}
-                      onUnfavorite={() => setSelectedItemsFavoriteState(false)}
-                      onDelete={handleBulkDeleteSelected}
-                      onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                      onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                      onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
-                      onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
-                    />
-                  ) : null}
                   <div className="wardrobe-inline-utilities">
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
-                      <button
-                        type="button"
-                        className="ghost-button filter-close-button"
-                        onClick={() => setWardrobeFiltersOpen(false)}
-                      >
-                        Close
-                      </button>
-                      <label>
-                        Brand
-                        <select
-                          value={wardrobeFilters.brand}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, brand: event.target.value }))
-                          }
+                      <div className="wardrobe-panel-window-header">
+                        <div>
+                          <p className="eyebrow">Wardrobe</p>
+                          <h2>Filters</h2>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-button filter-close-button"
+                          onClick={() => setWardrobeFiltersOpen(false)}
                         >
-                          <option value="">All brands</option>
-                          <option value="__none__">No brand</option>
-                          {wardrobeFilterOptions.brand.map((value) => (
-                            <option key={value} value={value}>{value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Garment
-                        <select
-                          value={wardrobeFilters.garmentType}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, garmentType: event.target.value }))
-                          }
-                        >
-                          <option value="">All garments</option>
-                          <option value="__none__">No garment</option>
-                          {wardrobeFilterOptions.garmentType.map((value) => (
-                            <option key={value} value={value}>{value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Type
-                        <select
-                          value={wardrobeFilters.type}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, type: event.target.value }))
-                          }
-                        >
-                          <option value="">All types</option>
-                          <option value="__none__">No type</option>
-                          {wardrobeFilterOptions.type.map((value) => (
-                            <option key={value} value={value}>{value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Color
-                        <select
-                          value={wardrobeFilters.color}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, color: event.target.value }))
-                          }
-                        >
-                          <option value="">All colors</option>
-                          <option value="__none__">No color</option>
-                          {wardrobeFilterOptions.color.map((value) => (
-                            <option key={value} value={value}>{value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Style
-                        <select
-                          value={wardrobeFilters.style}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, style: event.target.value }))
-                          }
-                        >
-                          <option value="">All styles</option>
-                          {wardrobeFilterOptions.style.map((value) => (
-                            <option key={value} value={value}>{value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Weight
-                        <select
-                          value={wardrobeFilters.weight}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, weight: event.target.value }))
-                          }
-                        >
-                          <option value="">All weights</option>
-                          <option value="__none__">No weight</option>
-                          {weightOptions.map((weight) => (
-                            <option key={weight} value={weight}>{weight}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        List
-                        <select
-                          value={wardrobeFilters.list}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, list: event.target.value }))
-                          }
-                        >
-                          <option value="">All lists</option>
-                          {itemListOptions.map((list) => (
-                            <option key={list} value={list}>{list}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Favorite
-                        <select
-                          value={wardrobeFilters.favorite}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, favorite: event.target.value }))
-                          }
-                        >
-                          <option value="">All</option>
-                          <option value="yes">Favorites</option>
-                          <option value="no">Not favorites</option>
-                        </select>
-                      </label>
-                      <label>
-                        Exclude
-                        <select
-                          value={wardrobeFilters.laundry}
-                          onChange={(event) =>
-                            setWardrobeFilters((current) => ({ ...current, laundry: event.target.value }))
-                          }
-                        >
-                          <option value="">All</option>
-                          <option value="show">Show excluded</option>
-                          <option value="hide">Hide excluded</option>
-                        </select>
-                      </label>
-                      <label>
-                        Sort
-                        <select value={wardrobeSort} onChange={(event) => setWardrobeSort(event.target.value)}>
-                          <option value="">Default</option>
-                          <option value="garmentType">Garment type</option>
-                          <option value="brand">Brand A-Z</option>
-                          <option value="type">Type A-Z</option>
-                          <option value="value">Value</option>
-                          <option value="paidHigh">Paid high-low</option>
-                          <option value="paidLow">Paid low-high</option>
-                          <option value="retailHigh">Retail high-low</option>
-                          <option value="retailLow">Retail low-high</option>
-                          <option value="color">Color</option>
-                          <option value="newest">Newest</option>
-                          <option value="oldest">Oldest</option>
-                        </select>
-                      </label>
-                      <button type="button" className="secondary-button clear-excluded-button" onClick={clearExcluded}>
-                        Clear excluded
-                      </button>
+                          Close
+                        </button>
+                      </div>
+                      <div className="wardrobe-controls-body">
+                        {[
+                          ["Brand", "brand", wardrobeFilterOptions.brand, true],
+                          ["Garment", "garmentType", wardrobeFilterOptions.garmentType, true],
+                          ["Type", "type", wardrobeFilterOptions.type, true],
+                          ["Color", "color", wardrobeFilterOptions.color, true],
+                          ["Style", "style", wardrobeFilterOptions.style, false],
+                          ["Weight", "weight", wardrobeFilterOptions.weight, true],
+                          ["List", "list", wardrobeFilterOptions.list, false]
+                        ].map(([label, key, options, includeNone]) => (
+                          <section key={key} className="wardrobe-filter-group">
+                            <p className="eyebrow">{label}</p>
+                            <div className="wardrobe-filter-options">
+                              {includeNone ? (
+                                <button
+                                  type="button"
+                                  className={`list-toggle ${wardrobeFilters[key].includes("__none__") ? "is-active" : ""}`}
+                                  onClick={() => toggleWardrobeFilterValue(key, "__none__")}
+                                  aria-pressed={wardrobeFilters[key].includes("__none__")}
+                                >
+                                  No {String(label).toLowerCase()}
+                                </button>
+                              ) : null}
+                              {options.map((option) => {
+                                const isSelected = wardrobeFilters[key].includes(option);
+
+                                return (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                    onClick={() => toggleWardrobeFilterValue(key, option)}
+                                    aria-pressed={isSelected}
+                                  >
+                                    {option}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ))}
+                        <label>
+                          Favorite
+                          <select
+                            value={wardrobeFilters.favorite}
+                            onChange={(event) => setWardrobeToggleFilter("favorite", event.target.value)}
+                          >
+                            <option value="">All</option>
+                            <option value="yes">Favorites</option>
+                            <option value="no">Not favorites</option>
+                          </select>
+                        </label>
+                        <label>
+                          Exclude
+                          <select
+                            value={wardrobeFilters.laundry}
+                            onChange={(event) => setWardrobeToggleFilter("laundry", event.target.value)}
+                          >
+                            <option value="">All</option>
+                            <option value="show">Show excluded</option>
+                            <option value="hide">Hide excluded</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="wardrobe-controls-footer">
+                        <button type="button" className="ghost-button" onClick={clearWardrobeFilters}>
+                          Clear filters
+                        </button>
+                        <button type="button" className="ghost-button" onClick={clearExcluded}>
+                          Clear excluded
+                        </button>
+                        <button type="button" className="secondary-button" onClick={() => setWardrobeFiltersOpen(false)}>
+                          Apply
+                        </button>
+                      </div>
                     </div>
 
-                    {wardrobeFiltersOpen || hasActiveWardrobeFilters ? (
+                    {wardrobeSearch || wardrobeFiltersOpen || hasActiveWardrobeFilters ? (
                       <div className="active-filter-summary" aria-label="Active wardrobe filters">
                         <div className="active-filter-chips">
+                          {wardrobeSearch ? (
+                            <span className="active-filter-chip">
+                              <span>Search</span>
+                              {wardrobeSearch}
+                            </span>
+                          ) : null}
                           {activeWardrobeFilterChips.length ? activeWardrobeFilterChips.map((filter) => (
-                            <span key={filter.label} className="active-filter-chip">
+                            <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
                               <span>{filter.label}</span>
                               {filter.value}
                             </span>
@@ -5138,46 +5163,21 @@ export default function App() {
                             </span>
                           )}
                         </div>
-                        <button type="button" className="ghost-button clear-filters-button" onClick={clearWardrobeFilters}>
-                          Clear filters
+                        <button
+                          type="button"
+                          className="ghost-button clear-filters-button"
+                          onClick={() => {
+                            clearWardrobeFilters();
+                            setWardrobeSearch("");
+                          }}
+                        >
+                          Clear search + filters
                         </button>
                       </div>
                     ) : null}
 
-                    <div className={`wardrobe-worth-window ${wardrobeWorthOpen ? "is-open" : ""}`} aria-label="Wardrobe worth">
-                      <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeWorthOpen(false)}>
-                        Close
-                      </button>
-                      <div className="wardrobe-worth-summary">
-                        <p className="eyebrow">Wardrobe worth</p>
-                        <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
-                        <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
-                      </div>
-
-                      <div className="worth-chart">
-                        {wardrobeWorth.rows.map((row) => (
-                          <div key={row.category} className="worth-row">
-                            <div className="worth-row-header">
-                              <strong>{row.category}</strong>
-                              <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
-                            </div>
-                            <div className="worth-bar-stack" aria-hidden="true">
-                              <div className="worth-bar-track">
-                                <div
-                                  className="worth-bar worth-bar-retail"
-                                  style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
-                                />
-                              </div>
-                              <div className="worth-bar-track">
-                                <div
-                                  className="worth-bar"
-                                  style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
-                                />
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                    <div className="wardrobe-results-count">
+                      {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
                     </div>
                   </div>
 
@@ -5186,25 +5186,6 @@ export default function App() {
               )}
             </div>
           </div>
-
-          <aside
-            ref={editorRef}
-            className={`panel side-editor ${editingId && editorReturnTarget !== "outfit" ? "is-open" : ""} ${isMobileViewport ? "is-mobile-fullscreen" : ""}`}
-          >
-            <div className="panel-header side-editor-header">
-              <div>
-                <p className="eyebrow">Item editor</p>
-                <h2>{editorTitle}</h2>
-              </div>
-              {editingId ? (
-                <button type="button" className="ghost-button" onClick={cancelEdit}>
-                  Close
-                </button>
-              ) : null}
-            </div>
-
-            {editorBody}
-          </aside>
         </div>
         ) : null}
 
@@ -5258,8 +5239,11 @@ export default function App() {
         </div>
         ) : null}
 
-        {editingId && editorReturnTarget === "outfit" ? (
-          <aside className={`panel floating-item-editor ${isMobileViewport ? "is-mobile-fullscreen" : ""}`}>
+        {editingId ? (
+          <aside
+            ref={editorRef}
+            className={`panel floating-item-editor ${isMobileViewport ? "is-mobile-fullscreen" : ""} ${activePanel === "wardrobe" ? "is-wardrobe-editor" : ""}`}
+          >
             <div className="panel-header side-editor-header">
               <div>
                 <p className="eyebrow">Item editor</p>
@@ -5287,8 +5271,18 @@ export default function App() {
           open={Boolean(wardrobePreviewItem)}
           eyebrow="Wardrobe"
           title={wardrobePreviewItem ? buildDisplayName(wardrobePreviewItem) : ""}
-          meta={wardrobePreviewItem?.brand || null}
+          meta={null}
           onClose={closeWardrobePreview}
+          actions={wardrobePreviewItem ? (
+            <>
+              <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
+                Edit
+              </button>
+              <button type="button" className="ghost-button danger" onClick={deleteWardrobePreviewItem}>
+                Delete
+              </button>
+            </>
+          ) : null}
         >
           {wardrobePreviewItem ? (
             <div className="wardrobe-item-preview-content">
@@ -5296,22 +5290,14 @@ export default function App() {
                 <ManagedItemImage
                   item={wardrobePreviewItem}
                   alt={buildDisplayName(wardrobePreviewItem)}
+                  className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
-                  useFrameScale
-                  normalizeToFrameScale
-                  useCrop
-                  usePresentation
                 />
               </div>
-              {wardrobePreviewMetadata.length ? (
-                <dl className="preview-overlay-kv">
-                  {wardrobePreviewMetadata.map((entry) => (
-                    <div key={entry.label}>
-                      <dt>{entry.label}</dt>
-                      <dd>{entry.value}</dd>
-                    </div>
-                  ))}
-                </dl>
+              {wardrobePreviewItem.description?.trim() ? (
+                <div className="wardrobe-item-preview-copy">
+                  <p>{wardrobePreviewItem.description.trim()}</p>
+                </div>
               ) : null}
             </div>
           ) : null}

@@ -7,7 +7,7 @@ import {
   normalizeOutfitFilters,
   normalizeRecentOutfits
 } from "./generation.js";
-import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./itemModel.js";
+import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./wardrobeLibrary.js";
 
 export function createOutfitUuid() {
   if (typeof globalThis.crypto?.randomUUID === "function") {

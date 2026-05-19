@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   createUniqueItemId,
   getWardrobePreviewMetadata,
+  itemNeedsDescriptionMigration,
   itemNeedsImportMetadataMigration,
   itemNeedsItemUuidMigration,
   normalizeItem
@@ -23,6 +24,7 @@ const baseEmptyForm = {
   sourceRelativePath: "",
   relinkStatus: "unknown",
   name: "",
+  description: "",
   imageUrl: "",
   images: {
     original: { src: "" },
@@ -189,6 +191,43 @@ test("normalizeItem preserves canonical images fields and mirrors preview src in
   assert.equal(normalized.images.thumbnail.blurHash, "abc123");
   assert.deepEqual(normalized.images.extra, { note: "keep" });
   assert.equal(normalized.originalPreserved, true);
+});
+
+test("normalizeItem defaults legacy descriptions and preserves explicit item descriptions", () => {
+  const legacyItem = normalizeItem(
+    {
+      id: "legacy_description_item",
+      imageUrl: "data:image/png;base64,preview"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+  const describedItem = normalizeItem(
+    {
+      id: "described_item",
+      imageUrl: "data:image/png;base64,preview",
+      description: "Soft brushed cotton with a short fit."
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(legacyItem.description, "");
+  assert.equal(describedItem.description, "Soft brushed cotton with a short fit.");
+  assert.equal(itemNeedsDescriptionMigration({}, legacyItem), false);
+  assert.equal(itemNeedsDescriptionMigration({ description: "Legacy note" }, legacyItem), true);
 });
 
 test("normalizeItem preserves existing import metadata and unknown fields", () => {

@@ -18,33 +18,6 @@ export const garmentTypes = [
   "Accessory"
 ];
 
-export const DEFAULT_WARDROBE_SORT = "newest";
-
-export const emptyWardrobeFilters = {
-  brand: "",
-  type: "",
-  garmentType: "",
-  color: "",
-  style: "",
-  laundry: "",
-  weight: "",
-  list: "",
-  favorite: ""
-};
-
-export function normalizeWardrobeFilters(filters) {
-  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
-    return { ...emptyWardrobeFilters };
-  }
-
-  return Object.fromEntries(
-    Object.keys(emptyWardrobeFilters).map((key) => [
-      key,
-      typeof filters[key] === "string" ? filters[key] : emptyWardrobeFilters[key]
-    ])
-  );
-}
-
 export function isWishlistItem(item) {
   const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
   return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
@@ -386,6 +359,7 @@ export function normalizeItem(
     imageUrl,
     images,
     originalPreserved,
+    description: typeof item.description === "string" ? item.description : "",
     imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
     imageScale: normalizeImageScale(item.imageScale),
     imageOffsetX: normalizeImageOffset(item.imageOffsetX),
@@ -434,6 +408,10 @@ export function itemNeedsFavoriteMigration(originalItem, normalizedItem) {
 
 export function itemNeedsQuantityMigration(originalItem, normalizedItem) {
   return originalItem.quantity === undefined || Math.max(1, Math.round(Number(originalItem.quantity) || 1)) !== normalizedItem.quantity;
+}
+
+export function itemNeedsDescriptionMigration(originalItem, normalizedItem) {
+  return (originalItem?.description ?? "") !== normalizedItem.description;
 }
 
 export function itemNeedsWeightMigration(originalItem, normalizedItem) {
@@ -492,24 +470,6 @@ export function itemNeedsImportMetadataMigration(originalItem, normalizedItem) {
     originalItem?.sourceRelativePath !== normalizedItem.sourceRelativePath ||
     originalItem?.relinkStatus !== normalizedItem.relinkStatus
   );
-}
-
-export function normalizeWardrobeSort(value) {
-  const allowed = [
-    DEFAULT_WARDROBE_SORT,
-    "oldest",
-    "garmentType",
-    "brand",
-    "type",
-    "value",
-    "paidHigh",
-    "paidLow",
-    "retailHigh",
-    "retailLow",
-    "color"
-  ];
-
-  return allowed.includes(value) ? value : DEFAULT_WARDROBE_SORT;
 }
 
 export function formatCurrency(value) {
