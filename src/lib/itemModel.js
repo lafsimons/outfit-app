@@ -6,6 +6,7 @@ import {
   styleTagOptions
 } from "./typeDefaults.js";
 import { editableClimateTagOptions } from "./generation.js";
+import { normalizeImportMetadataFields } from "./importMetadata.js";
 
 export const garmentTypes = [
   "Headwear",
@@ -361,6 +362,7 @@ export function normalizeItem(
   const images = normalizeImages(item.images, imageUrl);
   const originalPreserved = item.originalPreserved === true;
   const itemUuid = normalizeItemUuid(item.itemUuid, createUuid);
+  const importMetadata = normalizeImportMetadataFields(item, createdAt);
 
   const normalizedItem = {
     ...emptyForm,
@@ -388,6 +390,7 @@ export function normalizeItem(
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     color: normalizeItemColor(correction?.color ?? item.color ?? ""),
     list: normalizeList(correction?.list ?? item.list),
+    ...importMetadata,
     itemUuid,
     createdAt,
     updatedAt
@@ -461,6 +464,18 @@ export function itemNeedsTimestampMigration(originalItem, normalizedItem) {
 
 export function itemNeedsItemUuidMigration(originalItem, normalizedItem) {
   return originalItem?.itemUuid !== normalizedItem.itemUuid;
+}
+
+export function itemNeedsImportMetadataMigration(originalItem, normalizedItem) {
+  return (
+    originalItem?.importedAt !== normalizedItem.importedAt ||
+    originalItem?.sourceOriginalFilename !== normalizedItem.sourceOriginalFilename ||
+    originalItem?.sourceFileSize !== normalizedItem.sourceFileSize ||
+    originalItem?.sourceImageWidth !== normalizedItem.sourceImageWidth ||
+    originalItem?.sourceImageHeight !== normalizedItem.sourceImageHeight ||
+    originalItem?.sourceLastModified !== normalizedItem.sourceLastModified ||
+    originalItem?.importSource !== normalizedItem.importSource
+  );
 }
 
 export function normalizeWardrobeSort(value) {

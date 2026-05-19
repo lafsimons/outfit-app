@@ -88,6 +88,7 @@ import {
   itemNeedsFavoriteMigration,
   itemNeedsGarmentTypeMigration,
   itemNeedsImageContractMigration,
+  itemNeedsImportMetadataMigration,
   itemNeedsItemUuidMigration,
   itemNeedsQuantityMigration,
   itemNeedsRetailMigration,
@@ -102,6 +103,7 @@ import {
   normalizeTimestamp,
   normalizeWardrobeSort
 } from "./lib/itemModel";
+import { readImageFileMetadata } from "./lib/importMetadata";
 import {
   normalizeHydratedAppState,
   normalizeGenerationLists,
@@ -1754,6 +1756,7 @@ export default function App() {
           (!shouldApplyStyleWeightMigration && itemNeedsTagMigration(storedItems[index], item)) ||
           itemNeedsClimateTagMigration(storedItems[index], item) ||
           itemNeedsItemUuidMigration(storedItems[index], item) ||
+          itemNeedsImportMetadataMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
           itemNeedsTimestampMigration(storedItems[index], item) ||
           (shouldApplyStyleWeightMigration &&
@@ -2231,6 +2234,7 @@ export default function App() {
         itemNeedsTagMigration(nextItems[index], item) ||
         itemNeedsClimateTagMigration(nextItems[index], item) ||
         itemNeedsItemUuidMigration(nextItems[index], item) ||
+        itemNeedsImportMetadataMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item) ||
         itemNeedsTimestampMigration(nextItems[index], item)
     );
@@ -2969,6 +2973,7 @@ export default function App() {
     const nextItem = {
       ...normalizedDraft,
       itemUuid: normalizeItemUuid(draft.itemUuid, createItemUuid),
+      importedAt: normalizeTimestamp(draft.importedAt) || normalizeTimestamp(draft.createdAt) || timestamp,
       createdAt:
         duplicate || editingId === "new"
           ? timestamp
@@ -3060,9 +3065,15 @@ export default function App() {
 
     try {
       setImageUploadError("");
+      const importMetadata = await readImageFileMetadata(file, {
+        readFileAsDataUrl,
+        loadImage
+      });
       const imageUrl = await compressImageSource(file);
       setDraft((current) => ({
         ...current,
+        ...importMetadata,
+        importedAt: normalizeTimestamp(current.importedAt) || importMetadata.importedAt,
         imageUrl,
         imageFrameScale: 100,
         imageScale: 100,

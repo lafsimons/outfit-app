@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   createUniqueItemId,
   getWardrobePreviewMetadata,
+  itemNeedsImportMetadataMigration,
   itemNeedsItemUuidMigration,
   normalizeItem
 } from "./itemModel.js";
@@ -11,6 +12,13 @@ import {
 const baseEmptyForm = {
   id: "",
   itemUuid: "",
+  importedAt: "",
+  sourceOriginalFilename: "",
+  sourceFileSize: 0,
+  sourceImageWidth: 0,
+  sourceImageHeight: 0,
+  sourceLastModified: "",
+  importSource: "",
   name: "",
   imageUrl: "",
   images: {
@@ -91,6 +99,13 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.list, "Wardrobe");
   assert.equal(normalized.createdAt, "2024-01-02T03:04:05.000Z");
   assert.equal(normalized.updatedAt, "2024-01-03T03:04:05.000Z");
+  assert.equal(normalized.importedAt, "2024-01-02T03:04:05.000Z");
+  assert.equal(normalized.sourceOriginalFilename, "");
+  assert.equal(normalized.sourceFileSize, 0);
+  assert.equal(normalized.sourceImageWidth, 0);
+  assert.equal(normalized.sourceImageHeight, 0);
+  assert.equal(normalized.sourceLastModified, "");
+  assert.equal(normalized.importSource, "");
 });
 
 test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl without claiming original preservation", () => {
@@ -147,6 +162,41 @@ test("normalizeItem preserves canonical images fields and mirrors preview src in
   assert.equal(normalized.images.thumbnail.blurHash, "abc123");
   assert.deepEqual(normalized.images.extra, { note: "keep" });
   assert.equal(normalized.originalPreserved, true);
+});
+
+test("normalizeItem preserves existing import metadata and unknown fields", () => {
+  const normalized = normalizeItem(
+    {
+      id: "imported_item",
+      imageUrl: "data:image/png;base64,preview",
+      createdAt: "2024-01-02T03:04:05.000Z",
+      importedAt: "2024-01-01T03:04:05.000Z",
+      sourceOriginalFilename: "IMG_1001.HEIC",
+      sourceFileSize: "2048",
+      sourceImageWidth: "1200",
+      sourceImageHeight: 1800,
+      sourceLastModified: 1704078245000,
+      importSource: "file-upload",
+      extraMetadata: { keep: true }
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.importedAt, "2024-01-01T03:04:05.000Z");
+  assert.equal(normalized.sourceOriginalFilename, "IMG_1001.HEIC");
+  assert.equal(normalized.sourceFileSize, 2048);
+  assert.equal(normalized.sourceImageWidth, 1200);
+  assert.equal(normalized.sourceImageHeight, 1800);
+  assert.equal(normalized.sourceLastModified, "2024-01-01T03:04:05.000Z");
+  assert.equal(normalized.importSource, "file-upload");
+  assert.deepEqual(normalized.extraMetadata, { keep: true });
 });
 
 test("normalizeItem preserves an existing itemUuid", () => {
@@ -232,6 +282,25 @@ test("itemUuid migration detection stays false when normalization keeps the exis
   });
 
   assert.equal(itemNeedsItemUuidMigration(originalItem, normalized), false);
+});
+
+test("import metadata migration detection catches importedAt backfill for existing items", () => {
+  const originalItem = {
+    id: "legacy_item",
+    imageUrl: "data:image/png;base64,preview",
+    createdAt: "2024-01-02T03:04:05.000Z"
+  };
+  const normalized = normalizeItem(originalItem, {
+    emptyForm: baseEmptyForm,
+    resolveImageUrl: (value) => value,
+    normalizeImageFrameScale: (value) => value ?? 100,
+    normalizeImageScale: (value) => value ?? 100,
+    normalizeImageOffset: (value) => value ?? 0,
+    getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+  });
+
+  assert.equal(normalized.importedAt, "2024-01-02T03:04:05.000Z");
+  assert.equal(itemNeedsImportMetadataMigration(originalItem, normalized), true);
 });
 
 test("getWardrobePreviewMetadata returns basic display fields without empty placeholders", () => {

@@ -6,6 +6,13 @@ export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"
 export const emptyForm = {
   id: "",
   itemUuid: "",
+  importedAt: "",
+  sourceOriginalFilename: "",
+  sourceFileSize: 0,
+  sourceImageWidth: 0,
+  sourceImageHeight: 0,
+  sourceLastModified: "",
+  importSource: "",
   name: "",
   imageUrl: "",
   images: {
