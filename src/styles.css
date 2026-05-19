@@ -2046,13 +2046,6 @@ button:disabled {
   background: transparent;
 }
 
-.fitpic-preview-backdrop {
-  z-index: 48;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-}
-
 .confirm-backdrop {
   z-index: 70;
   display: grid;
@@ -2085,20 +2078,102 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.fitpic-preview-overlay {
+.preview-overlay-backdrop {
+  z-index: 48;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.preview-overlay {
   max-width: min(980px, calc(100vw - 40px));
   max-height: calc(100vh - 40px);
-  padding: 10px;
+  width: min(980px, calc(100vw - 40px));
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
   background: var(--surface);
+  color: var(--text);
 }
 
-.fitpic-preview-overlay img {
+.preview-overlay-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.preview-overlay-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted-strong);
+  font-size: 0.78rem;
+}
+
+.preview-overlay-body {
+  display: grid;
+  gap: 14px;
+}
+
+.preview-overlay-fitpic-image {
   display: block;
   max-width: 100%;
   max-height: calc(100vh - 64px);
   object-fit: contain;
+  margin: 0 auto;
+}
+
+.wardrobe-item-preview-content {
+  display: grid;
+  gap: 14px;
+}
+
+.wardrobe-item-preview-image {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  border-radius: var(--radius-panel);
+  background: linear-gradient(180deg, var(--preview-start), var(--preview-end));
+}
+
+.wardrobe-item-preview-image .managed-image {
+  width: min(100%, 420px);
+  max-width: min(100%, 420px);
+  max-height: min(60vh, 560px);
+}
+
+.preview-overlay-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.preview-overlay-kv div {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-soft);
+}
+
+.preview-overlay-kv dt {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.preview-overlay-kv dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.82rem;
 }
 
 .saved-outfit-form {
@@ -2676,6 +2751,32 @@ button:disabled {
   .picker-overlay-right {
     left: 10px;
     right: 10px;
+  }
+
+  .preview-overlay-backdrop {
+    padding: 10px;
+  }
+
+  .preview-overlay {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    padding: 12px;
+  }
+
+  .preview-overlay-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wardrobe-item-preview-image {
+    min-height: 220px;
+    padding: 14px;
+  }
+
+  .wardrobe-item-preview-image .managed-image {
+    width: min(100%, 320px);
+    max-width: min(100%, 320px);
+    max-height: 48vh;
   }
 
   .accessory-picker,

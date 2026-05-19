@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ConfirmationDialog from "./components/ConfirmationDialog";
+import PreviewOverlay from "./components/PreviewOverlay";
 import {
   exportBackup,
   getDefaultData,
@@ -76,6 +77,7 @@ import {
   garmentTypes,
   getItemSortTimestamp,
   getNumericValue,
+  getWardrobePreviewMetadata,
   getUniqueValues,
   getWorthCategory,
   itemNeedsClimateTagMigration,
@@ -181,6 +183,7 @@ function getCanUseDebugPopout() {
 
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
+const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -1030,6 +1033,7 @@ export default function App() {
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
+  const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [wardrobeWorthOpen, setWardrobeWorthOpen] = useState(false);
   const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
@@ -1063,10 +1067,17 @@ export default function App() {
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
   const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
   const [canUseDebugPopout, setCanUseDebugPopout] = useState(getCanUseDebugPopout);
+  const wardrobeSelectClickTimeoutRef = useRef(null);
+  const wardrobePendingSelectionRef = useRef(null);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
+  );
+  const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const wardrobePreviewMetadata = useMemo(
+    () => (wardrobePreviewItem ? getWardrobePreviewMetadata(wardrobePreviewItem) : []),
+    [wardrobePreviewItem]
   );
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
 
@@ -1111,6 +1122,15 @@ export default function App() {
 
     mediaQuery.addListener(handleChange);
     return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (wardrobeSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      }
+      wardrobePendingSelectionRef.current = null;
+    };
   }, []);
 
   const currentOutfitItems = useMemo(() => {
@@ -1875,6 +1895,26 @@ export default function App() {
   }, [items]);
 
   useEffect(() => {
+    if (wardrobeSelectMode) {
+      return;
+    }
+
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+    wardrobePendingSelectionRef.current = null;
+  }, [wardrobeSelectMode]);
+
+  useEffect(() => {
+    if (!wardrobePreviewItemId || itemsById[wardrobePreviewItemId]) {
+      return;
+    }
+
+    setWardrobePreviewItemId(null);
+  }, [itemsById, wardrobePreviewItemId]);
+
+  useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
       return undefined;
     }
@@ -1923,6 +1963,12 @@ export default function App() {
       if (fitpicPreview) {
         event.preventDefault();
         setFitpicPreview(null);
+        return;
+      }
+
+      if (wardrobePreviewItemId) {
+        event.preventDefault();
+        setWardrobePreviewItemId(null);
         return;
       }
 
@@ -1985,6 +2031,7 @@ export default function App() {
     confirmation,
     editingId,
     fitpicPreview,
+    wardrobePreviewItemId,
     wardrobeSelectMode,
     wardrobeFiltersOpen,
     wardrobeWorthOpen,
@@ -2521,17 +2568,77 @@ export default function App() {
       return;
     }
 
+    const shiftKey = event.shiftKey;
+    const toggleKey = event.metaKey || event.ctrlKey;
+    const pendingSelection = wardrobePendingSelectionRef.current;
+
+    if (pendingSelection && pendingSelection.item.id !== item.id) {
+      flushPendingWardrobeSelection();
+    }
+
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+    }
+
+    wardrobePendingSelectionRef.current = {
+      item,
+      shiftKey,
+      toggleKey
+    };
+
+    wardrobeSelectClickTimeoutRef.current = window.setTimeout(() => {
+      flushPendingWardrobeSelection();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+  }
+
+  function handleWardrobeSelection(item, shiftKey, toggleKey) {
     const nextSelectionState = getNextSelectionState({
       selectedIds: selectedWardrobeItemIds,
       orderedIds: visibleWardrobeItemIds,
       clickedId: item.id,
       anchorId: wardrobeSelectionAnchorId,
-      shiftKey: event.shiftKey,
-      toggleKey: event.metaKey || event.ctrlKey
+      shiftKey,
+      toggleKey
     });
 
     setSelectedWardrobeItemIds(nextSelectionState.selectedIds);
     setWardrobeSelectionAnchorId(nextSelectionState.anchorId);
+  }
+
+  function flushPendingWardrobeSelection() {
+    const pendingSelection = wardrobePendingSelectionRef.current;
+
+    if (!pendingSelection) {
+      return;
+    }
+
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+
+    wardrobePendingSelectionRef.current = null;
+    handleWardrobeSelection(pendingSelection.item, pendingSelection.shiftKey, pendingSelection.toggleKey);
+  }
+
+  function openWardrobePreview(itemId) {
+    closeUtilityWindows();
+    setFitpicPreview(null);
+    setWardrobePreviewItemId(itemId);
+  }
+
+  function closeWardrobePreview() {
+    setWardrobePreviewItemId(null);
+  }
+
+  function handleWardrobePreviewDoubleClick(item) {
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+    wardrobePendingSelectionRef.current = null;
+
+    openWardrobePreview(item.id);
   }
 
   function resolveSlotForItem(item) {
@@ -3339,6 +3446,12 @@ export default function App() {
       setWardrobeSavedOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
+      setWardrobePreviewItemId(null);
+      if (wardrobeSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+        wardrobeSelectClickTimeoutRef.current = null;
+      }
+      wardrobePendingSelectionRef.current = null;
       cancelEditSavedOutfit();
       setEditingId(null);
       setEditorReturnTarget(null);
@@ -3356,6 +3469,12 @@ export default function App() {
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
+    setWardrobePreviewItemId(null);
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+    wardrobePendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     cancelEdit();
   }
@@ -3373,6 +3492,12 @@ export default function App() {
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
+    setWardrobePreviewItemId(null);
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+    wardrobePendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     setEditingId(null);
     setEditorReturnTarget(null);
@@ -3716,8 +3841,9 @@ export default function App() {
                 type="button"
                 className={`wardrobe-preview ${isSelected ? "is-selected" : ""}`}
                 onClick={(event) => handleWardrobePreviewClick(item, event)}
+                onDoubleClick={() => handleWardrobePreviewDoubleClick(item)}
                 aria-pressed={wardrobeSelectMode ? isSelected : undefined}
-                aria-label={wardrobeSelectMode ? `Select ${buildDisplayName(item)}` : `Equip ${buildDisplayName(item)}`}
+                aria-label={wardrobeSelectMode ? `Select ${buildDisplayName(item)} or double-click to preview` : `Equip ${buildDisplayName(item)} or double-click to preview`}
               >
                 <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
               </button>
@@ -5049,13 +5175,49 @@ export default function App() {
           onConfirm={confirmation?.onConfirm}
         />
 
-        {fitpicPreview ? (
-          <div className="floating-backdrop fitpic-preview-backdrop" onClick={() => setFitpicPreview(null)}>
-            <div className="fitpic-preview-overlay" onClick={(event) => event.stopPropagation()}>
-              <img src={fitpicPreview.imageData} alt={fitpicPreview.name} />
+        <PreviewOverlay
+          open={Boolean(wardrobePreviewItem)}
+          eyebrow="Wardrobe"
+          title={wardrobePreviewItem ? buildDisplayName(wardrobePreviewItem) : ""}
+          meta={wardrobePreviewItem?.brand || null}
+          onClose={closeWardrobePreview}
+        >
+          {wardrobePreviewItem ? (
+            <div className="wardrobe-item-preview-content">
+              <div className="wardrobe-item-preview-image">
+                <ManagedItemImage
+                  item={wardrobePreviewItem}
+                  alt={buildDisplayName(wardrobePreviewItem)}
+                  dataItemId={wardrobePreviewItem.id}
+                  useFrameScale
+                  normalizeToFrameScale
+                  useCrop
+                  usePresentation
+                />
+              </div>
+              {wardrobePreviewMetadata.length ? (
+                <dl className="preview-overlay-kv">
+                  {wardrobePreviewMetadata.map((entry) => (
+                    <div key={entry.label}>
+                      <dt>{entry.label}</dt>
+                      <dd>{entry.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </PreviewOverlay>
+
+        <PreviewOverlay
+          open={Boolean(fitpicPreview)}
+          eyebrow="Fitpic"
+          title={fitpicPreview?.name ?? ""}
+          meta={fitpicPreview ? new Date(fitpicPreview.createdAt).toLocaleDateString() : null}
+          onClose={() => setFitpicPreview(null)}
+        >
+          {fitpicPreview ? <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} /> : null}
+        </PreviewOverlay>
       </section>
     </main>
   );

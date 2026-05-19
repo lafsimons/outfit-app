@@ -466,6 +466,27 @@ export function formatCurrency(value) {
   return `${new Intl.NumberFormat("de-DE").format(getNumericValue(value))} €`;
 }
 
+export function getWardrobePreviewMetadata(item) {
+  const quantity = Math.max(1, Math.round(Number(item?.quantity) || 1));
+  const entries = [
+    ["Garment", normalizeGarmentType(item ?? {})],
+    ["Type", item?.type?.trim?.() ?? item?.type ?? ""],
+    ["Color", item?.color?.trim?.() ?? item?.color ?? ""],
+    ["Size", item?.size?.trim?.() ?? item?.size ?? ""],
+    ["List", normalizeList(item?.list)],
+    ["Paid", item?.value === "" || item?.value === null || item?.value === undefined ? "" : formatCurrency(item.value)],
+    ["Retail", item?.retailValue === "" || item?.retailValue === null || item?.retailValue === undefined ? "" : formatCurrency(item.retailValue)],
+    ["Quantity", quantity > 1 ? String(quantity) : ""]
+  ];
+
+  return entries
+    .filter(([, value]) => value)
+    .map(([label, value]) => ({
+      label,
+      value
+    }));
+}
+
 export function getWorthCategory(item) {
   return garmentTypes.includes(item.garmentType) ? item.garmentType : "Accessory";
 }

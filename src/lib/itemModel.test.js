@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createUniqueItemId, normalizeItem } from "./itemModel.js";
+import { createUniqueItemId, getWardrobePreviewMetadata, normalizeItem } from "./itemModel.js";
 
 const baseEmptyForm = {
   id: "",
@@ -141,4 +141,29 @@ test("normalizeItem preserves canonical images fields and mirrors preview src in
   assert.equal(normalized.images.thumbnail.blurHash, "abc123");
   assert.deepEqual(normalized.images.extra, { note: "keep" });
   assert.equal(normalized.originalPreserved, true);
+});
+
+test("getWardrobePreviewMetadata returns basic display fields without empty placeholders", () => {
+  assert.deepEqual(
+    getWardrobePreviewMetadata({
+      garmentType: "Top",
+      layerType: "Inner",
+      type: "Shirt",
+      color: "Blue",
+      size: "M",
+      list: "Wardrobe",
+      value: "120",
+      retailValue: "",
+      quantity: 2
+    }),
+    [
+      { label: "Garment", value: "Top" },
+      { label: "Type", value: "Shirt" },
+      { label: "Color", value: "Blue" },
+      { label: "Size", value: "M" },
+      { label: "List", value: "Wardrobe" },
+      { label: "Paid", value: "120 €" },
+      { label: "Quantity", value: "2" }
+    ]
+  );
 });
