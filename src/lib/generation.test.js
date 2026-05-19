@@ -5,11 +5,13 @@ import {
   applyContextValidityRulesToPool,
   buildNextOutfit,
   buildNextOutfitWithDebug,
+  defaultGenerationLists,
   getCurrentOutfitClimateChip,
   getEligibleSlotPool,
   getGuidedScoreBreakdown,
   getOutfitDominantStyle,
   getPool,
+  isEligibleForGeneration,
   pickNextItemForGeneration,
   rememberRecentOutfit,
   summarizeGuidedDebugPayload,
@@ -103,7 +105,7 @@ function generateBatch({
         {},
         true,
         {},
-        { Wardrobe: true, Wishlist: true },
+        defaultGenerationLists,
         outfitFilters,
         weatherData,
         generationMode,
@@ -159,7 +161,7 @@ function breakdownWithPoolFor(itemId, slot, outfit = {}, outfitFilters = { style
     syntheticWardrobe,
     slot,
     {},
-    { Wardrobe: true, Wishlist: true },
+    defaultGenerationLists,
     layering,
     outfitFilters,
     null,
@@ -178,7 +180,7 @@ function eligiblePoolIds(slot, outfitFilters = { style: [], climate: [] }, outfi
     syntheticWardrobe,
     slot,
     {},
-    { Wardrobe: true, Wishlist: true },
+    defaultGenerationLists,
     layering,
     outfitFilters,
     null,
@@ -207,6 +209,37 @@ function isBridgeItemForTest(item, slot) {
   }
   return item.styleTags.includes("Smart Casual") && item.styleTags.includes("Casual") && !item.styleTags.includes("Formal");
 }
+
+test("default generation lists include only Wardrobe", () => {
+  assert.deepEqual(defaultGenerationLists, {
+    Interested: false,
+    Wishlist: false,
+    Incoming: false,
+    Wardrobe: true,
+    Selling: false,
+    Sold: false
+  });
+});
+
+test("unknown preserved list values inherit Wardrobe generation inclusion unless explicitly configured", () => {
+  assert.equal(isEligibleForGeneration({ id: "unknown_on", list: "ArchivedLater" }, {}, defaultGenerationLists), true);
+  assert.equal(
+    isEligibleForGeneration(
+      { id: "unknown_off", list: "ArchivedLater" },
+      {},
+      { ...defaultGenerationLists, Wardrobe: false }
+    ),
+    false
+  );
+  assert.equal(
+    isEligibleForGeneration(
+      { id: "unknown_explicit", list: "ArchivedLater" },
+      {},
+      { ...defaultGenerationLists, ArchivedLater: false }
+    ),
+    false
+  );
+});
 
 function getFormalStructureCounts(outfit, layering = true) {
   const slots = layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
@@ -390,7 +423,7 @@ test("random formal generation can select relaxed formal-compatible footwear fro
     syntheticWardrobe,
     "Footwear",
     {},
-    { Wardrobe: true, Wishlist: true },
+    defaultGenerationLists,
     true,
     { style: ["Formal"], climate: [] },
     null,
@@ -450,7 +483,7 @@ test("shared eligible slot pool matches formal generation footwear outcomes", ()
           syntheticWardrobe,
           "Footwear",
           {},
-          { Wardrobe: true, Wishlist: true },
+          defaultGenerationLists,
           true,
           { style: ["Formal"], climate: [] },
           null,
@@ -503,7 +536,7 @@ test("formal forward-check rejects candidates when only bridge outerwear remains
       outer_formal_blazer: true,
       outer_wool: true
     },
-    { Wardrobe: true, Wishlist: true },
+    defaultGenerationLists,
     true,
     { style: ["Formal"], climate: [] },
     null,
@@ -564,7 +597,7 @@ test("guided generation with formal filter captures non-empty guided debug paylo
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -592,7 +625,7 @@ test("guided debug payload breakdowns match the scoring pass used for selection"
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -633,7 +666,7 @@ test("guided debug payload can be summarized into non-empty debug reasons", () =
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -696,7 +729,7 @@ test("guided explanation fallback still returns reasons for formal guided outfit
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -717,7 +750,7 @@ test("random generation returns no guided debug payload", () => {
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "random",
@@ -737,7 +770,7 @@ test("buildNextOutfitWithDebug preserves generation output for the same seed", (
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -752,7 +785,7 @@ test("buildNextOutfitWithDebug preserves generation output for the same seed", (
       {},
       true,
       {},
-      { Wardrobe: true, Wishlist: true },
+      defaultGenerationLists,
       { style: ["Formal"], climate: [] },
       null,
       "guided",
@@ -1063,7 +1096,7 @@ test("valid guided candidates receive a positive minimum score floor", () => {
 });
 
 test("hard-blocked candidates are excluded before scoring floor applies", () => {
-  const pool = getPool(syntheticWardrobe, "Headwear", {}, { Wardrobe: true, Wishlist: true }, true);
+  const pool = getPool(syntheticWardrobe, "Headwear", {}, defaultGenerationLists, true);
   const filtered = applyContextValidityRulesToPool(pool, "Headwear", { style: [], climate: ["Hot"] }, null, {}, itemsById);
 
   assert.ok(filtered.some((item) => item.id === "head_cap"));
@@ -1094,10 +1127,10 @@ test("guided explanation debug reasons stay on the normalized score scale", () =
 
 test("random mode ignores guided recent-memory inputs", () => {
   const withNoRecent = withSeed(11, () =>
-    buildNextOutfit(syntheticWardrobe, {}, {}, true, {}, { Wardrobe: true, Wishlist: true }, { style: [], climate: [] }, null, "random", {}, [])
+    buildNextOutfit(syntheticWardrobe, {}, {}, true, {}, defaultGenerationLists, { style: [], climate: [] }, null, "random", {}, [])
   );
   const withRecent = withSeed(11, () =>
-    buildNextOutfit(syntheticWardrobe, {}, {}, true, {}, { Wardrobe: true, Wishlist: true }, { style: [], climate: [] }, null, "random", { some: 99 }, [
+    buildNextOutfit(syntheticWardrobe, {}, {}, true, {}, defaultGenerationLists, { style: [], climate: [] }, null, "random", { some: 99 }, [
       { key: "x", outfit: { Headwear: "head_cap", TopInner: "top_tee", TopOuter: "outer_jacket", Bottom: "bottom_jeans", Footwear: "shoe_sneakers" }, layering: true, liked: true }
     ])
   );

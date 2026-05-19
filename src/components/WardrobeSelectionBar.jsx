@@ -8,9 +8,12 @@ export default function WardrobeSelectionBar({
   editableClimateTagOptions,
   onClear,
   onDone,
-  onMoveToWardrobe,
-  onMoveToIncoming,
+  onMoveToInterested,
   onMoveToWishlist,
+  onMoveToIncoming,
+  onMoveToWardrobe,
+  onMoveToSelling,
+  onMoveToSold,
   onFavorite,
   onUnfavorite,
   onDelete,
@@ -34,14 +37,23 @@ export default function WardrobeSelectionBar({
       </div>
       <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
         <div className="wardrobe-bulk-group">
-          <button type="button" className="ghost-button" onClick={onMoveToWardrobe} disabled={!selectedCount}>
-            To wardrobe
+          <button type="button" className="ghost-button" onClick={onMoveToInterested} disabled={!selectedCount}>
+            To interested
+          </button>
+          <button type="button" className="ghost-button" onClick={onMoveToWishlist} disabled={!selectedCount}>
+            To wishlist
           </button>
           <button type="button" className="ghost-button" onClick={onMoveToIncoming} disabled={!selectedCount}>
             To incoming
           </button>
-          <button type="button" className="ghost-button" onClick={onMoveToWishlist} disabled={!selectedCount}>
-            To wishlist
+          <button type="button" className="ghost-button" onClick={onMoveToWardrobe} disabled={!selectedCount}>
+            To wardrobe
+          </button>
+          <button type="button" className="ghost-button" onClick={onMoveToSelling} disabled={!selectedCount}>
+            To selling
+          </button>
+          <button type="button" className="ghost-button" onClick={onMoveToSold} disabled={!selectedCount}>
+            To sold
           </button>
           <button type="button" className="ghost-button" onClick={onFavorite} disabled={!selectedCount}>
             Favorite

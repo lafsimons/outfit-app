@@ -23,9 +23,12 @@ const defaultAppState = {
   recentOutfits: [],
   generateCount: 0,
   generationLists: {
-    Wardrobe: true,
+    Interested: false,
+    Wishlist: false,
     Incoming: false,
-    Wishlist: true
+    Wardrobe: true,
+    Selling: false,
+    Sold: false
   },
   generationMode: "guided",
   wardrobeSort: "newest",

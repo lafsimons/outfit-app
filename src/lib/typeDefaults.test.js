@@ -10,7 +10,9 @@ import {
 test("normalizeList defaults missing values to Wardrobe and accepts Incoming", () => {
   assert.equal(normalizeList(undefined), "Wardrobe");
   assert.equal(normalizeList(""), "Wardrobe");
-  assert.equal(normalizeList("Incoming"), "Incoming");
+  ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"].forEach((list) => {
+    assert.equal(normalizeList(list), list);
+  });
 });
 
 test("normalizeList preserves unknown non-empty list values for forward compatibility", () => {
@@ -21,12 +23,14 @@ test("normalizeList preserves unknown non-empty list values for forward compatib
 test("getItemListOptions keeps known list order and appends unknown values once", () => {
   assert.deepEqual(
     getItemListOptions(["Wishlist", "Incoming", "ArchivedLater", "ArchivedLater", "Zeta"]),
-    ["Wardrobe", "Incoming", "Wishlist", "ArchivedLater", "Zeta"]
+    ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "ArchivedLater", "Zeta"]
   );
 });
 
 test("matchesListFilter respects incoming and preserved unknown list values", () => {
   assert.equal(matchesListFilter("Incoming", "Incoming"), true);
+  assert.equal(matchesListFilter("Selling", "Selling"), true);
+  assert.equal(matchesListFilter("Sold", "Sold"), true);
   assert.equal(matchesListFilter("ArchivedLater", "ArchivedLater"), true);
   assert.equal(matchesListFilter("ArchivedLater", "Incoming"), false);
   assert.equal(matchesListFilter("ArchivedLater", ""), true);

@@ -12,7 +12,14 @@ import {
 
 export const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
 export const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt"];
-export const defaultGenerationLists = { Wardrobe: true, Incoming: false, Wishlist: true };
+export const defaultGenerationLists = {
+  Interested: false,
+  Wishlist: false,
+  Incoming: false,
+  Wardrobe: true,
+  Selling: false,
+  Sold: false
+};
 export const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 export const editableClimateTagOptions = ["Rain", "Snow"];
 export const outfitFilterOptions = {

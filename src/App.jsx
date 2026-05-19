@@ -1027,6 +1027,7 @@ export default function App() {
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
   const outfitDebugRef = useRef(null);
+  const generationListsRef = useRef(null);
   const editorImageFrameRef = useRef(null);
   const editorImageRef = useRef(null);
   const paletteCacheRef = useRef(new Map());
@@ -1082,6 +1083,7 @@ export default function App() {
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
+  const [generationListsOpen, setGenerationListsOpen] = useState(false);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
   const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
   const [weatherData, setWeatherData] = useState(null);
@@ -1437,6 +1439,21 @@ export default function App() {
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.values(wardrobeFilters).filter(Boolean).length;
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
+  const includedGenerationLists = useMemo(
+    () => itemListOptions.filter((list) => isGenerationListEnabled(list)),
+    [itemListOptions, generationLists]
+  );
+  const generationListsSummary = useMemo(() => {
+    if (!includedGenerationLists.length) {
+      return "None";
+    }
+
+    if (includedGenerationLists.length <= 2) {
+      return includedGenerationLists.join(", ");
+    }
+
+    return `${includedGenerationLists.length} included`;
+  }, [includedGenerationLists]);
   const activeWardrobeFilterChips = [
     ["Brand", wardrobeFilters.brand],
     ["Type", wardrobeFilters.type],
@@ -2011,6 +2028,23 @@ export default function App() {
   }, [outfitDebugOpen]);
 
   useEffect(() => {
+    if (!generationListsOpen) {
+      return undefined;
+    }
+
+    function handleDocumentPointerDown(event) {
+      if (generationListsRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setGenerationListsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
+    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
+  }, [generationListsOpen]);
+
+  useEffect(() => {
     function handleDocumentKeyDown(event) {
       if (event.key !== "Escape") {
         return;
@@ -2078,6 +2112,12 @@ export default function App() {
         return;
       }
 
+      if (generationListsOpen) {
+        event.preventDefault();
+        setGenerationListsOpen(false);
+        return;
+      }
+
       if (activePanel) {
         event.preventDefault();
         closeWorkspacePanel();
@@ -2098,7 +2138,8 @@ export default function App() {
     wardrobeFiltersOpen,
     wardrobeWorthOpen,
     wardrobeSavedOpen,
-    wardrobeManageOpen
+    wardrobeManageOpen,
+    generationListsOpen
   ]);
 
   function handleGenerate() {
@@ -3517,6 +3558,8 @@ export default function App() {
 
   function closeUtilityWindows() {
     setWeatherOpen(false);
+    setOutfitFiltersOpen(false);
+    setGenerationListsOpen(false);
   }
 
   function toggleWorkspacePanel(panel) {
@@ -3561,6 +3604,8 @@ export default function App() {
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setWardrobePreviewItemId(null);
+    setOutfitFiltersOpen(false);
+    setGenerationListsOpen(false);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
@@ -4583,21 +4628,6 @@ export default function App() {
               </button>
             </div>
 
-            <div className="controls-group controls-group-middle">
-              <div className="generation-list-controls" aria-label="Generation lists">
-                {itemListOptions.map((list) => (
-                  <button
-                    key={list}
-                    type="button"
-                    className={`list-toggle ${isGenerationListEnabled(list) ? "is-active" : ""}`}
-                    onClick={() => toggleGenerationList(list)}
-                  >
-                    {list}: {isGenerationListEnabled(list) ? "Included" : "Off"}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="controls-group controls-group-bottom">
               <button
                 type="button"
@@ -4619,6 +4649,90 @@ export default function App() {
             </div>
 
             <div className="controls-group">
+              <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
+                <button
+                  type="button"
+                  className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
+                  onClick={() => setOutfitFiltersOpen((current) => !current)}
+                  aria-expanded={outfitFiltersOpen}
+                >
+                  <span>Outfit filters</span>
+                  <span>
+                    {hasActiveOutfitFilters(outfitFilters)
+                      ? `${activeOutfitFilterCount} active`
+                      : "None"}
+                  </span>
+                </button>
+
+                {outfitFiltersOpen ? (
+                  <div className="outfit-filters-panel">
+                    <div className="outfit-filter-groups">
+                      {Object.entries(outfitFilterOptions).map(([group, options]) => (
+                        <section key={group} className="outfit-filter-group">
+                          <p className="eyebrow">{group}</p>
+                          <div className="outfit-filter-options">
+                            {options.map((option) => {
+                              const isSelected = outfitFilters[group]?.includes(option);
+
+                              return (
+                                <button
+                                  key={option}
+                                  type="button"
+                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                  onClick={() => toggleOutfitFilter(group, option)}
+                                  aria-pressed={isSelected}
+                                >
+                                  {option}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+
+                    <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
+                      Clear outfit filters
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div
+                ref={generationListsRef}
+                className={`controls-generation-lists ${generationListsOpen ? "is-open" : ""}`}
+                aria-label="Generation lists"
+              >
+                <button
+                  type="button"
+                  className={`controls-generation-lists-toggle ${generationListsOpen ? "is-active" : ""}`}
+                  onClick={() => setGenerationListsOpen((current) => !current)}
+                  aria-expanded={generationListsOpen}
+                >
+                  <span>Lists</span>
+                  <span>{generationListsSummary}</span>
+                </button>
+
+                {generationListsOpen ? (
+                  <div className="controls-generation-lists-panel">
+                    {itemListOptions.map((list) => {
+                      const isSelected = isGenerationListEnabled(list);
+
+                      return (
+                        <label key={list} className="controls-generation-list-option">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleGenerationList(list)}
+                          />
+                          <span>{list}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+
               <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
                 <button
                   type="button"
@@ -4679,55 +4793,6 @@ export default function App() {
                       disabled={!weatherData?.suggestedFilters?.length}
                     >
                       Apply weather filter
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
-                <button
-                  type="button"
-                  className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
-                  onClick={() => setOutfitFiltersOpen((current) => !current)}
-                  aria-expanded={outfitFiltersOpen}
-                >
-                  <span>Outfit filters</span>
-                  <span>
-                    {hasActiveOutfitFilters(outfitFilters)
-                      ? `${activeOutfitFilterCount} active`
-                      : "None"}
-                  </span>
-                </button>
-
-                {outfitFiltersOpen ? (
-                  <div className="outfit-filters-panel">
-                    <div className="outfit-filter-groups">
-                      {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                        <section key={group} className="outfit-filter-group">
-                          <p className="eyebrow">{group}</p>
-                          <div className="outfit-filter-options">
-                            {options.map((option) => {
-                              const isSelected = outfitFilters[group]?.includes(option);
-
-                              return (
-                                <button
-                                  key={option}
-                                  type="button"
-                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                  onClick={() => toggleOutfitFilter(group, option)}
-                                  aria-pressed={isSelected}
-                                >
-                                  {option}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ))}
-                    </div>
-
-                    <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
-                      Clear outfit filters
                     </button>
                   </div>
                 ) : null}
@@ -4891,9 +4956,12 @@ export default function App() {
                       editableClimateTagOptions={editableClimateTagOptions}
                       onClear={clearWardrobeSelection}
                       onDone={toggleWardrobeSelectMode}
-                      onMoveToWardrobe={() => moveSelectedItemsToList("Wardrobe")}
-                      onMoveToIncoming={() => moveSelectedItemsToList("Incoming")}
+                      onMoveToInterested={() => moveSelectedItemsToList("Interested")}
                       onMoveToWishlist={() => moveSelectedItemsToList("Wishlist")}
+                      onMoveToIncoming={() => moveSelectedItemsToList("Incoming")}
+                      onMoveToWardrobe={() => moveSelectedItemsToList("Wardrobe")}
+                      onMoveToSelling={() => moveSelectedItemsToList("Selling")}
+                      onMoveToSold={() => moveSelectedItemsToList("Sold")}
                       onFavorite={() => setSelectedItemsFavoriteState(true)}
                       onUnfavorite={() => setSelectedItemsFavoriteState(false)}
                       onDelete={handleBulkDeleteSelected}

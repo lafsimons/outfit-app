@@ -76,21 +76,30 @@ test("saved outfit deduplication uses getOutfitKey semantics", () => {
 
 test("generation list default merging preserves current behavior", () => {
   assert.deepEqual(normalizeGenerationLists(undefined), {
-    Wardrobe: true,
+    Interested: false,
+    Wishlist: false,
     Incoming: false,
-    Wishlist: true
+    Wardrobe: true,
+    Selling: false,
+    Sold: false
   });
 
   assert.deepEqual(normalizeGenerationLists({ Wishlist: false }), {
-    Wardrobe: true,
+    Interested: false,
+    Wishlist: false,
     Incoming: false,
-    Wishlist: false
+    Wardrobe: true,
+    Selling: false,
+    Sold: false
   });
 
   assert.deepEqual(normalizeGenerationLists({ ArchivedLater: false }), {
-    Wardrobe: true,
+    Interested: false,
+    Wishlist: false,
     Incoming: false,
-    Wishlist: true,
+    Wardrobe: true,
+    Selling: false,
+    Sold: false,
     ArchivedLater: false
   });
 });
@@ -116,7 +125,14 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       outfitAffinity: {},
       recentOutfits: [],
       generateCount: 0,
-      generationLists: { Wardrobe: true, Incoming: false, Wishlist: true },
+      generationLists: {
+        Interested: false,
+        Wishlist: false,
+        Incoming: false,
+        Wardrobe: true,
+        Selling: false,
+        Sold: false
+      },
       generationMode: "guided",
       outfitFilters: { style: [], climate: [] },
       weatherSettings: { locationName: "", latitude: null, longitude: null },
@@ -160,7 +176,7 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     likedOutfitKeys: { alpha: true, beta: false },
     outfitAffinity: { pair: 2.2, zero: 0, negative: -4 },
     recentOutfits: [{ outfit: { TopInner: "a" }, layering: 1 }],
-    generationLists: { Wishlist: false, ArchivedLater: false },
+    generationLists: { Wishlist: false, Selling: true, ArchivedLater: false },
     generationMode: "unknown-mode",
     outfitFilters: { style: ["Casual", "Casual"], climate: ["Rain", "Bad"], extra: ["x"] },
     wardrobeSort: "bad-sort"
@@ -175,9 +191,12 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   assert.deepEqual(hydrated.outfitAffinity, { pair: 2 });
   assert.equal(hydrated.recentOutfits.length, 1);
   assert.deepEqual(hydrated.generationLists, {
-    Wardrobe: true,
-    Incoming: false,
+    Interested: false,
     Wishlist: false,
+    Incoming: false,
+    Wardrobe: true,
+    Selling: true,
+    Sold: false,
     ArchivedLater: false
   });
   assert.equal(hydrated.generationMode, "guided");

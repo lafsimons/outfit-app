@@ -221,6 +221,25 @@ test("prepareBackupImport preserves unknown future list values from backups", as
   assert.equal(prepared.items[0].list, "ArchivedLater");
 });
 
+test("prepareBackupImport preserves supported lifecycle list values from backups", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "selling_item",
+        imageUrl: "data:image/png;base64,legacy",
+        list: "Selling",
+        createdAt: "2024-01-02T03:04:05.000Z"
+      }
+    ],
+    appState: {}
+  });
+
+  assert.equal(prepared.backup.items[0].list, "Selling");
+  assert.equal(prepared.items[0].list, "Selling");
+});
+
 test("prepareBackupImport persists current app-state migration versions after import", async () => {
   const prepared = await prepare({
     source: "outfit-app",

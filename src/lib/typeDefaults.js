@@ -1,7 +1,7 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
 export const weightOptions = ["Light", "Medium", "Heavy"];
 export const defaultItemList = "Wardrobe";
-export const itemLists = ["Wardrobe", "Incoming", "Wishlist"];
+export const itemLists = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"];
 export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
 
 export const emptyForm = {
