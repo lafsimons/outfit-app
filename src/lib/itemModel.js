@@ -389,7 +389,7 @@ export function normalizeItem(
     climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     color: normalizeItemColor(correction?.color ?? item.color ?? ""),
-    list: normalizeList(correction?.list ?? item.list),
+    list: normalizeList(item.list ?? correction?.list),
     ...importMetadata,
     itemUuid,
     createdAt,

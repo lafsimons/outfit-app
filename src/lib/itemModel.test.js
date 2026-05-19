@@ -108,6 +108,27 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.importSource, "");
 });
 
+test("normalizeItem does not let metadata corrections override an explicit incoming list", () => {
+  const normalized = normalizeItem(
+    {
+      id: "bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown",
+      imageUrl: "/images/bottom_204_brown.png",
+      list: "Incoming"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.name, "Lot.204 Engineer Trousers");
+  assert.equal(normalized.list, "Incoming");
+});
+
 test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl without claiming original preservation", () => {
   const normalized = normalizeItem(
     {
