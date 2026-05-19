@@ -139,6 +139,17 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       weatherLocationDraft: "",
       weatherData: null,
       fitpics: [],
+      wardrobeFilters: {
+        brand: "",
+        type: "",
+        garmentType: "",
+        color: "",
+        style: "",
+        laundry: "",
+        weight: "",
+        list: "",
+        favorite: ""
+      },
       wardrobeSort: "newest"
     }
   );
@@ -179,6 +190,7 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     generationLists: { Wishlist: false, Selling: true, ArchivedLater: false },
     generationMode: "unknown-mode",
     outfitFilters: { style: ["Casual", "Casual"], climate: ["Rain", "Bad"], extra: ["x"] },
+    wardrobeFilters: { brand: "Our Legacy", list: "Wardrobe", style: 42, extra: "ignored" },
     wardrobeSort: "bad-sort"
   }, {
     fallbackOutfit: {},
@@ -201,7 +213,40 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   });
   assert.equal(hydrated.generationMode, "guided");
   assert.deepEqual(hydrated.outfitFilters, { style: ["Casual", "Casual"], climate: ["Rain"] });
+  assert.deepEqual(hydrated.wardrobeFilters, {
+    brand: "Our Legacy",
+    type: "",
+    garmentType: "",
+    color: "",
+    style: "",
+    laundry: "",
+    weight: "",
+    list: "Wardrobe",
+    favorite: ""
+  });
   assert.equal(hydrated.wardrobeSort, "newest");
+});
+
+test("hydrated app-state wardrobe filter normalization preserves backward compatibility defaults", () => {
+  const hydrated = normalizeHydratedAppState({
+    wardrobeFilters: []
+  }, {
+    fallbackOutfit: {},
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {}
+  });
+
+  assert.deepEqual(hydrated.wardrobeFilters, {
+    brand: "",
+    type: "",
+    garmentType: "",
+    color: "",
+    style: "",
+    laundry: "",
+    weight: "",
+    list: "",
+    favorite: ""
+  });
 });
 
 test("hydrated app-state derives weather location draft and clamps generate count", () => {

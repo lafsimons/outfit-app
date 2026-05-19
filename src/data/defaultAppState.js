@@ -31,6 +31,17 @@ const defaultAppState = {
     Sold: false
   },
   generationMode: "guided",
+  wardrobeFilters: {
+    brand: "",
+    type: "",
+    garmentType: "",
+    color: "",
+    style: "",
+    laundry: "",
+    weight: "",
+    list: "",
+    favorite: ""
+  },
   wardrobeSort: "newest",
   outfitFilters: {
     style: [],

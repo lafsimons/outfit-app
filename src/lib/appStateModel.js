@@ -7,7 +7,7 @@ import {
   normalizeOutfitFilters,
   normalizeRecentOutfits
 } from "./generation.js";
-import { normalizeWardrobeSort } from "./itemModel.js";
+import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./itemModel.js";
 
 export function normalizeGenerationLists(generationLists) {
   return {
@@ -103,6 +103,7 @@ export function normalizeHydratedAppState(appStateLike, { fallbackOutfit, normal
     weatherLocationDraft: appStateLike?.weatherSettings?.locationName ?? "",
     weatherData: appStateLike?.weatherData ?? null,
     fitpics: appStateLike?.fitpics ?? [],
+    wardrobeFilters: normalizeWardrobeFilters(appStateLike?.wardrobeFilters),
     wardrobeSort: normalizeWardrobeSort(appStateLike?.wardrobeSort)
   };
 }

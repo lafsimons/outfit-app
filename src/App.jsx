@@ -104,6 +104,7 @@ import {
   normalizeItemColor,
   normalizeItemUuid,
   normalizeTimestamp,
+  normalizeWardrobeFilters,
   normalizeWardrobeSort
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
@@ -1850,6 +1851,7 @@ export default function App() {
         setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
         setWeatherData(hydratedAppState.weatherData);
         setFitpics(hydratedAppState.fitpics);
+        setWardrobeFilters(hydratedAppState.wardrobeFilters);
         setWardrobeSort(hydratedAppState.wardrobeSort);
       } else {
         const defaultData = getDefaultData();
@@ -1880,6 +1882,7 @@ export default function App() {
         setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
         setWeatherData(hydratedAppState.weatherData);
         setFitpics(hydratedAppState.fitpics);
+        setWardrobeFilters(hydratedAppState.wardrobeFilters);
         setWardrobeSort(hydratedAppState.wardrobeSort);
       }
 
@@ -1919,9 +1922,10 @@ export default function App() {
       weatherSettings,
       weatherData,
       fitpics,
+      wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, outfitItemUuids, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeSort, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, outfitItemUuids, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeFilters, wardrobeSort, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -2322,7 +2326,7 @@ export default function App() {
     setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
     setWeatherData(hydratedAppState.weatherData);
     setFitpics(hydratedAppState.fitpics);
-    setWardrobeFilters(emptyWardrobeFilters);
+    setWardrobeFilters(hydratedAppState.wardrobeFilters);
     setWardrobeSort(hydratedAppState.wardrobeSort);
     setEditingId(null);
     setEditorReturnTarget(null);

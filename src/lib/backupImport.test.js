@@ -325,3 +325,33 @@ test("prepareBackupImport preserves additive outfitItemUuids metadata and backfi
     Bottom: "stable-bottom-uuid"
   });
 });
+
+test("prepareBackupImport normalizes persisted wardrobe filters in app-state", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [],
+    appState: {
+      wardrobeFilters: {
+        list: "Wardrobe",
+        garmentType: "Footwear",
+        style: "Casual",
+        favorite: "yes",
+        extra: "ignored"
+      }
+    }
+  });
+
+  assert.deepEqual(prepared.appState.wardrobeFilters, {
+    brand: "",
+    type: "",
+    garmentType: "Footwear",
+    color: "",
+    style: "Casual",
+    laundry: "",
+    weight: "",
+    list: "Wardrobe",
+    favorite: "yes"
+  });
+  assert.deepEqual(prepared.backup.appState.wardrobeFilters, prepared.appState.wardrobeFilters);
+});

@@ -32,6 +32,19 @@ export const emptyWardrobeFilters = {
   favorite: ""
 };
 
+export function normalizeWardrobeFilters(filters) {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    return { ...emptyWardrobeFilters };
+  }
+
+  return Object.fromEntries(
+    Object.keys(emptyWardrobeFilters).map((key) => [
+      key,
+      typeof filters[key] === "string" ? filters[key] : emptyWardrobeFilters[key]
+    ])
+  );
+}
+
 export function isWishlistItem(item) {
   const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
   return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
