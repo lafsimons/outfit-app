@@ -8,7 +8,7 @@ const ITEM_STORE = "items";
 const APP_STORE = "appState";
 const SYNC_STATE_STORE = "syncState";
 const SYNC_METADATA_STORE = "syncMetadata";
-const DEVICE_STATE_KEY = "device";
+const SYNC_STATE_KEY = "state";
 
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -38,38 +38,161 @@ function createLocalUuid(prefix) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function normalizeSyncMetadataKey(value) {
+function normalizeSyncText(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeSyncBoolean(value) {
+  return Boolean(value);
+}
+
+function normalizeSyncNumber(value, fallback = 0) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue >= 0 ? Math.round(numericValue) : fallback;
+}
+
+function normalizeSyncTimestamp(value) {
+  const trimmedValue = normalizeSyncText(value);
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  const parsedValue = Date.parse(trimmedValue);
+  return Number.isFinite(parsedValue) ? new Date(parsedValue).toISOString() : "";
+}
+
+function normalizeSyncMetadataKey(value) {
+  return normalizeSyncText(value);
+}
+
 function buildItemSyncMetadataKey(itemUuid) {
-  return `oa:item:${itemUuid}`;
+  const stableKey = normalizeSyncText(itemUuid);
+  return stableKey ? `oa:item:${stableKey}` : "";
 }
 
 function buildSavedOutfitSyncMetadataKey(outfitUuid) {
-  return `oa:savedOutfit:${outfitUuid}`;
+  const stableKey = normalizeSyncText(outfitUuid);
+  return stableKey ? `oa:savedOutfit:${stableKey}` : "";
+}
+
+function getCurrentSyncTimestamp() {
+  return new Date().toISOString();
+}
+
+function inferStableKeyFromSyncMetadataKey(key) {
+  if (key.startsWith("oa:item:")) {
+    return key.slice("oa:item:".length);
+  }
+
+  if (key.startsWith("oa:savedOutfit:")) {
+    return key.slice("oa:savedOutfit:".length);
+  }
+
+  return "";
+}
+
+function normalizeSyncEntityType(value, key = "") {
+  const normalizedValue = normalizeSyncText(value);
+
+  if (normalizedValue === "item") {
+    return "oaItem";
+  }
+
+  if (normalizedValue === "savedOutfit") {
+    return "oaSavedOutfit";
+  }
+
+  if (normalizedValue) {
+    return normalizedValue;
+  }
+
+  if (key.startsWith("oa:item:")) {
+    return "oaItem";
+  }
+
+  if (key.startsWith("oa:savedOutfit:")) {
+    return "oaSavedOutfit";
+  }
+
+  return "";
+}
+
+function normalizeSyncMetadataRecord(record) {
+  const key = normalizeSyncMetadataKey(record?.key);
+
+  if (!key) {
+    throw new Error("Sync metadata entry is missing a key.");
+  }
+
+  return {
+    key,
+    entityType: normalizeSyncEntityType(record?.entityType, key),
+    stableKey: normalizeSyncText(record?.stableKey) || normalizeSyncText(record?.entityUuid) || inferStableKeyFromSyncMetadataKey(key),
+    localId: normalizeSyncText(record?.localId) || normalizeSyncText(record?.legacyId),
+    recordVersion: normalizeSyncNumber(record?.recordVersion),
+    syncStatus: normalizeSyncText(record?.syncStatus),
+    lastSyncedAt: normalizeSyncTimestamp(record?.lastSyncedAt),
+    lastModifiedByDevice: normalizeSyncText(record?.lastModifiedByDevice),
+    pendingDelete: normalizeSyncBoolean(record?.pendingDelete),
+    lastSyncError:
+      record?.lastSyncError === null || record?.lastSyncError === undefined
+        ? ""
+        : typeof record.lastSyncError === "string"
+          ? record.lastSyncError.trim()
+          : JSON.stringify(record.lastSyncError),
+    lastLocalChangeAt: normalizeSyncTimestamp(record?.lastLocalChangeAt)
+  };
+}
+
+function createDefaultSyncState(deviceId = "", now = getCurrentSyncTimestamp()) {
+  const normalizedNow = normalizeSyncTimestamp(now) || getCurrentSyncTimestamp();
+  return {
+    key: SYNC_STATE_KEY,
+    deviceId: normalizeSyncText(deviceId),
+    createdAt: normalizedNow,
+    updatedAt: normalizedNow,
+    lastPushCursor: "",
+    lastPullCursor: ""
+  };
+}
+
+function normalizeSyncStateRecord(record, fallbackNow = getCurrentSyncTimestamp()) {
+  const normalizedFallbackNow = normalizeSyncTimestamp(fallbackNow) || getCurrentSyncTimestamp();
+  const deviceId = normalizeSyncText(record?.deviceId);
+  const createdAt = normalizeSyncTimestamp(record?.createdAt) || normalizedFallbackNow;
+  const updatedAt = normalizeSyncTimestamp(record?.updatedAt) || createdAt;
+
+  return {
+    key: SYNC_STATE_KEY,
+    deviceId,
+    createdAt,
+    updatedAt,
+    lastPushCursor: normalizeSyncText(record?.lastPushCursor),
+    lastPullCursor: normalizeSyncText(record?.lastPullCursor)
+  };
 }
 
 function buildLocalOnlySyncMetadata({
   key,
   entityType,
-  entityUuid,
-  legacyId,
+  stableKey,
+  localId,
   lastModifiedByDevice
 }) {
-  return {
+  return normalizeSyncMetadataRecord({
     key,
-    app: "oa",
     entityType,
-    entityUuid,
-    legacyId,
+    stableKey,
+    localId,
     recordVersion: 0,
     syncStatus: "local_only",
-    lastSyncedAt: null,
+    lastSyncedAt: "",
     lastModifiedByDevice,
     pendingDelete: false,
-    lastSyncError: null
-  };
+    lastSyncError: "",
+    lastLocalChangeAt: ""
+  });
 }
 
 function getNextRecordVersion(existingRow) {
@@ -81,30 +204,32 @@ function buildPendingUploadSyncMetadata({
   existingRow,
   key,
   entityType,
-  entityUuid,
-  legacyId,
+  stableKey,
+  localId,
   lastModifiedByDevice,
-  pendingDelete = false
+  pendingDelete = false,
+  now = getCurrentSyncTimestamp()
 }) {
-  return {
+  return normalizeSyncMetadataRecord({
     ...(existingRow ?? buildLocalOnlySyncMetadata({
       key,
       entityType,
-      entityUuid,
-      legacyId,
+      stableKey,
+      localId,
       lastModifiedByDevice
     })),
     key,
-    app: "oa",
     entityType,
-    entityUuid,
-    legacyId,
+    stableKey,
+    localId,
     recordVersion: getNextRecordVersion(existingRow),
     syncStatus: "pending_upload",
+    lastSyncedAt: existingRow?.lastSyncedAt,
     lastModifiedByDevice,
     pendingDelete,
-    lastSyncError: null
-  };
+    lastSyncError: "",
+    lastLocalChangeAt: now
+  });
 }
 
 function normalizeSavedOutfits(savedOutfits) {
@@ -137,9 +262,9 @@ function getSavedOutfitSyncUpdates(previousSavedOutfits, nextSavedOutfits, devic
 
     updates.push({
       key: buildSavedOutfitSyncMetadataKey(outfitUuid),
-      entityType: "savedOutfit",
-      entityUuid: outfitUuid,
-      legacyId: savedOutfit.id ?? "",
+      entityType: "oaSavedOutfit",
+      stableKey: outfitUuid,
+      localId: savedOutfit.id ?? "",
       lastModifiedByDevice: deviceId,
       pendingDelete: false
     });
@@ -152,9 +277,9 @@ function getSavedOutfitSyncUpdates(previousSavedOutfits, nextSavedOutfits, devic
 
     updates.push({
       key: buildSavedOutfitSyncMetadataKey(outfitUuid),
-      entityType: "savedOutfit",
-      entityUuid: outfitUuid,
-      legacyId: savedOutfit.id ?? "",
+      entityType: "oaSavedOutfit",
+      stableKey: outfitUuid,
+      localId: savedOutfit.id ?? "",
       lastModifiedByDevice: deviceId,
       pendingDelete: true
     });
@@ -169,9 +294,9 @@ function getSyncRows(items = [], savedOutfits = [], deviceId = "") {
     .map((item) =>
       buildLocalOnlySyncMetadata({
         key: buildItemSyncMetadataKey(item.itemUuid),
-        entityType: "item",
-        entityUuid: item.itemUuid,
-        legacyId: item.id ?? "",
+        entityType: "oaItem",
+        stableKey: item.itemUuid,
+        localId: item.id ?? "",
         lastModifiedByDevice: deviceId
       })
     );
@@ -181,9 +306,9 @@ function getSyncRows(items = [], savedOutfits = [], deviceId = "") {
     .map((savedOutfit) =>
       buildLocalOnlySyncMetadata({
         key: buildSavedOutfitSyncMetadataKey(savedOutfit.outfitUuid),
-        entityType: "savedOutfit",
-        entityUuid: savedOutfit.outfitUuid,
-        legacyId: savedOutfit.id ?? "",
+        entityType: "oaSavedOutfit",
+        stableKey: savedOutfit.outfitUuid,
+        localId: savedOutfit.id ?? "",
         lastModifiedByDevice: deviceId
       })
     );
@@ -298,21 +423,23 @@ export async function loadItems() {
 export async function saveItem(item) {
   await withStore(ITEM_STORE, "readwrite", (store) => store.put(item));
 
-  if (typeof item?.itemUuid !== "string" || !item.itemUuid.trim()) {
+  const stableKey = normalizeSyncText(item?.itemUuid);
+
+  if (!stableKey) {
     return;
   }
 
   const deviceId = await getOrCreateDeviceId();
-  const key = buildItemSyncMetadataKey(item.itemUuid);
+  const key = buildItemSyncMetadataKey(stableKey);
   const existingRow = await getSyncMetadata(key);
 
   await upsertSyncMetadata(
     buildPendingUploadSyncMetadata({
       existingRow,
       key,
-      entityType: "item",
-      entityUuid: item.itemUuid,
-      legacyId: item.id ?? "",
+      entityType: "oaItem",
+      stableKey,
+      localId: item.id ?? "",
       lastModifiedByDevice: deviceId
     })
   );
@@ -322,21 +449,32 @@ export async function deleteItem(id, { skipSyncMetadata = false } = {}) {
   const existingItem = await withStore(ITEM_STORE, "readonly", (store) => store.get(id));
   await withStore(ITEM_STORE, "readwrite", (store) => store.delete(id));
 
-  if (skipSyncMetadata || typeof existingItem?.itemUuid !== "string" || !existingItem.itemUuid.trim()) {
+  const stableKey = normalizeSyncText(existingItem?.itemUuid);
+
+  if (skipSyncMetadata || !stableKey) {
+    return;
+  }
+
+  const remainingItems = await withStore(ITEM_STORE, "readonly", (store) => store.getAll());
+  const hasMatchingItem = (Array.isArray(remainingItems) ? remainingItems : []).some(
+    (item) => item?.id !== id && normalizeSyncText(item?.itemUuid) === stableKey
+  );
+
+  if (hasMatchingItem) {
     return;
   }
 
   const deviceId = await getOrCreateDeviceId();
-  const key = buildItemSyncMetadataKey(existingItem.itemUuid);
+  const key = buildItemSyncMetadataKey(stableKey);
   const existingRow = await getSyncMetadata(key);
 
   await upsertSyncMetadata(
     buildPendingUploadSyncMetadata({
       existingRow,
       key,
-      entityType: "item",
-      entityUuid: existingItem.itemUuid,
-      legacyId: existingItem.id ?? id ?? "",
+      entityType: "oaItem",
+      stableKey,
+      localId: existingRow?.localId || existingItem?.id || id || "",
       lastModifiedByDevice: deviceId,
       pendingDelete: true
     })
@@ -372,39 +510,80 @@ export async function saveAppState(value) {
 }
 
 export async function getOrCreateDeviceId() {
-  const entry = await withStore(SYNC_STATE_STORE, "readonly", (store) => store.get(DEVICE_STATE_KEY));
+  const [currentEntry, legacyEntry] = await Promise.all([
+    withStore(SYNC_STATE_STORE, "readonly", (store) => store.get(SYNC_STATE_KEY)),
+    withStore(SYNC_STATE_STORE, "readonly", (store) => store.get("device"))
+  ]);
+  const existingEntry = currentEntry ?? legacyEntry ?? null;
+  const normalizedEntry = existingEntry ? normalizeSyncStateRecord(existingEntry) : null;
 
-  if (typeof entry?.deviceId === "string" && entry.deviceId.trim()) {
-    return entry.deviceId;
+  if (normalizedEntry?.deviceId) {
+    const shouldPersistNormalizedState = JSON.stringify(existingEntry) !== JSON.stringify(normalizedEntry);
+
+    if (shouldPersistNormalizedState) {
+      await withStore(SYNC_STATE_STORE, "readwrite", (store) => {
+        store.put(normalizedEntry);
+
+        if (legacyEntry?.key === "device") {
+          store.delete("device");
+        }
+      });
+    }
+
+    return normalizedEntry.deviceId;
   }
 
-  const timestamp = new Date().toISOString();
-  const deviceId = createLocalUuid("device");
+  const nextState = createDefaultSyncState(createLocalUuid("device"));
+  await withStore(SYNC_STATE_STORE, "readwrite", (store) => {
+    store.put(nextState);
 
-  await withStore(SYNC_STATE_STORE, "readwrite", (store) =>
-    store.put({
-      key: DEVICE_STATE_KEY,
-      deviceId,
-      createdAt: timestamp,
-      updatedAt: timestamp
-    })
-  );
+    if (legacyEntry?.key === "device") {
+      store.delete("device");
+    }
+  });
 
-  return deviceId;
+  return nextState.deviceId;
 }
 
-export async function getSyncMetadata(key) {
-  const normalizedKey = normalizeSyncMetadataKey(key);
+export async function getSyncMetadata(key = null) {
+  if (typeof key === "string") {
+    const normalizedKey = normalizeSyncMetadataKey(key);
 
-  if (!normalizedKey) {
-    return null;
+    if (!normalizedKey) {
+      return null;
+    }
+
+    const rawEntry = await withStore(SYNC_METADATA_STORE, "readonly", (store) => store.get(normalizedKey));
+
+    if (!rawEntry) {
+      return null;
+    }
+
+    const normalizedEntry = normalizeSyncMetadataRecord(rawEntry);
+
+    if (JSON.stringify(rawEntry) !== JSON.stringify(normalizedEntry)) {
+      await withStore(SYNC_METADATA_STORE, "readwrite", (store) => store.put(normalizedEntry));
+    }
+
+    return normalizedEntry;
   }
 
-  return (await withStore(SYNC_METADATA_STORE, "readonly", (store) => store.get(normalizedKey))) ?? null;
+  const rawEntries = await withStore(SYNC_METADATA_STORE, "readonly", (store) => store.getAll());
+  const normalizedEntries = rawEntries.map((entry) => normalizeSyncMetadataRecord(entry));
+
+  if (JSON.stringify(rawEntries) !== JSON.stringify(normalizedEntries)) {
+    await withStore(SYNC_METADATA_STORE, "readwrite", (store) => {
+      normalizedEntries.forEach((entry) => store.put(entry));
+    });
+  }
+
+  return normalizedEntries;
 }
 
 export async function upsertSyncMetadata(value) {
-  await withStore(SYNC_METADATA_STORE, "readwrite", (store) => store.put(value));
+  const normalizedValue = normalizeSyncMetadataRecord(value);
+  await withStore(SYNC_METADATA_STORE, "readwrite", (store) => store.put(normalizedValue));
+  return normalizedValue;
 }
 
 export async function clearSyncMetadata() {

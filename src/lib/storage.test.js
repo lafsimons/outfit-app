@@ -261,6 +261,15 @@ async function getSyncMetadataRows() {
   return rows;
 }
 
+async function getSyncStateRows() {
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const transaction = db.transaction("syncState", "readonly");
+  const rows = await openRequestToPromise(transaction.objectStore("syncState").getAll());
+  await transactionDone(transaction);
+  db.close();
+  return rows;
+}
+
 async function getStoredItems() {
   const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
   const transaction = db.transaction("items", "readonly");
@@ -316,10 +325,17 @@ test("IndexedDB upgrade creates sync stores without breaking existing stores", a
 test("deviceId is created and then reused", async () => {
   const firstDeviceId = await getOrCreateDeviceId();
   const secondDeviceId = await getOrCreateDeviceId();
+  const syncStateRows = await getSyncStateRows();
 
   assert.equal(typeof firstDeviceId, "string");
   assert.notEqual(firstDeviceId, "");
   assert.equal(secondDeviceId, firstDeviceId);
+  assert.deepEqual(syncStateRows.map((row) => row.key), ["state"]);
+  assert.equal(syncStateRows[0].deviceId, firstDeviceId);
+  assert.equal(typeof syncStateRows[0].createdAt, "string");
+  assert.equal(typeof syncStateRows[0].updatedAt, "string");
+  assert.equal(syncStateRows[0].lastPushCursor, "");
+  assert.equal(syncStateRows[0].lastPullCursor, "");
 });
 
 test("existing items backfill local-only metadata by itemUuid", async () => {
@@ -347,16 +363,16 @@ test("existing items backfill local-only metadata by itemUuid", async () => {
   assert.equal(secondBackfill.createdCount, 0);
   assert.deepEqual(metadata, {
     key: "oa:item:item-uuid-1",
-    app: "oa",
-    entityType: "item",
-    entityUuid: "item-uuid-1",
-    legacyId: "item_1",
+    entityType: "oaItem",
+    stableKey: "item-uuid-1",
+    localId: "item_1",
     recordVersion: 0,
     syncStatus: "local_only",
-    lastSyncedAt: null,
+    lastSyncedAt: "",
     lastModifiedByDevice: firstBackfill.deviceId,
     pendingDelete: false,
-    lastSyncError: null
+    lastSyncError: "",
+    lastLocalChangeAt: ""
   });
 });
 
@@ -386,16 +402,16 @@ test("existing saved outfits backfill local-only metadata by outfitUuid", async 
   assert.equal(backfill.createdCount, 1);
   assert.deepEqual(metadata, {
     key: "oa:savedOutfit:outfit-uuid-1",
-    app: "oa",
-    entityType: "savedOutfit",
-    entityUuid: "outfit-uuid-1",
-    legacyId: "saved_1",
+    entityType: "oaSavedOutfit",
+    stableKey: "outfit-uuid-1",
+    localId: "saved_1",
     recordVersion: 0,
     syncStatus: "local_only",
-    lastSyncedAt: null,
+    lastSyncedAt: "",
     lastModifiedByDevice: backfill.deviceId,
     pendingDelete: false,
-    lastSyncError: null
+    lastSyncError: "",
+    lastLocalChangeAt: ""
   });
 });
 
@@ -410,14 +426,17 @@ test("item create and update dirty marking increments version and preserves sync
 
   const createdMetadata = await getSyncMetadata("oa:item:item-uuid-1");
 
-  assert.equal(createdMetadata.legacyId, "item_1");
+  assert.equal(createdMetadata.entityType, "oaItem");
+  assert.equal(createdMetadata.stableKey, "item-uuid-1");
+  assert.equal(createdMetadata.localId, "item_1");
   assert.equal(createdMetadata.recordVersion, 1);
   assert.equal(createdMetadata.syncStatus, "pending_upload");
   assert.equal(createdMetadata.pendingDelete, false);
-  assert.equal(createdMetadata.lastSyncedAt, null);
-  assert.equal(createdMetadata.lastSyncError, null);
+  assert.equal(createdMetadata.lastSyncedAt, "");
+  assert.equal(createdMetadata.lastSyncError, "");
   assert.equal(typeof createdMetadata.lastModifiedByDevice, "string");
   assert.notEqual(createdMetadata.lastModifiedByDevice, "");
+  assert.equal(createdMetadata.lastLocalChangeAt.length > 0, true);
 
   await upsertSyncMetadata({
     ...createdMetadata,
@@ -438,9 +457,10 @@ test("item create and update dirty marking increments version and preserves sync
   assert.equal(updatedMetadata.syncStatus, "pending_upload");
   assert.equal(updatedMetadata.pendingDelete, false);
   assert.equal(updatedMetadata.lastSyncedAt, "2024-02-01T00:00:00.000Z");
-  assert.equal(updatedMetadata.lastSyncError, null);
-  assert.equal(updatedMetadata.legacyId, "item_1");
+  assert.equal(updatedMetadata.lastSyncError, "");
+  assert.equal(updatedMetadata.localId, "item_1");
   assert.equal(updatedMetadata.lastModifiedByDevice, createdMetadata.lastModifiedByDevice);
+  assert.notEqual(updatedMetadata.lastLocalChangeAt, createdMetadata.lastLocalChangeAt);
 });
 
 test("item delete preserves metadata row as a pending-upload tombstone", async () => {
@@ -468,10 +488,11 @@ test("item delete preserves metadata row as a pending-upload tombstone", async (
   assert.equal(metadata.pendingDelete, true);
   assert.equal(metadata.syncStatus, "pending_upload");
   assert.equal(metadata.lastSyncedAt, "2024-03-01T00:00:00.000Z");
-  assert.equal(metadata.legacyId, "item_1");
+  assert.equal(metadata.localId, "item_1");
+  assert.equal(metadata.lastLocalChangeAt.length > 0, true);
 });
 
-test("item legacy-id rename preserves one metadata row keyed by itemUuid", async () => {
+test("item legacy-id rename preserves one metadata row keyed by itemUuid without a tombstone", async () => {
   const originalItem = {
     id: "shirt_1",
     itemUuid: "item-uuid-1",
@@ -484,7 +505,7 @@ test("item legacy-id rename preserves one metadata row keyed by itemUuid", async
 
   await saveItem(originalItem);
   await saveItem(renamedItem);
-  await deleteItem("shirt_1", { skipSyncMetadata: true });
+  await deleteItem("shirt_1");
 
   const metadata = await getSyncMetadata("oa:item:item-uuid-1");
   const syncRows = await getSyncMetadataRows();
@@ -493,8 +514,9 @@ test("item legacy-id rename preserves one metadata row keyed by itemUuid", async
   assert.equal(items.length, 1);
   assert.equal(items[0].id, "shirt_renamed");
   assert.equal(syncRows.length, 1);
-  assert.equal(metadata.entityUuid, "item-uuid-1");
-  assert.equal(metadata.legacyId, "shirt_renamed");
+  assert.equal(metadata.entityType, "oaItem");
+  assert.equal(metadata.stableKey, "item-uuid-1");
+  assert.equal(metadata.localId, "shirt_renamed");
   assert.equal(metadata.pendingDelete, false);
   assert.equal(metadata.recordVersion, 2);
 });
@@ -515,9 +537,12 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
   });
 
   const createdMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  assert.equal(createdMetadata.entityType, "oaSavedOutfit");
+  assert.equal(createdMetadata.localId, "saved_1");
   assert.equal(createdMetadata.recordVersion, 1);
   assert.equal(createdMetadata.syncStatus, "pending_upload");
   assert.equal(createdMetadata.pendingDelete, false);
+  assert.equal(createdMetadata.lastLocalChangeAt.length > 0, true);
 
   await upsertSyncMetadata({
     ...createdMetadata,
@@ -541,6 +566,7 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
   assert.equal(editedMetadata.syncStatus, "pending_upload");
   assert.equal(editedMetadata.pendingDelete, false);
   assert.equal(editedMetadata.lastSyncedAt, "2024-04-01T00:00:00.000Z");
+  assert.equal(editedMetadata.lastLocalChangeAt.length > 0, true);
 
   await saveAppState({
     savedOutfits: []
@@ -550,7 +576,8 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
   assert.equal(deletedMetadata.recordVersion, 5);
   assert.equal(deletedMetadata.syncStatus, "pending_upload");
   assert.equal(deletedMetadata.pendingDelete, true);
-  assert.equal(deletedMetadata.legacyId, "saved_1");
+  assert.equal(deletedMetadata.localId, "saved_1");
+  assert.equal(deletedMetadata.lastLocalChangeAt.length > 0, true);
 });
 
 test("saved outfit metadata is dirtied when item id rewrites or deletes change the outfit payload", async () => {
@@ -691,7 +718,6 @@ test("backup import clears and rebuilds sync metadata", async () => {
 
   await upsertSyncMetadata({
     key: "oa:item:stale",
-    app: "oa",
     entityType: "item",
     entityUuid: "stale",
     legacyId: "stale_id",
@@ -735,28 +761,107 @@ test("backup import clears and rebuilds sync metadata", async () => {
   assert.equal(staleMetadata, null);
   assert.deepEqual(itemMetadata, {
     key: "oa:item:item-uuid-2",
-    app: "oa",
-    entityType: "item",
-    entityUuid: "item-uuid-2",
-    legacyId: "item_2",
+    entityType: "oaItem",
+    stableKey: "item-uuid-2",
+    localId: "item_2",
     recordVersion: 0,
     syncStatus: "local_only",
-    lastSyncedAt: null,
+    lastSyncedAt: "",
     lastModifiedByDevice: originalDeviceId,
     pendingDelete: false,
-    lastSyncError: null
+    lastSyncError: "",
+    lastLocalChangeAt: ""
   });
   assert.deepEqual(savedOutfitMetadata, {
     key: "oa:savedOutfit:outfit-uuid-2",
-    app: "oa",
-    entityType: "savedOutfit",
-    entityUuid: "outfit-uuid-2",
-    legacyId: "saved_2",
+    entityType: "oaSavedOutfit",
+    stableKey: "outfit-uuid-2",
+    localId: "saved_2",
     recordVersion: 0,
     syncStatus: "local_only",
-    lastSyncedAt: null,
+    lastSyncedAt: "",
     lastModifiedByDevice: originalDeviceId,
     pendingDelete: false,
-    lastSyncError: null
+    lastSyncError: "",
+    lastLocalChangeAt: ""
   });
+});
+
+test("legacy OA metadata rows are normalized and migrated on read", async () => {
+  const originalDeviceId = await getOrCreateDeviceId();
+
+  await upsertSyncMetadata({
+    key: "oa:item:item-uuid-legacy",
+    entityType: "oaItem",
+    stableKey: "item-uuid-legacy",
+    localId: "legacy-item",
+    recordVersion: 1,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-06-01T00:00:00.000Z",
+    lastModifiedByDevice: originalDeviceId,
+    pendingDelete: false,
+    lastSyncError: "",
+    lastLocalChangeAt: ""
+  });
+
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const transaction = db.transaction("syncMetadata", "readwrite");
+  transaction.objectStore("syncMetadata").put({
+    key: "oa:item:item-uuid-legacy",
+    app: "oa",
+    entityType: "item",
+    entityUuid: "item-uuid-legacy",
+    legacyId: "legacy-item",
+    recordVersion: 1,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-06-01T00:00:00.000Z",
+    lastModifiedByDevice: originalDeviceId,
+    pendingDelete: false,
+    lastSyncError: { message: "legacy" },
+    lastLocalChangeAt: null
+  });
+  await transactionDone(transaction);
+  db.close();
+
+  const metadata = await getSyncMetadata("oa:item:item-uuid-legacy");
+  const storedRows = await getSyncMetadataRows();
+
+  assert.deepEqual(metadata, {
+    key: "oa:item:item-uuid-legacy",
+    entityType: "oaItem",
+    stableKey: "item-uuid-legacy",
+    localId: "legacy-item",
+    recordVersion: 1,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-06-01T00:00:00.000Z",
+    lastModifiedByDevice: originalDeviceId,
+    pendingDelete: false,
+    lastSyncError: "{\"message\":\"legacy\"}",
+    lastLocalChangeAt: ""
+  });
+  assert.deepEqual(storedRows[0], metadata);
+});
+
+test("legacy sync state row is normalized to the shared singleton shape", async () => {
+  await getOrCreateDeviceId();
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const transaction = db.transaction("syncState", "readwrite");
+  transaction.objectStore("syncState").delete("state");
+  transaction.objectStore("syncState").put({
+    key: "device",
+    deviceId: "device-legacy"
+  });
+  await transactionDone(transaction);
+  db.close();
+
+  const deviceId = await getOrCreateDeviceId();
+  const rows = await getSyncStateRows();
+
+  assert.equal(deviceId, "device-legacy");
+  assert.deepEqual(rows.map((row) => row.key), ["state"]);
+  assert.equal(rows[0].deviceId, "device-legacy");
+  assert.equal(typeof rows[0].createdAt, "string");
+  assert.equal(typeof rows[0].updatedAt, "string");
+  assert.equal(rows[0].lastPushCursor, "");
+  assert.equal(rows[0].lastPullCursor, "");
 });
