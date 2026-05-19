@@ -1,6 +1,7 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
 export const weightOptions = ["Light", "Medium", "Heavy"];
-export const itemLists = ["Wardrobe", "Wishlist"];
+export const defaultItemList = "Wardrobe";
+export const itemLists = ["Wardrobe", "Incoming", "Wishlist"];
 export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
 
 export const emptyForm = {
@@ -40,7 +41,7 @@ export const emptyForm = {
   accessorySlot: "",
   color: "",
   weight: "",
-  list: "Wardrobe",
+  list: defaultItemList,
   quantity: 1,
   styleTags: [],
   climateTags: []
@@ -196,7 +197,35 @@ export const typeDefaultsByKey = {
 };
 
 export function normalizeList(list) {
-  return itemLists.includes(list) ? list : "Wardrobe";
+  if (typeof list !== "string") {
+    return defaultItemList;
+  }
+
+  const trimmed = list.trim();
+
+  if (!trimmed) {
+    return defaultItemList;
+  }
+
+  return itemLists.includes(trimmed) ? trimmed : trimmed;
+}
+
+export function getItemListOptions(values = []) {
+  const unknownLists = [...new Set(
+    values
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter((value) => value && !itemLists.includes(value))
+  )].sort((a, b) => a.localeCompare(b));
+
+  return [...itemLists, ...unknownLists];
+}
+
+export function matchesListFilter(itemList, filterValue) {
+  if (!filterValue) {
+    return true;
+  }
+
+  return normalizeList(itemList) === filterValue;
 }
 
 export function normalizeItemType(type) {

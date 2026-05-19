@@ -199,6 +199,26 @@ test("normalizeItem preserves existing import metadata and unknown fields", () =
   assert.deepEqual(normalized.extraMetadata, { keep: true });
 });
 
+test("normalizeItem preserves unknown list values for forward-compatible imports", () => {
+  const normalized = normalizeItem(
+    {
+      id: "future_list_item",
+      imageUrl: "data:image/png;base64,preview",
+      list: "ArchivedLater"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.list, "ArchivedLater");
+});
+
 test("normalizeItem preserves an existing itemUuid", () => {
   const normalized = normalizeItem(
     {

@@ -24,6 +24,7 @@ const defaultAppState = {
   generateCount: 0,
   generationLists: {
     Wardrobe: true,
+    Incoming: false,
     Wishlist: true
   },
   generationMode: "guided",

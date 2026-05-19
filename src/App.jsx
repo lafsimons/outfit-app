@@ -13,12 +13,15 @@ import { load, save as saveAppState } from "./repositories/appStateRepository";
 import { loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
   applyMappedStyleWeightDefaults,
+  defaultItemList,
   defaultTypeSuggestions,
   emptyForm,
+  getItemListOptions,
   getTypeMatchKeys,
   hasTypeDefaults,
   itemLists,
   layerTypes,
+  matchesListFilter,
   normalizeItemType,
   normalizeList,
   normalizeTagList,
@@ -603,7 +606,7 @@ function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
     (ignored.has("color") || matchesMetadataFilter(item.color, filters.color)) &&
     (ignored.has("style") || !filters.style || itemStyles.includes(filters.style)) &&
     (ignored.has("weight") || matchesMetadataFilter(item.weight, filters.weight)) &&
-    (ignored.has("list") || !filters.list || normalizeList(item.list) === filters.list) &&
+    (ignored.has("list") || matchesListFilter(item.list, filters.list)) &&
     (ignored.has("favorite") ||
       !filters.favorite ||
       (filters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
@@ -1384,6 +1387,15 @@ export default function App() {
     [draft, resolvedTypeDefaults]
   );
   const advancedOverrideSet = useMemo(() => new Set(advancedOverrideFields), [advancedOverrideFields]);
+  const itemListOptions = useMemo(
+    () => getItemListOptions([
+      ...items.map((item) => item.list),
+      ...Object.keys(generationLists ?? {}),
+      draft.list,
+      wardrobeFilters.list
+    ]),
+    [draft.list, generationLists, items, wardrobeFilters.list]
+  );
   const wardrobeFilterOptions = useMemo(
     () => {
       const typeItems = items.filter((item) =>
@@ -2828,10 +2840,30 @@ export default function App() {
   }
 
   function toggleGenerationList(list) {
-    setGenerationLists((current) => ({
-      ...current,
-      [list]: !current[list]
-    }));
+    setGenerationLists((current) => {
+      const currentValue = Object.hasOwn(current, list)
+        ? current[list]
+        : !itemLists.includes(list)
+          ? current[defaultItemList] !== false
+          : list === defaultItemList;
+
+      return {
+        ...current,
+        [list]: !currentValue
+      };
+    });
+  }
+
+  function isGenerationListEnabled(list) {
+    if (Object.hasOwn(generationLists, list)) {
+      return generationLists[list];
+    }
+
+    if (!itemLists.includes(list)) {
+      return generationLists[defaultItemList] !== false;
+    }
+
+    return list === defaultItemList;
   }
 
   function setAdvancedField(field, value) {
@@ -4095,7 +4127,7 @@ export default function App() {
         <label>
           List
           <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
-            {itemLists.map((list) => (
+            {itemListOptions.map((list) => (
               <option key={list} value={list}>
                 {list}
               </option>
@@ -4490,14 +4522,14 @@ export default function App() {
 
             <div className="controls-group controls-group-middle">
               <div className="generation-list-controls" aria-label="Generation lists">
-                {itemLists.map((list) => (
+                {itemListOptions.map((list) => (
                   <button
                     key={list}
                     type="button"
-                    className={`list-toggle ${generationLists[list] ? "is-active" : ""}`}
+                    className={`list-toggle ${isGenerationListEnabled(list) ? "is-active" : ""}`}
                     onClick={() => toggleGenerationList(list)}
                   >
-                    {list}: {generationLists[list] ? "Included" : "Off"}
+                    {list}: {isGenerationListEnabled(list) ? "Included" : "Off"}
                   </button>
                 ))}
               </div>
@@ -4797,6 +4829,7 @@ export default function App() {
                       onClear={clearWardrobeSelection}
                       onDone={toggleWardrobeSelectMode}
                       onMoveToWardrobe={() => moveSelectedItemsToList("Wardrobe")}
+                      onMoveToIncoming={() => moveSelectedItemsToList("Incoming")}
                       onMoveToWishlist={() => moveSelectedItemsToList("Wishlist")}
                       onFavorite={() => setSelectedItemsFavoriteState(true)}
                       onUnfavorite={() => setSelectedItemsFavoriteState(false)}
@@ -4914,7 +4947,7 @@ export default function App() {
                           }
                         >
                           <option value="">All lists</option>
-                          {itemLists.map((list) => (
+                          {itemListOptions.map((list) => (
                             <option key={list} value={list}>{list}</option>
                           ))}
                         </select>

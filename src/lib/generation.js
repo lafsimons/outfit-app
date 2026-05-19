@@ -1,5 +1,7 @@
 import {
+  defaultItemList,
   getTypeMatchKeys,
+  itemLists,
   normalizeList,
   normalizeTagList,
   normalizeType,
@@ -10,7 +12,7 @@ import {
 
 export const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
 export const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt"];
-export const defaultGenerationLists = { Wardrobe: true, Wishlist: true };
+export const defaultGenerationLists = { Wardrobe: true, Incoming: false, Wishlist: true };
 export const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 export const editableClimateTagOptions = ["Rain", "Snow"];
 export const outfitFilterOptions = {
@@ -246,7 +248,21 @@ export function rememberRecentOutfit(currentRecentOutfits, outfit, layering, opt
 }
 
 export function isEligibleForGeneration(item, excluded = {}, generationLists = defaultGenerationLists) {
-  return !excluded[item.id] && generationLists[normalizeList(item.list)] !== false;
+  if (excluded[item.id]) {
+    return false;
+  }
+
+  const list = normalizeList(item.list);
+
+  if (Object.hasOwn(generationLists, list)) {
+    return generationLists[list] !== false;
+  }
+
+  if (!itemLists.includes(list)) {
+    return generationLists[defaultItemList] !== false;
+  }
+
+  return true;
 }
 
 export function getPool(items, slot, excluded = {}, generationLists = defaultGenerationLists, layering = true) {

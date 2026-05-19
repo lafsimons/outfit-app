@@ -9,6 +9,7 @@ export default function WardrobeSelectionBar({
   onClear,
   onDone,
   onMoveToWardrobe,
+  onMoveToIncoming,
   onMoveToWishlist,
   onFavorite,
   onUnfavorite,
@@ -35,6 +36,9 @@ export default function WardrobeSelectionBar({
         <div className="wardrobe-bulk-group">
           <button type="button" className="ghost-button" onClick={onMoveToWardrobe} disabled={!selectedCount}>
             To wardrobe
+          </button>
+          <button type="button" className="ghost-button" onClick={onMoveToIncoming} disabled={!selectedCount}>
+            To incoming
           </button>
           <button type="button" className="ghost-button" onClick={onMoveToWishlist} disabled={!selectedCount}>
             To wishlist

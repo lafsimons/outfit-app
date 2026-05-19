@@ -31,6 +31,26 @@ test("updateSelectedItems only updates selected entries", () => {
   assert.deepEqual(result.changedIds, ["b", "c"]);
 });
 
+test("updateSelectedItems supports bulk moves into Incoming without touching other items", () => {
+  const items = [
+    { id: "a", list: "Wardrobe" },
+    { id: "b", list: "Wishlist" },
+    { id: "c", list: "Wardrobe" }
+  ];
+
+  const result = updateSelectedItems(items, ["b", "c"], (item) => ({
+    ...item,
+    list: "Incoming"
+  }));
+
+  assert.deepEqual(result.nextItems, [
+    { id: "a", list: "Wardrobe" },
+    { id: "b", list: "Incoming" },
+    { id: "c", list: "Incoming" }
+  ]);
+  assert.deepEqual(result.changedIds, ["b", "c"]);
+});
+
 test("removeSelectedItems removes only selected entries", () => {
   const items = [
     { id: "a" },

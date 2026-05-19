@@ -56,12 +56,21 @@ test("saved outfit deduplication uses getOutfitKey semantics", () => {
 test("generation list default merging preserves current behavior", () => {
   assert.deepEqual(normalizeGenerationLists(undefined), {
     Wardrobe: true,
+    Incoming: false,
     Wishlist: true
   });
 
   assert.deepEqual(normalizeGenerationLists({ Wishlist: false }), {
     Wardrobe: true,
+    Incoming: false,
     Wishlist: false
+  });
+
+  assert.deepEqual(normalizeGenerationLists({ ArchivedLater: false }), {
+    Wardrobe: true,
+    Incoming: false,
+    Wishlist: true,
+    ArchivedLater: false
   });
 });
 
@@ -84,7 +93,7 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       outfitAffinity: {},
       recentOutfits: [],
       generateCount: 0,
-      generationLists: { Wardrobe: true, Wishlist: true },
+      generationLists: { Wardrobe: true, Incoming: false, Wishlist: true },
       generationMode: "guided",
       outfitFilters: { style: [], climate: [] },
       weatherSettings: { locationName: "", latitude: null, longitude: null },
@@ -126,7 +135,7 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     likedOutfitKeys: { alpha: true, beta: false },
     outfitAffinity: { pair: 2.2, zero: 0, negative: -4 },
     recentOutfits: [{ outfit: { TopInner: "a" }, layering: 1 }],
-    generationLists: { Wishlist: false },
+    generationLists: { Wishlist: false, ArchivedLater: false },
     generationMode: "unknown-mode",
     outfitFilters: { style: ["Casual", "Casual"], climate: ["Rain", "Bad"], extra: ["x"] },
     wardrobeSort: "bad-sort"
@@ -139,7 +148,12 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   assert.deepEqual(hydrated.likedOutfitKeys, { alpha: true });
   assert.deepEqual(hydrated.outfitAffinity, { pair: 2 });
   assert.equal(hydrated.recentOutfits.length, 1);
-  assert.deepEqual(hydrated.generationLists, { Wardrobe: true, Wishlist: false });
+  assert.deepEqual(hydrated.generationLists, {
+    Wardrobe: true,
+    Incoming: false,
+    Wishlist: false,
+    ArchivedLater: false
+  });
   assert.equal(hydrated.generationMode, "guided");
   assert.deepEqual(hydrated.outfitFilters, { style: ["Casual", "Casual"], climate: ["Rain"] });
   assert.equal(hydrated.wardrobeSort, "newest");

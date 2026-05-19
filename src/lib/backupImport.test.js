@@ -199,6 +199,25 @@ test("prepareBackupImport preserves custom user metadata while migrating importe
   assert.deepEqual(prepared.backup.items[0].images.extra, { note: "keep" });
 });
 
+test("prepareBackupImport preserves unknown future list values from backups", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "future_list_item",
+        imageUrl: "data:image/png;base64,legacy",
+        list: "ArchivedLater",
+        createdAt: "2024-01-02T03:04:05.000Z"
+      }
+    ],
+    appState: {}
+  });
+
+  assert.equal(prepared.backup.items[0].list, "ArchivedLater");
+  assert.equal(prepared.items[0].list, "ArchivedLater");
+});
+
 test("prepareBackupImport persists current app-state migration versions after import", async () => {
   const prepared = await prepare({
     source: "outfit-app",
