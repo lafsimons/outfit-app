@@ -7,6 +7,12 @@ const baseEmptyForm = {
   id: "",
   name: "",
   imageUrl: "",
+  images: {
+    original: { src: "" },
+    preview: { src: "" },
+    thumbnail: { src: "" }
+  },
+  originalPreserved: false,
   imageScale: 100,
   imageFrameScale: 100,
   imageOffsetX: 0,
@@ -79,4 +85,60 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.list, "Wardrobe");
   assert.equal(normalized.createdAt, "2024-01-02T03:04:05.000Z");
   assert.equal(normalized.updatedAt, "2024-01-03T03:04:05.000Z");
+});
+
+test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl without claiming original preservation", () => {
+  const normalized = normalizeItem(
+    {
+      id: "legacy_item",
+      imageUrl: "data:image/png;base64,legacy"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.imageUrl, "data:image/png;base64,legacy");
+  assert.equal(normalized.images.original.src, "");
+  assert.equal(normalized.images.preview.src, "data:image/png;base64,legacy");
+  assert.equal(normalized.images.thumbnail.src, "data:image/png;base64,legacy");
+  assert.equal(normalized.originalPreserved, false);
+});
+
+test("normalizeItem preserves canonical images fields and mirrors preview src into imageUrl", () => {
+  const normalized = normalizeItem(
+    {
+      id: "canonical_item",
+      images: {
+        original: { src: "data:image/png;base64,original", width: 1200 },
+        preview: { src: "data:image/png;base64,preview", dominantColor: "#112233" },
+        thumbnail: { src: "data:image/png;base64,thumb", blurHash: "abc123" },
+        extra: { note: "keep" }
+      },
+      originalPreserved: true
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.imageUrl, "data:image/png;base64,preview");
+  assert.equal(normalized.images.original.src, "data:image/png;base64,original");
+  assert.equal(normalized.images.original.width, 1200);
+  assert.equal(normalized.images.preview.src, "data:image/png;base64,preview");
+  assert.equal(normalized.images.preview.dominantColor, "#112233");
+  assert.equal(normalized.images.thumbnail.src, "data:image/png;base64,thumb");
+  assert.equal(normalized.images.thumbnail.blurHash, "abc123");
+  assert.deepEqual(normalized.images.extra, { note: "keep" });
+  assert.equal(normalized.originalPreserved, true);
 });

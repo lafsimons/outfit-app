@@ -83,6 +83,7 @@ import {
   itemNeedsDefaultMetadataMigration,
   itemNeedsFavoriteMigration,
   itemNeedsGarmentTypeMigration,
+  itemNeedsImageContractMigration,
   itemNeedsQuantityMigration,
   itemNeedsRetailMigration,
   itemNeedsStyleWeightMappingMigration,
@@ -101,6 +102,7 @@ import {
   normalizeSavedOutfit,
   normalizeSavedOutfits
 } from "./lib/appStateModel";
+import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
 import {
   getImageFilename,
   getItemImageStyle,
@@ -1025,6 +1027,9 @@ export default function App() {
   const [wardrobeWorthOpen, setWardrobeWorthOpen] = useState(false);
   const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
+  const [wardrobeSelectMode, setWardrobeSelectMode] = useState(false);
+  const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
+  const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
   const [editorAdvancedOpen, setEditorAdvancedOpen] = useState(false);
@@ -1428,6 +1433,26 @@ export default function App() {
       });
     });
   }
+
+  function clearWardrobeSelection() {
+    setSelectedWardrobeItemIds([]);
+    setWardrobeSelectionAnchorId(null);
+  }
+
+  function toggleWardrobeSelectMode() {
+    if (wardrobeSelectMode) {
+      clearWardrobeSelection();
+      setWardrobeSelectMode(false);
+      return;
+    }
+
+    closeUtilityWindows();
+    setWardrobeSavedOpen(false);
+    cancelEditSavedOutfit();
+    setWardrobeManageOpen(false);
+    setWardrobeSelectMode(true);
+  }
+
   const visibleWardrobeItems = useMemo(() => {
     const filtered = items.filter((item) =>
       matchesWardrobeFilters(item, wardrobeFilters) &&
@@ -1482,6 +1507,11 @@ export default function App() {
       })
       .map(({ item }) => item);
   }, [items, wardrobeFilters, wardrobeSort, excluded]);
+  const visibleWardrobeItemIds = useMemo(
+    () => visibleWardrobeItems.map((item) => item.id),
+    [visibleWardrobeItems]
+  );
+  const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
 
   const wardrobeWorth = useMemo(() => {
     const categories = garmentTypes;
@@ -1572,6 +1602,7 @@ export default function App() {
           itemNeedsImageScaleMigration(storedItems[index], item) ||
           itemNeedsImageOffsetMigration(storedItems[index], item) ||
           itemNeedsImageCropMigration(storedItems[index], item) ||
+          itemNeedsImageContractMigration(storedItems[index], item) ||
           itemNeedsFavoriteMigration(storedItems[index], item) ||
           itemNeedsQuantityMigration(storedItems[index], item) ||
           itemNeedsColorMigration(storedItems[index], item) ||
@@ -1718,6 +1749,13 @@ export default function App() {
   }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
 
   useEffect(() => {
+    const validIds = items.map((item) => item.id);
+
+    setSelectedWardrobeItemIds((current) => pruneSelectedIds(current, validIds));
+    setWardrobeSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
+  }, [items]);
+
+  useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot) {
       return undefined;
     }
@@ -1806,6 +1844,13 @@ export default function App() {
         return;
       }
 
+      if (wardrobeSelectMode) {
+        event.preventDefault();
+        clearWardrobeSelection();
+        setWardrobeSelectMode(false);
+        return;
+      }
+
       if (activePanel) {
         event.preventDefault();
         closeWorkspacePanel();
@@ -1821,6 +1866,7 @@ export default function App() {
     confirmation,
     editingId,
     fitpicPreview,
+    wardrobeSelectMode,
     wardrobeFiltersOpen,
     wardrobeWorthOpen,
     wardrobeSavedOpen,
@@ -2005,6 +2051,7 @@ export default function App() {
         itemNeedsImageScaleMigration(nextItems[index], item) ||
         itemNeedsImageOffsetMigration(nextItems[index], item) ||
         itemNeedsImageCropMigration(nextItems[index], item) ||
+        itemNeedsImageContractMigration(nextItems[index], item) ||
         itemNeedsFavoriteMigration(nextItems[index], item) ||
         itemNeedsQuantityMigration(nextItems[index], item) ||
         itemNeedsColorMigration(nextItems[index], item) ||
@@ -2347,6 +2394,25 @@ export default function App() {
 
       return nextOutfit;
     });
+  }
+
+  function handleWardrobePreviewClick(item, event) {
+    if (!wardrobeSelectMode) {
+      equipItem(item);
+      return;
+    }
+
+    const nextSelectionState = getNextSelectionState({
+      selectedIds: selectedWardrobeItemIds,
+      orderedIds: visibleWardrobeItemIds,
+      clickedId: item.id,
+      anchorId: wardrobeSelectionAnchorId,
+      shiftKey: event.shiftKey,
+      toggleKey: event.metaKey || event.ctrlKey
+    });
+
+    setSelectedWardrobeItemIds(nextSelectionState.selectedIds);
+    setWardrobeSelectionAnchorId(nextSelectionState.anchorId);
   }
 
   function resolveSlotForItem(item) {
@@ -3217,6 +3283,8 @@ export default function App() {
   function toggleWardrobeSaved() {
     closeUtilityWindows();
     setWardrobeManageOpen(false);
+    clearWardrobeSelection();
+    setWardrobeSelectMode(false);
     setWardrobeSavedOpen((current) => {
       const nextOpen = !current;
 
@@ -3503,11 +3571,12 @@ export default function App() {
       <div className="wardrobe-grid">
         {visibleWardrobeItems.map((item) => {
           const isEquipped = Object.values(outfit).includes(item.id);
+          const isSelected = selectedWardrobeItemIds.includes(item.id);
 
           return (
             <article
               key={item.id}
-              className={`wardrobe-card ${isEquipped ? "is-equipped" : ""} ${excluded[item.id] ? "is-excluded" : ""}`}
+              className={`wardrobe-card ${isEquipped ? "is-equipped" : ""} ${excluded[item.id] ? "is-excluded" : ""} ${isSelected ? "is-selected" : ""} ${wardrobeSelectMode ? "is-selection-mode" : ""}`}
             >
               <button
                 type="button"
@@ -3518,7 +3587,19 @@ export default function App() {
                 {excluded[item.id] ? "×" : ""}
               </button>
 
-              <button type="button" className="wardrobe-preview" onClick={() => equipItem(item)}>
+              {wardrobeSelectMode ? (
+                <span className="selection-checkmark" aria-hidden="true">
+                  {isSelected ? "✓" : ""}
+                </span>
+              ) : null}
+
+              <button
+                type="button"
+                className={`wardrobe-preview ${isSelected ? "is-selected" : ""}`}
+                onClick={(event) => handleWardrobePreviewClick(item, event)}
+                aria-pressed={wardrobeSelectMode ? isSelected : undefined}
+                aria-label={wardrobeSelectMode ? `Select ${buildDisplayName(item)}` : `Equip ${buildDisplayName(item)}`}
+              >
                 <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
               </button>
 
@@ -4377,6 +4458,14 @@ export default function App() {
                 <div className="wardrobe-header-actions">
                   <button
                     type="button"
+                    className={`secondary-button ${wardrobeSelectMode ? "is-active" : ""}`}
+                    onClick={toggleWardrobeSelectMode}
+                    aria-pressed={wardrobeSelectMode}
+                  >
+                    {wardrobeSelectMode ? `Selecting ${selectedWardrobeItemCount}` : "Select"}
+                  </button>
+                  <button
+                    type="button"
                     className={`secondary-button filter-button ${wardrobeFiltersOpen || hasActiveWardrobeFilters ? "is-active" : ""}`}
                     onClick={openWardrobeFilters}
                     aria-pressed={wardrobeFiltersOpen}
@@ -4455,6 +4544,19 @@ export default function App() {
                 renderSavedOutfitsContent()
               ) : (
                 <>
+                  {wardrobeSelectMode ? (
+                    <div className="wardrobe-selection-bar" aria-label="Wardrobe selection">
+                      <strong>{selectedWardrobeItemCount} selected</strong>
+                      <div className="wardrobe-selection-actions">
+                        <button type="button" className="ghost-button" onClick={clearWardrobeSelection} disabled={!selectedWardrobeItemCount}>
+                          Clear
+                        </button>
+                        <button type="button" className="ghost-button" onClick={toggleWardrobeSelectMode}>
+                          Done
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="wardrobe-inline-utilities">
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
                       <button

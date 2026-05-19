@@ -295,6 +295,33 @@ export function getItemSortTimestamp(item, field = "createdAt") {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeImageAsset(value, fallbackSrc = "") {
+  const asset = isRecord(value) ? value : {};
+  const src = typeof asset.src === "string" ? asset.src : fallbackSrc;
+
+  return {
+    ...asset,
+    src
+  };
+}
+
+function normalizeImages(images, imageUrl) {
+  const normalizedImages = isRecord(images) ? images : {};
+  const preview = normalizeImageAsset(normalizedImages.preview, imageUrl);
+  const thumbnail = normalizeImageAsset(normalizedImages.thumbnail, preview.src || imageUrl);
+
+  return {
+    ...normalizedImages,
+    original: normalizeImageAsset(normalizedImages.original),
+    preview,
+    thumbnail
+  };
+}
+
 export function normalizeItem(
   item,
   {
@@ -309,11 +336,13 @@ export function normalizeItem(
 ) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
-  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? "");
+  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? item.images?.preview?.src ?? "");
   const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
   const createdAt = normalizeTimestamp(item.createdAt) || fallbackCreatedAt || new Date().toISOString();
   const updatedAt = normalizeTimestamp(item.updatedAt) || createdAt;
   const imageCrop = getNormalizedImageCrop(item);
+  const images = normalizeImages(item.images, imageUrl);
+  const originalPreserved = item.originalPreserved === true;
 
   const normalizedItem = {
     ...emptyForm,
@@ -322,6 +351,8 @@ export function normalizeItem(
     value,
     retailValue: correction?.retailValue ?? retailValue,
     imageUrl,
+    images,
+    originalPreserved,
     imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
     imageScale: normalizeImageScale(item.imageScale),
     imageOffsetX: normalizeImageOffset(item.imageOffsetX),
@@ -344,6 +375,14 @@ export function normalizeItem(
   };
 
   return normalizedItem;
+}
+
+export function itemNeedsImageContractMigration(originalItem, normalizedItem) {
+  return (
+    (originalItem.imageUrl ?? originalItem.img ?? originalItem.images?.preview?.src ?? "") !== normalizedItem.imageUrl ||
+    JSON.stringify(isRecord(originalItem.images) ? originalItem.images : {}) !== JSON.stringify(normalizedItem.images) ||
+    originalItem.originalPreserved !== normalizedItem.originalPreserved
+  );
 }
 
 export function itemNeedsColorMigration(originalItem, normalizedItem) {

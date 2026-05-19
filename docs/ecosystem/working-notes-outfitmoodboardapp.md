@@ -108,6 +108,8 @@ These systems remain tightly coupled and behavior-sensitive.
 
 Build/tests passed after current extraction steps.
 
+- Define OA garment lifecycle/acquisition pipeline before implementing wishlist/archive/sold features.
+
 ---
 
 # **Sensitive systems**

@@ -7,6 +7,12 @@ export const emptyForm = {
   id: "",
   name: "",
   imageUrl: "",
+  images: {
+    original: { src: "" },
+    preview: { src: "" },
+    thumbnail: { src: "" }
+  },
+  originalPreserved: false,
   imageScale: 100,
   imageFrameScale: 100,
   imageOffsetX: 0,
