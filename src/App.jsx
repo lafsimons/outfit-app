@@ -110,6 +110,7 @@ import {
   normalizeSavedOutfit,
   normalizeSavedOutfits
 } from "./lib/appStateModel";
+import { prepareBackupImport } from "./lib/backupImport";
 import {
   addTagToItemTags,
   hasMeaningfulItemChange,
@@ -2205,51 +2206,8 @@ export default function App() {
     return nextOutfit;
   }
 
-  async function applyLoadedData(nextItems, nextAppState) {
-    const fallbackTimestampBaseMs = Date.now() - Math.max(nextItems.length - 1, 0) * 1000;
-    const normalizedItems = nextItems
-      .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
-      .map((item) =>
-        (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
-          ? restoreLegacyBakedImageScale(item)
-          : item
-      );
-    const effectiveItems =
-      (nextAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION
-        ? await Promise.all(normalizedItems.map((item) => bakeItemImagePresentation(item)))
-        : normalizedItems;
-    const migratedItems = effectiveItems.filter(
-      (item, index) =>
-        itemNeedsRetailMigration(nextItems[index], item) ||
-        itemNeedsImageFrameScaleMigration(nextItems[index], item) ||
-        itemNeedsImageScaleMigration(nextItems[index], item) ||
-        itemNeedsImageOffsetMigration(nextItems[index], item) ||
-        itemNeedsImageCropMigration(nextItems[index], item) ||
-        itemNeedsImageContractMigration(nextItems[index], item) ||
-        itemNeedsFavoriteMigration(nextItems[index], item) ||
-        itemNeedsQuantityMigration(nextItems[index], item) ||
-        itemNeedsColorMigration(nextItems[index], item) ||
-        itemNeedsWeightMigration(nextItems[index], item) ||
-        itemNeedsGarmentTypeMigration(nextItems[index], item) ||
-        itemNeedsTagMigration(nextItems[index], item) ||
-        itemNeedsClimateTagMigration(nextItems[index], item) ||
-        itemNeedsItemUuidMigration(nextItems[index], item) ||
-        itemNeedsImportMetadataMigration(nextItems[index], item) ||
-        itemNeedsDefaultMetadataMigration(nextItems[index], item) ||
-        itemNeedsTimestampMigration(nextItems[index], item)
-    );
-
-    if (migratedItems.length) {
-      await Promise.all(migratedItems.map((item) => saveItem(item)));
-    }
-
-    const fallbackOutfit = nextAppState?.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(nextAppState?.outfitAffinity), normalizeRecentOutfits(nextAppState?.recentOutfits));
-    const hydratedAppState = normalizeHydratedAppState(nextAppState, {
-      fallbackOutfit,
-      normalizeWeatherSettings
-    });
-
-    setItems(effectiveItems);
+  function applyLoadedData(nextItems, hydratedAppState) {
+    setItems(nextItems);
     setLayering(hydratedAppState.layering);
     setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
     setLocked(hydratedAppState.locked);
@@ -2335,8 +2293,28 @@ export default function App() {
       return;
     }
 
-    await replaceWithBackup(backup);
-    await applyLoadedData(backup.items, backup.appState);
+    const preparedBackup = await prepareBackupImport(backup, {
+      normalizeStoredItem,
+      createFallbackItemTimestamp,
+      restoreLegacyBakedImageScale,
+      bakeItemImagePresentation,
+      applyMappedStyleWeightDefaults,
+      normalizeHydratedAppState,
+      buildNextOutfit,
+      normalizeOutfitAffinity,
+      normalizeRecentOutfits,
+      normalizeWeatherSettings,
+      defaultGenerationLists,
+      emptyOutfitFilters,
+      defaultGenerationMode,
+      migrationVersions: {
+        itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
+        imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION
+      }
+    });
+
+    await replaceWithBackup(preparedBackup.backup);
+    applyLoadedData(preparedBackup.items, preparedBackup.appState);
     window.alert("Backup imported.");
   }
 
