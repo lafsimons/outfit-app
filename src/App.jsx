@@ -3083,7 +3083,7 @@ export default function App() {
     await saveItem(nextItem);
 
     if (!duplicate && editingId !== "new" && draft.id !== nextItem.id) {
-      await deleteItem(draft.id);
+      await deleteItem(draft.id, { skipSyncMetadata: true });
     }
 
     setItems((current) => {

@@ -72,6 +72,97 @@ function buildLocalOnlySyncMetadata({
   };
 }
 
+function getNextRecordVersion(existingRow) {
+  const currentVersion = Number(existingRow?.recordVersion);
+  return Number.isFinite(currentVersion) ? currentVersion + 1 : 1;
+}
+
+function buildPendingUploadSyncMetadata({
+  existingRow,
+  key,
+  entityType,
+  entityUuid,
+  legacyId,
+  lastModifiedByDevice,
+  pendingDelete = false
+}) {
+  return {
+    ...(existingRow ?? buildLocalOnlySyncMetadata({
+      key,
+      entityType,
+      entityUuid,
+      legacyId,
+      lastModifiedByDevice
+    })),
+    key,
+    app: "oa",
+    entityType,
+    entityUuid,
+    legacyId,
+    recordVersion: getNextRecordVersion(existingRow),
+    syncStatus: "pending_upload",
+    lastModifiedByDevice,
+    pendingDelete,
+    lastSyncError: null
+  };
+}
+
+function normalizeSavedOutfits(savedOutfits) {
+  return Array.isArray(savedOutfits) ? savedOutfits : [];
+}
+
+function getSavedOutfitSignature(savedOutfit) {
+  return JSON.stringify(savedOutfit ?? null);
+}
+
+function getSavedOutfitSyncUpdates(previousSavedOutfits, nextSavedOutfits, deviceId) {
+  const previousByUuid = new Map(
+    normalizeSavedOutfits(previousSavedOutfits)
+      .filter((savedOutfit) => typeof savedOutfit?.outfitUuid === "string" && savedOutfit.outfitUuid.trim())
+      .map((savedOutfit) => [savedOutfit.outfitUuid, savedOutfit])
+  );
+  const nextByUuid = new Map(
+    normalizeSavedOutfits(nextSavedOutfits)
+      .filter((savedOutfit) => typeof savedOutfit?.outfitUuid === "string" && savedOutfit.outfitUuid.trim())
+      .map((savedOutfit) => [savedOutfit.outfitUuid, savedOutfit])
+  );
+  const updates = [];
+
+  nextByUuid.forEach((savedOutfit, outfitUuid) => {
+    const previousSavedOutfit = previousByUuid.get(outfitUuid);
+
+    if (getSavedOutfitSignature(previousSavedOutfit) === getSavedOutfitSignature(savedOutfit)) {
+      return;
+    }
+
+    updates.push({
+      key: buildSavedOutfitSyncMetadataKey(outfitUuid),
+      entityType: "savedOutfit",
+      entityUuid: outfitUuid,
+      legacyId: savedOutfit.id ?? "",
+      lastModifiedByDevice: deviceId,
+      pendingDelete: false
+    });
+  });
+
+  previousByUuid.forEach((savedOutfit, outfitUuid) => {
+    if (nextByUuid.has(outfitUuid)) {
+      return;
+    }
+
+    updates.push({
+      key: buildSavedOutfitSyncMetadataKey(outfitUuid),
+      entityType: "savedOutfit",
+      entityUuid: outfitUuid,
+      legacyId: savedOutfit.id ?? "",
+      lastModifiedByDevice: deviceId,
+      pendingDelete: true
+    });
+  });
+
+  return updates;
+}
+
 function getSyncRows(items = [], savedOutfits = [], deviceId = "") {
   const itemRows = items
     .filter((item) => typeof item?.itemUuid === "string" && item.itemUuid.trim())
@@ -206,10 +297,50 @@ export async function loadItems() {
 
 export async function saveItem(item) {
   await withStore(ITEM_STORE, "readwrite", (store) => store.put(item));
+
+  if (typeof item?.itemUuid !== "string" || !item.itemUuid.trim()) {
+    return;
+  }
+
+  const deviceId = await getOrCreateDeviceId();
+  const key = buildItemSyncMetadataKey(item.itemUuid);
+  const existingRow = await getSyncMetadata(key);
+
+  await upsertSyncMetadata(
+    buildPendingUploadSyncMetadata({
+      existingRow,
+      key,
+      entityType: "item",
+      entityUuid: item.itemUuid,
+      legacyId: item.id ?? "",
+      lastModifiedByDevice: deviceId
+    })
+  );
 }
 
-export async function deleteItem(id) {
+export async function deleteItem(id, { skipSyncMetadata = false } = {}) {
+  const existingItem = await withStore(ITEM_STORE, "readonly", (store) => store.get(id));
   await withStore(ITEM_STORE, "readwrite", (store) => store.delete(id));
+
+  if (skipSyncMetadata || typeof existingItem?.itemUuid !== "string" || !existingItem.itemUuid.trim()) {
+    return;
+  }
+
+  const deviceId = await getOrCreateDeviceId();
+  const key = buildItemSyncMetadataKey(existingItem.itemUuid);
+  const existingRow = await getSyncMetadata(key);
+
+  await upsertSyncMetadata(
+    buildPendingUploadSyncMetadata({
+      existingRow,
+      key,
+      entityType: "item",
+      entityUuid: existingItem.itemUuid,
+      legacyId: existingItem.id ?? id ?? "",
+      lastModifiedByDevice: deviceId,
+      pendingDelete: true
+    })
+  );
 }
 
 export async function loadAppState() {
@@ -218,12 +349,26 @@ export async function loadAppState() {
 }
 
 export async function saveAppState(value) {
+  const previousState = await loadAppState();
   await withStore(APP_STORE, "readwrite", (store) =>
     store.put({
       key: "state",
       value
     })
   );
+
+  const deviceId = await getOrCreateDeviceId();
+  const syncUpdates = getSavedOutfitSyncUpdates(previousState?.savedOutfits, value?.savedOutfits, deviceId);
+
+  for (const update of syncUpdates) {
+    const existingRow = await getSyncMetadata(update.key);
+    await upsertSyncMetadata(
+      buildPendingUploadSyncMetadata({
+        existingRow,
+        ...update
+      })
+    );
+  }
 }
 
 export async function getOrCreateDeviceId() {

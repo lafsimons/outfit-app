@@ -8,6 +8,7 @@ import {
   getOrCreateDeviceId,
   getSyncMetadata,
   loadAppState,
+  deleteItem,
   loadItems,
   replaceWithBackup,
   saveAppState,
@@ -251,6 +252,24 @@ async function getStoreNames() {
   return storeNames;
 }
 
+async function getSyncMetadataRows() {
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const transaction = db.transaction("syncMetadata", "readonly");
+  const rows = await openRequestToPromise(transaction.objectStore("syncMetadata").getAll());
+  await transactionDone(transaction);
+  db.close();
+  return rows;
+}
+
+async function getStoredItems() {
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const transaction = db.transaction("items", "readonly");
+  const rows = await openRequestToPromise(transaction.objectStore("items").getAll());
+  await transactionDone(transaction);
+  db.close();
+  return rows;
+}
+
 test.beforeEach(() => {
   globalThis.indexedDB = new FakeIndexedDB();
   globalThis.IDBRequest = FakeIDBRequest;
@@ -304,13 +323,17 @@ test("deviceId is created and then reused", async () => {
 });
 
 test("existing items backfill local-only metadata by itemUuid", async () => {
-  const item = {
-    id: "item_1",
-    itemUuid: "item-uuid-1",
-    name: "Item 1"
-  };
+  await seedLegacyDatabase({
+    items: [
+      {
+        id: "item_1",
+        itemUuid: "item-uuid-1",
+        name: "Item 1"
+      }
+    ]
+  });
 
-  await saveItem(item);
+  const [item] = await loadItems();
 
   const firstBackfill = await backfillLocalSyncMetadata({
     items: [item]
@@ -338,18 +361,20 @@ test("existing items backfill local-only metadata by itemUuid", async () => {
 });
 
 test("existing saved outfits backfill local-only metadata by outfitUuid", async () => {
-  await saveAppState({
-    savedOutfits: [
-      {
-        id: "saved_1",
-        outfitUuid: "outfit-uuid-1",
-        name: "Saved outfit",
-        description: "",
-        outfit: {},
-        outfitItemUuids: {},
-        layering: false
-      }
-    ]
+  await seedLegacyDatabase({
+    appState: {
+      savedOutfits: [
+        {
+          id: "saved_1",
+          outfitUuid: "outfit-uuid-1",
+          name: "Saved outfit",
+          description: "",
+          outfit: {},
+          outfitItemUuids: {},
+          layering: false
+        }
+      ]
+    }
   });
 
   const appState = await loadAppState();
@@ -372,6 +397,247 @@ test("existing saved outfits backfill local-only metadata by outfitUuid", async 
     pendingDelete: false,
     lastSyncError: null
   });
+});
+
+test("item create and update dirty marking increments version and preserves sync history", async () => {
+  const createdItem = {
+    id: "item_1",
+    itemUuid: "item-uuid-1",
+    name: "Item 1"
+  };
+
+  await saveItem(createdItem);
+
+  const createdMetadata = await getSyncMetadata("oa:item:item-uuid-1");
+
+  assert.equal(createdMetadata.legacyId, "item_1");
+  assert.equal(createdMetadata.recordVersion, 1);
+  assert.equal(createdMetadata.syncStatus, "pending_upload");
+  assert.equal(createdMetadata.pendingDelete, false);
+  assert.equal(createdMetadata.lastSyncedAt, null);
+  assert.equal(createdMetadata.lastSyncError, null);
+  assert.equal(typeof createdMetadata.lastModifiedByDevice, "string");
+  assert.notEqual(createdMetadata.lastModifiedByDevice, "");
+
+  await upsertSyncMetadata({
+    ...createdMetadata,
+    recordVersion: 4,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-02-01T00:00:00.000Z",
+    lastSyncError: { message: "stale", at: "2024-02-02T00:00:00.000Z" }
+  });
+
+  await saveItem({
+    ...createdItem,
+    name: "Updated item"
+  });
+
+  const updatedMetadata = await getSyncMetadata("oa:item:item-uuid-1");
+
+  assert.equal(updatedMetadata.recordVersion, 5);
+  assert.equal(updatedMetadata.syncStatus, "pending_upload");
+  assert.equal(updatedMetadata.pendingDelete, false);
+  assert.equal(updatedMetadata.lastSyncedAt, "2024-02-01T00:00:00.000Z");
+  assert.equal(updatedMetadata.lastSyncError, null);
+  assert.equal(updatedMetadata.legacyId, "item_1");
+  assert.equal(updatedMetadata.lastModifiedByDevice, createdMetadata.lastModifiedByDevice);
+});
+
+test("item delete preserves metadata row as a pending-upload tombstone", async () => {
+  const item = {
+    id: "item_1",
+    itemUuid: "item-uuid-1",
+    name: "Item 1"
+  };
+
+  await saveItem(item);
+  await upsertSyncMetadata({
+    ...(await getSyncMetadata("oa:item:item-uuid-1")),
+    recordVersion: 2,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-03-01T00:00:00.000Z"
+  });
+
+  await deleteItem("item_1");
+
+  const metadata = await getSyncMetadata("oa:item:item-uuid-1");
+  const items = await getStoredItems();
+
+  assert.equal(items.length, 0);
+  assert.equal(metadata.recordVersion, 3);
+  assert.equal(metadata.pendingDelete, true);
+  assert.equal(metadata.syncStatus, "pending_upload");
+  assert.equal(metadata.lastSyncedAt, "2024-03-01T00:00:00.000Z");
+  assert.equal(metadata.legacyId, "item_1");
+});
+
+test("item legacy-id rename preserves one metadata row keyed by itemUuid", async () => {
+  const originalItem = {
+    id: "shirt_1",
+    itemUuid: "item-uuid-1",
+    name: "Shirt"
+  };
+  const renamedItem = {
+    ...originalItem,
+    id: "shirt_renamed"
+  };
+
+  await saveItem(originalItem);
+  await saveItem(renamedItem);
+  await deleteItem("shirt_1", { skipSyncMetadata: true });
+
+  const metadata = await getSyncMetadata("oa:item:item-uuid-1");
+  const syncRows = await getSyncMetadataRows();
+  const items = await loadItems();
+
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, "shirt_renamed");
+  assert.equal(syncRows.length, 1);
+  assert.equal(metadata.entityUuid, "item-uuid-1");
+  assert.equal(metadata.legacyId, "shirt_renamed");
+  assert.equal(metadata.pendingDelete, false);
+  assert.equal(metadata.recordVersion, 2);
+});
+
+test("saved outfit create edit and delete dirty marking updates one metadata row", async () => {
+  const savedOutfit = {
+    id: "saved_1",
+    outfitUuid: "outfit-uuid-1",
+    name: "Saved outfit",
+    description: "",
+    outfit: { TopInner: "top_1" },
+    outfitItemUuids: { TopInner: "item-uuid-1" },
+    layering: false
+  };
+
+  await saveAppState({
+    savedOutfits: [savedOutfit]
+  });
+
+  const createdMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  assert.equal(createdMetadata.recordVersion, 1);
+  assert.equal(createdMetadata.syncStatus, "pending_upload");
+  assert.equal(createdMetadata.pendingDelete, false);
+
+  await upsertSyncMetadata({
+    ...createdMetadata,
+    recordVersion: 3,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-04-01T00:00:00.000Z"
+  });
+
+  await saveAppState({
+    savedOutfits: [
+      {
+        ...savedOutfit,
+        name: "Edited outfit",
+        description: "Updated"
+      }
+    ]
+  });
+
+  const editedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  assert.equal(editedMetadata.recordVersion, 4);
+  assert.equal(editedMetadata.syncStatus, "pending_upload");
+  assert.equal(editedMetadata.pendingDelete, false);
+  assert.equal(editedMetadata.lastSyncedAt, "2024-04-01T00:00:00.000Z");
+
+  await saveAppState({
+    savedOutfits: []
+  });
+
+  const deletedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  assert.equal(deletedMetadata.recordVersion, 5);
+  assert.equal(deletedMetadata.syncStatus, "pending_upload");
+  assert.equal(deletedMetadata.pendingDelete, true);
+  assert.equal(deletedMetadata.legacyId, "saved_1");
+});
+
+test("saved outfit metadata is dirtied when item id rewrites or deletes change the outfit payload", async () => {
+  const affectedByRename = {
+    id: "saved_rename",
+    outfitUuid: "outfit-uuid-rename",
+    name: "Rename target",
+    description: "",
+    outfit: { TopInner: "top_1" },
+    outfitItemUuids: { TopInner: "item-uuid-1" },
+    layering: false
+  };
+  const affectedByDelete = {
+    id: "saved_delete",
+    outfitUuid: "outfit-uuid-delete",
+    name: "Delete target",
+    description: "",
+    outfit: { TopInner: "top_2" },
+    outfitItemUuids: { TopInner: "item-uuid-2" },
+    layering: false
+  };
+  const unaffected = {
+    id: "saved_same",
+    outfitUuid: "outfit-uuid-same",
+    name: "Unchanged",
+    description: "",
+    outfit: { Bottom: "bottom_1" },
+    outfitItemUuids: { Bottom: "item-uuid-3" },
+    layering: false
+  };
+
+  await saveAppState({
+    savedOutfits: [affectedByRename, affectedByDelete, unaffected]
+  });
+
+  await upsertSyncMetadata({
+    ...(await getSyncMetadata("oa:savedOutfit:outfit-uuid-rename")),
+    recordVersion: 7,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-05-01T00:00:00.000Z"
+  });
+  await upsertSyncMetadata({
+    ...(await getSyncMetadata("oa:savedOutfit:outfit-uuid-delete")),
+    recordVersion: 9,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-05-02T00:00:00.000Z"
+  });
+  await upsertSyncMetadata({
+    ...(await getSyncMetadata("oa:savedOutfit:outfit-uuid-same")),
+    recordVersion: 11,
+    syncStatus: "synced",
+    lastSyncedAt: "2024-05-03T00:00:00.000Z"
+  });
+
+  await saveAppState({
+    savedOutfits: [
+      {
+        ...affectedByRename,
+        outfit: { TopInner: "top_renamed" }
+      },
+      {
+        ...affectedByDelete,
+        outfit: { TopInner: null },
+        outfitItemUuids: { TopInner: "item-uuid-2" }
+      },
+      unaffected
+    ]
+  });
+
+  const renamedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-rename");
+  const deletedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-delete");
+  const unchangedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-same");
+
+  assert.equal(renamedMetadata.recordVersion, 8);
+  assert.equal(renamedMetadata.syncStatus, "pending_upload");
+  assert.equal(renamedMetadata.pendingDelete, false);
+  assert.equal(renamedMetadata.lastSyncedAt, "2024-05-01T00:00:00.000Z");
+
+  assert.equal(deletedMetadata.recordVersion, 10);
+  assert.equal(deletedMetadata.syncStatus, "pending_upload");
+  assert.equal(deletedMetadata.pendingDelete, false);
+  assert.equal(deletedMetadata.lastSyncedAt, "2024-05-02T00:00:00.000Z");
+
+  assert.equal(unchangedMetadata.recordVersion, 11);
+  assert.equal(unchangedMetadata.syncStatus, "synced");
+  assert.equal(unchangedMetadata.pendingDelete, false);
+  assert.equal(unchangedMetadata.lastSyncedAt, "2024-05-03T00:00:00.000Z");
 });
 
 test("backup export output remains unchanged when sync metadata exists", async () => {
