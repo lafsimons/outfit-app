@@ -14,6 +14,9 @@ export const emptyForm = {
   sourceImageHeight: 0,
   sourceLastModified: "",
   importSource: "",
+  sourceNamespace: "",
+  sourceRelativePath: "",
+  relinkStatus: "unknown",
   name: "",
   imageUrl: "",
   images: {

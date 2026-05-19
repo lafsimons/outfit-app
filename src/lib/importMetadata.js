@@ -17,15 +17,27 @@ function normalizeNonNegativeInteger(value) {
   return Math.round(parsed);
 }
 
+function normalizeStringField(value) {
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeRelinkStatus(value) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || "unknown";
+}
+
 export function normalizeImportMetadataFields(item, fallbackImportedAt = "") {
   return {
     importedAt: normalizeTimestampLike(item?.importedAt) || fallbackImportedAt,
-    sourceOriginalFilename: typeof item?.sourceOriginalFilename === "string" ? item.sourceOriginalFilename : "",
+    sourceOriginalFilename: normalizeStringField(item?.sourceOriginalFilename),
     sourceFileSize: normalizeNonNegativeInteger(item?.sourceFileSize),
     sourceImageWidth: normalizeNonNegativeInteger(item?.sourceImageWidth),
     sourceImageHeight: normalizeNonNegativeInteger(item?.sourceImageHeight),
     sourceLastModified: normalizeTimestampLike(item?.sourceLastModified),
-    importSource: typeof item?.importSource === "string" ? item.importSource.trim() : ""
+    importSource: typeof item?.importSource === "string" ? item.importSource.trim() : "",
+    sourceNamespace: normalizeStringField(item?.sourceNamespace),
+    sourceRelativePath: normalizeStringField(item?.sourceRelativePath),
+    relinkStatus: normalizeRelinkStatus(item?.relinkStatus)
   };
 }
 
@@ -43,11 +55,14 @@ export async function readImageFileMetadata(
 
   return {
     importedAt: now(),
-    sourceOriginalFilename: typeof file?.name === "string" ? file.name : "",
+    sourceOriginalFilename: normalizeStringField(file?.name),
     sourceFileSize: normalizeNonNegativeInteger(file?.size),
     sourceImageWidth: normalizeNonNegativeInteger(image?.naturalWidth),
     sourceImageHeight: normalizeNonNegativeInteger(image?.naturalHeight),
     sourceLastModified: normalizeTimestampLike(file?.lastModified),
-    importSource
+    importSource,
+    sourceNamespace: "local-file",
+    sourceRelativePath: normalizeStringField(file?.name),
+    relinkStatus: "available"
   };
 }

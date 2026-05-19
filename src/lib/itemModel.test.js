@@ -19,6 +19,9 @@ const baseEmptyForm = {
   sourceImageHeight: 0,
   sourceLastModified: "",
   importSource: "",
+  sourceNamespace: "",
+  sourceRelativePath: "",
+  relinkStatus: "unknown",
   name: "",
   imageUrl: "",
   images: {
@@ -106,6 +109,9 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.sourceImageHeight, 0);
   assert.equal(normalized.sourceLastModified, "");
   assert.equal(normalized.importSource, "");
+  assert.equal(normalized.sourceNamespace, "");
+  assert.equal(normalized.sourceRelativePath, "");
+  assert.equal(normalized.relinkStatus, "unknown");
 });
 
 test("normalizeItem does not let metadata corrections override an explicit incoming list", () => {
@@ -198,6 +204,9 @@ test("normalizeItem preserves existing import metadata and unknown fields", () =
       sourceImageHeight: 1800,
       sourceLastModified: 1704078245000,
       importSource: "file-upload",
+      sourceNamespace: "local-file",
+      sourceRelativePath: "imports/IMG_1001.HEIC",
+      relinkStatus: "missing",
       extraMetadata: { keep: true }
     },
     {
@@ -217,6 +226,9 @@ test("normalizeItem preserves existing import metadata and unknown fields", () =
   assert.equal(normalized.sourceImageHeight, 1800);
   assert.equal(normalized.sourceLastModified, "2024-01-01T03:04:05.000Z");
   assert.equal(normalized.importSource, "file-upload");
+  assert.equal(normalized.sourceNamespace, "local-file");
+  assert.equal(normalized.sourceRelativePath, "imports/IMG_1001.HEIC");
+  assert.equal(normalized.relinkStatus, "missing");
   assert.deepEqual(normalized.extraMetadata, { keep: true });
 });
 
@@ -238,6 +250,28 @@ test("normalizeItem preserves unknown list values for forward-compatible imports
   );
 
   assert.equal(normalized.list, "ArchivedLater");
+});
+
+test("normalizeItem defaults additive source identity fields safely for legacy items", () => {
+  const normalized = normalizeItem(
+    {
+      id: "legacy_item",
+      imageUrl: "data:image/png;base64,preview",
+      createdAt: "2024-01-02T03:04:05.000Z"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.sourceNamespace, "");
+  assert.equal(normalized.sourceRelativePath, "");
+  assert.equal(normalized.relinkStatus, "unknown");
 });
 
 test("normalizeItem preserves an existing itemUuid", () => {
@@ -341,6 +375,34 @@ test("import metadata migration detection catches importedAt backfill for existi
   });
 
   assert.equal(normalized.importedAt, "2024-01-02T03:04:05.000Z");
+  assert.equal(itemNeedsImportMetadataMigration(originalItem, normalized), true);
+});
+
+test("import metadata migration detection catches additive source identity backfill for legacy items", () => {
+  const originalItem = {
+    id: "legacy_item",
+    imageUrl: "data:image/png;base64,preview",
+    createdAt: "2024-01-02T03:04:05.000Z",
+    importedAt: "2024-01-02T03:04:05.000Z",
+    sourceOriginalFilename: "",
+    sourceFileSize: 0,
+    sourceImageWidth: 0,
+    sourceImageHeight: 0,
+    sourceLastModified: "",
+    importSource: ""
+  };
+  const normalized = normalizeItem(originalItem, {
+    emptyForm: baseEmptyForm,
+    resolveImageUrl: (value) => value,
+    normalizeImageFrameScale: (value) => value ?? 100,
+    normalizeImageScale: (value) => value ?? 100,
+    normalizeImageOffset: (value) => value ?? 0,
+    getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+  });
+
+  assert.equal(normalized.sourceNamespace, "");
+  assert.equal(normalized.sourceRelativePath, "");
+  assert.equal(normalized.relinkStatus, "unknown");
   assert.equal(itemNeedsImportMetadataMigration(originalItem, normalized), true);
 });
 

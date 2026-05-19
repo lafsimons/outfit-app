@@ -12,7 +12,10 @@ test("normalizeImportMetadataFields applies safe defaults and importedAt fallbac
         sourceImageWidth: -10,
         sourceImageHeight: null,
         sourceLastModified: "not-a-date",
-        importSource: "  "
+        importSource: "  ",
+        sourceNamespace: null,
+        sourceRelativePath: 42,
+        relinkStatus: "   "
       },
       "2024-01-02T03:04:05.000Z"
     ),
@@ -23,7 +26,10 @@ test("normalizeImportMetadataFields applies safe defaults and importedAt fallbac
       sourceImageWidth: 0,
       sourceImageHeight: 0,
       sourceLastModified: "",
-      importSource: ""
+      importSource: "",
+      sourceNamespace: "",
+      sourceRelativePath: "",
+      relinkStatus: "unknown"
     }
   );
 });
@@ -57,6 +63,9 @@ test("readImageFileMetadata captures file provenance before compression", async 
     sourceImageWidth: 3024,
     sourceImageHeight: 4032,
     sourceLastModified: "2024-03-09T16:00:00.000Z",
-    importSource: "file-upload"
+    importSource: "file-upload",
+    sourceNamespace: "local-file",
+    sourceRelativePath: "IMG_2048.HEIC",
+    relinkStatus: "available"
   });
 });

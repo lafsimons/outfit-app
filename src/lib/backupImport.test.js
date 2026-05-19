@@ -131,6 +131,9 @@ test("prepareBackupImport backfills itemUuid and provenance metadata during impo
   assert.equal(prepared.backup.items[0].sourceImageHeight, 0);
   assert.equal(prepared.backup.items[0].sourceLastModified, "");
   assert.equal(prepared.backup.items[0].importSource, "");
+  assert.equal(prepared.backup.items[0].sourceNamespace, "");
+  assert.equal(prepared.backup.items[0].sourceRelativePath, "");
+  assert.equal(prepared.backup.items[0].relinkStatus, "unknown");
 });
 
 test("prepareBackupImport applies startup style and weight migration when import app-state is outdated", async () => {

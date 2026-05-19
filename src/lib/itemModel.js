@@ -474,7 +474,10 @@ export function itemNeedsImportMetadataMigration(originalItem, normalizedItem) {
     originalItem?.sourceImageWidth !== normalizedItem.sourceImageWidth ||
     originalItem?.sourceImageHeight !== normalizedItem.sourceImageHeight ||
     originalItem?.sourceLastModified !== normalizedItem.sourceLastModified ||
-    originalItem?.importSource !== normalizedItem.importSource
+    originalItem?.importSource !== normalizedItem.importSource ||
+    originalItem?.sourceNamespace !== normalizedItem.sourceNamespace ||
+    originalItem?.sourceRelativePath !== normalizedItem.sourceRelativePath ||
+    originalItem?.relinkStatus !== normalizedItem.relinkStatus
   );
 }
 
