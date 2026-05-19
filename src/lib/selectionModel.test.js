@@ -58,6 +58,19 @@ test("getNextSelectionState keeps file-browser style single, toggle, and shift r
       anchorId: "c"
     }
   );
+
+  assert.deepEqual(
+    getNextSelectionState({
+      selectedIds: ["d"],
+      orderedIds,
+      clickedId: "d",
+      anchorId: "d"
+    }),
+    {
+      selectedIds: [],
+      anchorId: null
+    }
+  );
 });
 
 test("getNextSelectionState falls back safely when shift has no usable anchor", () => {

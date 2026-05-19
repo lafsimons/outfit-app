@@ -86,6 +86,13 @@ export function getNextSelectionState({
     };
   }
 
+  if (currentSelection.size === 1 && currentSelection.has(clickedId)) {
+    return {
+      selectedIds: [],
+      anchorId: null
+    };
+  }
+
   return {
     selectedIds: [clickedId],
     anchorId: clickedId

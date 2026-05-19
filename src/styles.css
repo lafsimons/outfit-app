@@ -1403,9 +1403,12 @@ button:disabled {
 }
 
 .item-figure:focus-visible,
-.wardrobe-preview:focus-visible,
 .accessory-slot:focus-visible {
   box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.22);
+}
+
+.wardrobe-preview:focus-visible {
+  box-shadow: none;
 }
 
 .wardrobe-preview {
@@ -1735,6 +1738,14 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.wardrobe-selection-bar.is-inline {
+  margin-top: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  flex-wrap: nowrap;
+}
+
 .wardrobe-selection-summary {
   display: flex;
   align-items: center;
@@ -1746,13 +1757,12 @@ button:disabled {
   font-size: 0.72rem;
 }
 
-.wardrobe-selection-count,
-.wardrobe-toolbar-badge {
+.wardrobe-selection-count {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 4px;
   min-width: 24px;
-  padding: 2px 7px;
+  padding: 2px 4px 2px 7px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface-solid);
@@ -1760,23 +1770,69 @@ button:disabled {
   font-weight: 700;
 }
 
+.wardrobe-selection-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
 .wardrobe-selection-actions {
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
+  position: relative;
+  z-index: 5;
 }
 
-.wardrobe-bulk-actions {
+.wardrobe-selection-more {
+  position: relative;
+}
+
+.wardrobe-selection-more > summary {
+  display: inline-flex;
+  align-items: center;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wardrobe-selection-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wardrobe-selection-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  width: min(340px, calc(100vw - 48px));
+  display: grid;
+  gap: 8px;
+  padding: 10px 8px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(18px);
+}
+
+.wardrobe-selection-menu-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  flex: 1 1 auto;
+  gap: 6px;
 }
 
 .wardrobe-bulk-group {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }
@@ -1788,11 +1844,16 @@ button:disabled {
   min-width: 0;
   padding: 0;
   border: 0;
-  font-size: 0.62rem;
+  font-size: 0.64rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted-strong);
+}
+
+.wardrobe-bulk-actions {
+  display: grid;
+  gap: 6px;
 }
 
 .wardrobe-bulk-tag-control select {
@@ -1851,11 +1912,17 @@ button:disabled {
 
 .wardrobe-controls-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 6px;
   padding-top: 10px;
   margin-top: 10px;
   border-top: 1px solid var(--border-soft);
+}
+
+.wardrobe-controls-footer .active-filter-summary {
+  width: 100%;
+  margin-bottom: 2px;
 }
 
 .wardrobe-manage-grid {

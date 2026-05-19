@@ -1562,10 +1562,6 @@ export default function App() {
     setWardrobeSelectionAnchorId(null);
   }
 
-  function clearWardrobeSelectionState() {
-    clearWardrobeSelection();
-  }
-
   async function persistBulkSelectionUpdate(updater) {
     const timestamp = new Date().toISOString();
     let updatedEditingDraft = null;
@@ -5005,18 +5001,31 @@ export default function App() {
                   </div>
                 </div>
                 <div className="wardrobe-header-actions">
-                  <button
-                    type="button"
-                    className={`secondary-button ${hasWardrobeSelection ? "is-active" : ""}`}
-                    onClick={clearWardrobeSelectionState}
-                    aria-pressed={hasWardrobeSelection}
-                    disabled={!hasWardrobeSelection}
-                  >
-                    Select
-                    {hasWardrobeSelection ? (
-                      <span className="wardrobe-toolbar-badge">{selectedWardrobeItemCount}</span>
-                    ) : null}
-                  </button>
+                  {hasWardrobeSelection && !wardrobeSavedOpen ? (
+                    <WardrobeSelectionBar
+                      inline
+                      selectedCount={selectedWardrobeItemCount}
+                      bulkListDraft={bulkListDraft}
+                      setBulkListDraft={setBulkListDraft}
+                      bulkStyleTagDraft={bulkStyleTagDraft}
+                      setBulkStyleTagDraft={setBulkStyleTagDraft}
+                      bulkClimateTagDraft={bulkClimateTagDraft}
+                      setBulkClimateTagDraft={setBulkClimateTagDraft}
+                      itemListOptions={itemListOptions}
+                      styleTagOptions={styleTagOptions}
+                      editableClimateTagOptions={editableClimateTagOptions}
+                      onEdit={editSelectedWardrobeItem}
+                      onClear={clearWardrobeSelection}
+                      onMoveToList={moveSelectedItemsToList}
+                      onFavorite={() => setSelectedItemsFavoriteState(true)}
+                      onUnfavorite={() => setSelectedItemsFavoriteState(false)}
+                      onDelete={handleBulkDeleteSelected}
+                      onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                      onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                      onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                      onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                    />
+                  ) : null}
                   <button
                     type="button"
                     className={`secondary-button ${wardrobeSavedOpen ? "is-active" : ""}`}
@@ -5165,32 +5174,6 @@ export default function App() {
               </div>
             </div>
 
-            {hasWardrobeSelection && !wardrobeSavedOpen ? (
-              <WardrobeSelectionBar
-                selectedCount={selectedWardrobeItemCount}
-                bulkListDraft={bulkListDraft}
-                setBulkListDraft={setBulkListDraft}
-                bulkStyleTagDraft={bulkStyleTagDraft}
-                setBulkStyleTagDraft={setBulkStyleTagDraft}
-                bulkClimateTagDraft={bulkClimateTagDraft}
-                setBulkClimateTagDraft={setBulkClimateTagDraft}
-                itemListOptions={itemListOptions}
-                styleTagOptions={styleTagOptions}
-                editableClimateTagOptions={editableClimateTagOptions}
-                onEdit={editSelectedWardrobeItem}
-                onClear={clearWardrobeSelection}
-                onDone={clearWardrobeSelectionState}
-                onMoveToList={moveSelectedItemsToList}
-                onFavorite={() => setSelectedItemsFavoriteState(true)}
-                onUnfavorite={() => setSelectedItemsFavoriteState(false)}
-                onDelete={handleBulkDeleteSelected}
-                onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
-                onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
-              />
-            ) : null}
-
             <input
               ref={importBackupRef}
               type="file"
@@ -5306,45 +5289,40 @@ export default function App() {
                         })}
                       </div>
                       <div className="wardrobe-controls-footer">
+                        {wardrobeSearch || hasActiveWardrobeFilters ? (
+                          <div className="active-filter-summary" aria-label="Active wardrobe filters">
+                            <div className="active-filter-chips">
+                              {wardrobeSearch ? (
+                                <span className="active-filter-chip">
+                                  <span>Search</span>
+                                  {wardrobeSearch}
+                                </span>
+                              ) : null}
+                              {activeWardrobeFilterChips.map((filter) => (
+                                <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
+                                  <span>{filter.label}</span>
+                                  {filter.value}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => {
+                            clearWardrobeFilters();
+                            setWardrobeSearch("");
+                          }}
+                          disabled={!wardrobeSearch && !hasActiveWardrobeFilters}
+                        >
+                          Clear search + filters
+                        </button>
                         <button type="button" className="ghost-button" onClick={clearExcluded}>
                           Clear excluded
                         </button>
                       </div>
                     </div>
-
-                    {wardrobeSearch || wardrobeFiltersOpen || hasActiveWardrobeFilters ? (
-                      <div className="active-filter-summary" aria-label="Active wardrobe filters">
-                        <div className="active-filter-chips">
-                          {wardrobeSearch ? (
-                            <span className="active-filter-chip">
-                              <span>Search</span>
-                              {wardrobeSearch}
-                            </span>
-                          ) : null}
-                          {activeWardrobeFilterChips.length ? activeWardrobeFilterChips.map((filter) => (
-                            <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
-                              <span>{filter.label}</span>
-                              {filter.value}
-                            </span>
-                          )) : (
-                            <span className="active-filter-chip">
-                              <span>Filters</span>
-                              None active
-                            </span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          className="ghost-button clear-filters-button"
-                          onClick={() => {
-                            clearWardrobeFilters();
-                            setWardrobeSearch("");
-                          }}
-                        >
-                          Clear search + filters
-                        </button>
-                      </div>
-                    ) : null}
 
                     <div className="wardrobe-results-count">
                       {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
