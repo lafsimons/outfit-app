@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   backfillOutfitItemUuids,
+  normalizeOutfitUuid,
   normalizeHydratedAppState,
   normalizeGenerationLists,
   normalizeOutfitItemUuids,
@@ -14,9 +15,32 @@ test("saved outfit default field filling preserves current behavior", () => {
   assert.deepEqual(
     normalizeSavedOutfit({
       id: "saved_1"
+    }, {
+      createOutfitUuid: () => "generated-outfit-uuid"
     }),
     {
       id: "saved_1",
+      outfitUuid: "generated-outfit-uuid",
+      name: "Saved outfit",
+      description: "",
+      outfit: {},
+      outfitItemUuids: {},
+      layering: false
+    }
+  );
+});
+
+test("saved outfit normalization preserves existing outfitUuid", () => {
+  assert.deepEqual(
+    normalizeSavedOutfit({
+      id: "saved_1",
+      outfitUuid: "stable-outfit-uuid"
+    }, {
+      createOutfitUuid: () => "generated-outfit-uuid"
+    }),
+    {
+      id: "saved_1",
+      outfitUuid: "stable-outfit-uuid",
       name: "Saved outfit",
       description: "",
       outfit: {},
@@ -32,9 +56,12 @@ test("saved outfit normalization preserves additive outfitItemUuids sidecars", (
       id: "saved_1",
       outfit: { TopInner: "top_1" },
       outfitItemUuids: { TopInner: "uuid_top_1", Bottom: "" }
+    }, {
+      createOutfitUuid: () => "generated-outfit-uuid"
     }),
     {
       id: "saved_1",
+      outfitUuid: "generated-outfit-uuid",
       name: "Saved outfit",
       description: "",
       outfit: { TopInner: "top_1" },
@@ -48,6 +75,7 @@ test("saved outfit deduplication uses getOutfitKey semantics", () => {
   const normalized = normalizeSavedOutfits([
     {
       id: "saved_1",
+      outfitUuid: "outfit-uuid-1",
       name: "First",
       description: "A",
       outfit: { Headwear: "head_1", TopInner: "top_1", TopOuter: null, Bottom: "bottom_1", Footwear: "shoe_1" },
@@ -55,6 +83,7 @@ test("saved outfit deduplication uses getOutfitKey semantics", () => {
     },
     {
       id: "saved_2",
+      outfitUuid: "outfit-uuid-2",
       name: "Duplicate",
       description: "B",
       outfit: { Headwear: "head_1", TopInner: "top_1", TopOuter: null, Bottom: "bottom_1", Footwear: "shoe_1" },
@@ -62,16 +91,26 @@ test("saved outfit deduplication uses getOutfitKey semantics", () => {
     },
     {
       id: "saved_3",
+      outfitUuid: "outfit-uuid-3",
       name: "Different layering",
       description: "C",
       outfit: { Headwear: "head_1", TopInner: "top_1", TopOuter: null, Bottom: "bottom_1", Footwear: "shoe_1" },
       layering: false
     }
-  ]);
+  ], {
+    createOutfitUuid: () => "generated-outfit-uuid"
+  });
 
   assert.equal(normalized.length, 2);
   assert.equal(normalized[0].id, "saved_1");
+  assert.equal(normalized[0].outfitUuid, "outfit-uuid-1");
   assert.equal(normalized[1].id, "saved_3");
+  assert.equal(normalized[1].outfitUuid, "outfit-uuid-3");
+});
+
+test("normalizeOutfitUuid preserves existing values and backfills missing ones", () => {
+  assert.equal(normalizeOutfitUuid("stable-outfit-uuid", () => "generated-outfit-uuid"), "stable-outfit-uuid");
+  assert.equal(normalizeOutfitUuid("", () => "generated-outfit-uuid"), "generated-outfit-uuid");
 });
 
 test("generation list default merging preserves current behavior", () => {
@@ -314,6 +353,7 @@ test("legacy id-only saved outfit hydration preserves outfits and backfills side
     ]
   }, {
     fallbackOutfit: {},
+    createOutfitUuid: () => "generated-outfit-uuid",
     normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
     itemsById: {
       top_1: { id: "top_1", itemUuid: "uuid_top_1" },
@@ -324,6 +364,7 @@ test("legacy id-only saved outfit hydration preserves outfits and backfills side
   assert.deepEqual(hydrated.savedOutfits, [
     {
       id: "saved_1",
+      outfitUuid: "generated-outfit-uuid",
       name: "Saved outfit",
       description: "",
       outfit: { TopInner: "top_1", Footwear: "shoe_1" },
@@ -331,6 +372,27 @@ test("legacy id-only saved outfit hydration preserves outfits and backfills side
       layering: true
     }
   ]);
+});
+
+test("saved outfit hydration preserves an existing outfitUuid", () => {
+  const hydrated = normalizeHydratedAppState({
+    savedOutfits: [
+      {
+        id: "saved_1",
+        outfitUuid: "stable-outfit-uuid",
+        outfit: { TopInner: "top_1" }
+      }
+    ]
+  }, {
+    fallbackOutfit: {},
+    createOutfitUuid: () => "generated-outfit-uuid",
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {
+      top_1: { id: "top_1", itemUuid: "uuid_top_1" }
+    }
+  });
+
+  assert.equal(hydrated.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
 });
 
 test("backfillOutfitItemUuids preserves existing sidecars and fills resolved ids", () => {

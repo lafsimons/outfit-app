@@ -9,6 +9,22 @@ import {
 } from "./generation.js";
 import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./itemModel.js";
 
+export function createOutfitUuid() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `outfit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function normalizeOutfitUuid(value, createUuid = createOutfitUuid) {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  return createUuid();
+}
+
 export function normalizeGenerationLists(generationLists) {
   return {
     ...defaultGenerationLists,
@@ -44,9 +60,10 @@ export function backfillOutfitItemUuids(outfit, outfitItemUuids, itemsById) {
   );
 }
 
-export function normalizeSavedOutfit(savedOutfit) {
+export function normalizeSavedOutfit(savedOutfit, { createOutfitUuid: createUuid = createOutfitUuid } = {}) {
   return {
     id: savedOutfit.id,
+    outfitUuid: normalizeOutfitUuid(savedOutfit.outfitUuid, createUuid),
     name: savedOutfit.name ?? "Saved outfit",
     description: savedOutfit.description ?? "",
     outfit: savedOutfit.outfit ?? {},
@@ -55,7 +72,7 @@ export function normalizeSavedOutfit(savedOutfit) {
   };
 }
 
-export function normalizeSavedOutfits(savedOutfits) {
+export function normalizeSavedOutfits(savedOutfits, { createOutfitUuid: createUuid = createOutfitUuid } = {}) {
   if (!Array.isArray(savedOutfits)) {
     return [];
   }
@@ -63,7 +80,7 @@ export function normalizeSavedOutfits(savedOutfits) {
   const seenOutfitKeys = new Set();
 
   return savedOutfits.reduce((normalized, savedOutfit) => {
-    const nextSavedOutfit = normalizeSavedOutfit(savedOutfit);
+    const nextSavedOutfit = normalizeSavedOutfit(savedOutfit, { createOutfitUuid: createUuid });
     const outfitKey = getOutfitKey(nextSavedOutfit.outfit, nextSavedOutfit.layering);
 
     if (seenOutfitKeys.has(outfitKey)) {
@@ -76,7 +93,10 @@ export function normalizeSavedOutfits(savedOutfits) {
   }, []);
 }
 
-export function normalizeHydratedAppState(appStateLike, { fallbackOutfit, normalizeWeatherSettings, itemsById = {} }) {
+export function normalizeHydratedAppState(
+  appStateLike,
+  { fallbackOutfit, normalizeWeatherSettings, itemsById = {}, createOutfitUuid: createUuid = createOutfitUuid }
+) {
   const outfit = appStateLike?.outfit ?? fallbackOutfit;
 
   return {
@@ -88,7 +108,7 @@ export function normalizeHydratedAppState(appStateLike, { fallbackOutfit, normal
     outfitItemUuids: backfillOutfitItemUuids(outfit, appStateLike?.outfitItemUuids, itemsById),
     guidedDebugPayload: [],
     ignoredImportImages: appStateLike?.ignoredImportImages ?? [],
-    savedOutfits: normalizeSavedOutfits(appStateLike?.savedOutfits).map((savedOutfit) => ({
+    savedOutfits: normalizeSavedOutfits(appStateLike?.savedOutfits, { createOutfitUuid: createUuid }).map((savedOutfit) => ({
       ...savedOutfit,
       outfitItemUuids: backfillOutfitItemUuids(savedOutfit.outfit, savedOutfit.outfitItemUuids, itemsById)
     })),

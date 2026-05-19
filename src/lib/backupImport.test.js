@@ -310,6 +310,12 @@ test("prepareBackupImport preserves additive outfitItemUuids metadata and backfi
         }
       ]
     }
+  }, {
+    normalizeHydratedAppState: (appState, options) =>
+      normalizeHydratedAppState(appState, {
+        ...options,
+        createOutfitUuid: () => "generated-outfit-uuid"
+      })
   });
 
   assert.deepEqual(prepared.appState.outfitItemUuids, {
@@ -324,6 +330,41 @@ test("prepareBackupImport preserves additive outfitItemUuids metadata and backfi
     TopInner: "stable-top-uuid",
     Bottom: "stable-bottom-uuid"
   });
+  assert.equal(prepared.appState.savedOutfits[0].outfitUuid, "generated-outfit-uuid");
+  assert.equal(prepared.backup.appState.savedOutfits[0].outfitUuid, "generated-outfit-uuid");
+});
+
+test("prepareBackupImport preserves an existing saved outfitUuid", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "legacy_top",
+        itemUuid: "stable-top-uuid",
+        imageUrl: "data:image/png;base64,legacy",
+        createdAt: "2024-01-02T03:04:05.000Z"
+      }
+    ],
+    appState: {
+      savedOutfits: [
+        {
+          id: "saved_1",
+          outfitUuid: "stable-outfit-uuid",
+          outfit: { TopInner: "legacy_top" }
+        }
+      ]
+    }
+  }, {
+    normalizeHydratedAppState: (appState, options) =>
+      normalizeHydratedAppState(appState, {
+        ...options,
+        createOutfitUuid: () => "generated-outfit-uuid"
+      })
+  });
+
+  assert.equal(prepared.appState.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
+  assert.equal(prepared.backup.appState.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
 });
 
 test("prepareBackupImport normalizes persisted wardrobe filters in app-state", async () => {

@@ -110,6 +110,7 @@ import {
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
   backfillOutfitItemUuids,
+  createOutfitUuid,
   normalizeHydratedAppState,
   normalizeGenerationLists,
   normalizeSavedOutfit,
@@ -3395,6 +3396,7 @@ export default function App() {
       return [
         normalizeSavedOutfit({
           id: `saved_outfit_${Date.now()}`,
+          outfitUuid: createOutfitUuid(),
           name: createSavedOutfitName(current),
           description: "",
           outfit: { ...outfit },
