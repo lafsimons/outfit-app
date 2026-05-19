@@ -5,6 +5,7 @@ export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"
 
 export const emptyForm = {
   id: "",
+  itemUuid: "",
   name: "",
   imageUrl: "",
   images: {

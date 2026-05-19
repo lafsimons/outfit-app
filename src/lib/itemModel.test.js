@@ -1,10 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { createUniqueItemId, getWardrobePreviewMetadata, normalizeItem } from "./itemModel.js";
+import {
+  createUniqueItemId,
+  getWardrobePreviewMetadata,
+  itemNeedsItemUuidMigration,
+  normalizeItem
+} from "./itemModel.js";
 
 const baseEmptyForm = {
   id: "",
+  itemUuid: "",
   name: "",
   imageUrl: "",
   images: {
@@ -141,6 +147,91 @@ test("normalizeItem preserves canonical images fields and mirrors preview src in
   assert.equal(normalized.images.thumbnail.blurHash, "abc123");
   assert.deepEqual(normalized.images.extra, { note: "keep" });
   assert.equal(normalized.originalPreserved, true);
+});
+
+test("normalizeItem preserves an existing itemUuid", () => {
+  const normalized = normalizeItem(
+    {
+      id: "existing_item",
+      itemUuid: "stable-item-uuid",
+      imageUrl: "data:image/png;base64,preview"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      createItemUuid: () => {
+        throw new Error("createItemUuid should not run when itemUuid already exists");
+      },
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.itemUuid, "stable-item-uuid");
+});
+
+test("normalizeItem generates an itemUuid for existing items that are missing one", () => {
+  const normalized = normalizeItem(
+    {
+      id: "existing_item",
+      imageUrl: "data:image/png;base64,preview"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.itemUuid, "generated-item-uuid");
+});
+
+test("normalizeItem preserves id while adding itemUuid", () => {
+  const normalized = normalizeItem(
+    {
+      id: "legacy_id_value",
+      imageUrl: "data:image/png;base64,preview"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.id, "legacy_id_value");
+  assert.equal(normalized.itemUuid, "generated-item-uuid");
+});
+
+test("itemUuid migration detection stays false when normalization keeps the existing itemUuid", () => {
+  const originalItem = {
+    id: "existing_item",
+    itemUuid: "stable-item-uuid",
+    imageUrl: "data:image/png;base64,preview"
+  };
+  const normalized = normalizeItem(originalItem, {
+    emptyForm: baseEmptyForm,
+    createItemUuid: () => {
+      throw new Error("createItemUuid should not run when itemUuid already exists");
+    },
+    resolveImageUrl: (value) => value,
+    normalizeImageFrameScale: (value) => value ?? 100,
+    normalizeImageScale: (value) => value ?? 100,
+    normalizeImageOffset: (value) => value ?? 0,
+    getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+  });
+
+  assert.equal(itemNeedsItemUuidMigration(originalItem, normalized), false);
 });
 
 test("getWardrobePreviewMetadata returns basic display fields without empty placeholders", () => {

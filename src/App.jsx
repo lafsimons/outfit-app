@@ -70,6 +70,7 @@ import {
 } from "./lib/generation";
 import {
   buildDisplayName,
+  createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
   DEFAULT_WARDROBE_SORT,
@@ -87,6 +88,7 @@ import {
   itemNeedsFavoriteMigration,
   itemNeedsGarmentTypeMigration,
   itemNeedsImageContractMigration,
+  itemNeedsItemUuidMigration,
   itemNeedsQuantityMigration,
   itemNeedsRetailMigration,
   itemNeedsStyleWeightMappingMigration,
@@ -96,6 +98,7 @@ import {
   matchesMetadataFilter,
   normalizeItem,
   normalizeItemColor,
+  normalizeItemUuid,
   normalizeTimestamp,
   normalizeWardrobeSort
 } from "./lib/itemModel";
@@ -1750,6 +1753,7 @@ export default function App() {
           itemNeedsGarmentTypeMigration(storedItems[index], item) ||
           (!shouldApplyStyleWeightMigration && itemNeedsTagMigration(storedItems[index], item)) ||
           itemNeedsClimateTagMigration(storedItems[index], item) ||
+          itemNeedsItemUuidMigration(storedItems[index], item) ||
           itemNeedsDefaultMetadataMigration(storedItems[index], item) ||
           itemNeedsTimestampMigration(storedItems[index], item) ||
           (shouldApplyStyleWeightMigration &&
@@ -2226,6 +2230,7 @@ export default function App() {
         itemNeedsGarmentTypeMigration(nextItems[index], item) ||
         itemNeedsTagMigration(nextItems[index], item) ||
         itemNeedsClimateTagMigration(nextItems[index], item) ||
+        itemNeedsItemUuidMigration(nextItems[index], item) ||
         itemNeedsDefaultMetadataMigration(nextItems[index], item) ||
         itemNeedsTimestampMigration(nextItems[index], item)
     );
@@ -2963,6 +2968,7 @@ export default function App() {
     const timestamp = new Date().toISOString();
     const nextItem = {
       ...normalizedDraft,
+      itemUuid: normalizeItemUuid(draft.itemUuid, createItemUuid),
       createdAt:
         duplicate || editingId === "new"
           ? timestamp

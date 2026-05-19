@@ -290,6 +290,22 @@ export function createFallbackItemTimestamp(baseMs, index) {
   return new Date(baseMs + index * 1000).toISOString();
 }
 
+export function createItemUuid() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `item_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function normalizeItemUuid(value, createUuid = createItemUuid) {
+  if (typeof value === "string" && value.trim()) {
+    return value;
+  }
+
+  return createUuid();
+}
+
 export function getItemSortTimestamp(item, field = "createdAt") {
   const parsed = Date.parse(item?.[field] ?? "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -325,6 +341,7 @@ function normalizeImages(images, imageUrl) {
 export function normalizeItem(
   item,
   {
+    createItemUuid: createUuid = createItemUuid,
     fallbackCreatedAt,
     emptyForm,
     resolveImageUrl = (value) => value ?? "",
@@ -343,6 +360,7 @@ export function normalizeItem(
   const imageCrop = getNormalizedImageCrop(item);
   const images = normalizeImages(item.images, imageUrl);
   const originalPreserved = item.originalPreserved === true;
+  const itemUuid = normalizeItemUuid(item.itemUuid, createUuid);
 
   const normalizedItem = {
     ...emptyForm,
@@ -370,6 +388,7 @@ export function normalizeItem(
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     color: normalizeItemColor(correction?.color ?? item.color ?? ""),
     list: normalizeList(correction?.list ?? item.list),
+    itemUuid,
     createdAt,
     updatedAt
   };
@@ -438,6 +457,10 @@ export function itemNeedsTimestampMigration(originalItem, normalizedItem) {
     normalizeTimestamp(originalItem.createdAt) !== normalizedItem.createdAt ||
     normalizeTimestamp(originalItem.updatedAt) !== normalizedItem.updatedAt
   );
+}
+
+export function itemNeedsItemUuidMigration(originalItem, normalizedItem) {
+  return originalItem?.itemUuid !== normalizedItem.itemUuid;
 }
 
 export function normalizeWardrobeSort(value) {
