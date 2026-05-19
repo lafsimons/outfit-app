@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import PreviewOverlay from "./components/PreviewOverlay";
+import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
 import {
   exportBackup,
   getDefaultData,
@@ -4790,70 +4791,26 @@ export default function App() {
               ) : (
                 <>
                   {wardrobeSelectMode ? (
-                    <div className="wardrobe-selection-bar" aria-label="Wardrobe selection">
-                      <div className="wardrobe-selection-summary">
-                        <strong>{selectedWardrobeItemCount} selected</strong>
-                        <div className="wardrobe-selection-actions">
-                          <button type="button" className="ghost-button" onClick={clearWardrobeSelection} disabled={!selectedWardrobeItemCount}>
-                            Clear
-                          </button>
-                          <button type="button" className="ghost-button" onClick={toggleWardrobeSelectMode}>
-                            Done
-                          </button>
-                        </div>
-                      </div>
-                      <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
-                        <div className="wardrobe-bulk-group">
-                          <button type="button" className="ghost-button" onClick={() => moveSelectedItemsToList("Wardrobe")} disabled={!selectedWardrobeItemCount}>
-                            To wardrobe
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => moveSelectedItemsToList("Wishlist")} disabled={!selectedWardrobeItemCount}>
-                            To wishlist
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => setSelectedItemsFavoriteState(true)} disabled={!selectedWardrobeItemCount}>
-                            Favorite
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => setSelectedItemsFavoriteState(false)} disabled={!selectedWardrobeItemCount}>
-                            Unfavorite
-                          </button>
-                          <button type="button" className="ghost-button danger" onClick={handleBulkDeleteSelected} disabled={!selectedWardrobeItemCount}>
-                            Delete
-                          </button>
-                        </div>
-                        <div className="wardrobe-bulk-group">
-                          <label className="wardrobe-bulk-tag-control">
-                            <span>Style</span>
-                            <select value={bulkStyleTagDraft} onChange={(event) => setBulkStyleTagDraft(event.target.value)}>
-                              {styleTagOptions.map((tag) => (
-                                <option key={tag} value={tag}>{tag}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <button type="button" className="ghost-button" onClick={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)} disabled={!selectedWardrobeItemCount || !bulkStyleTagDraft}>
-                            Add style
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)} disabled={!selectedWardrobeItemCount || !bulkStyleTagDraft}>
-                            Remove style
-                          </button>
-                        </div>
-                        <div className="wardrobe-bulk-group">
-                          <label className="wardrobe-bulk-tag-control">
-                            <span>Climate</span>
-                            <select value={bulkClimateTagDraft} onChange={(event) => setBulkClimateTagDraft(event.target.value)}>
-                              {editableClimateTagOptions.map((tag) => (
-                                <option key={tag} value={tag}>{tag}</option>
-                              ))}
-                            </select>
-                          </label>
-                          <button type="button" className="ghost-button" onClick={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)} disabled={!selectedWardrobeItemCount || !bulkClimateTagDraft}>
-                            Add climate
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)} disabled={!selectedWardrobeItemCount || !bulkClimateTagDraft}>
-                            Remove climate
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <WardrobeSelectionBar
+                      selectedCount={selectedWardrobeItemCount}
+                      bulkStyleTagDraft={bulkStyleTagDraft}
+                      setBulkStyleTagDraft={setBulkStyleTagDraft}
+                      bulkClimateTagDraft={bulkClimateTagDraft}
+                      setBulkClimateTagDraft={setBulkClimateTagDraft}
+                      styleTagOptions={styleTagOptions}
+                      editableClimateTagOptions={editableClimateTagOptions}
+                      onClear={clearWardrobeSelection}
+                      onDone={toggleWardrobeSelectMode}
+                      onMoveToWardrobe={() => moveSelectedItemsToList("Wardrobe")}
+                      onMoveToWishlist={() => moveSelectedItemsToList("Wishlist")}
+                      onFavorite={() => setSelectedItemsFavoriteState(true)}
+                      onUnfavorite={() => setSelectedItemsFavoriteState(false)}
+                      onDelete={handleBulkDeleteSelected}
+                      onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                      onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
+                      onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                      onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                    />
                   ) : null}
                   <div className="wardrobe-inline-utilities">
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
