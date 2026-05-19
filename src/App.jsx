@@ -102,6 +102,13 @@ import {
   normalizeSavedOutfit,
   normalizeSavedOutfits
 } from "./lib/appStateModel";
+import {
+  addTagToItemTags,
+  hasMeaningfulItemChange,
+  removeSelectedItems,
+  removeTagFromItemTags,
+  updateSelectedItems
+} from "./lib/bulkEdit";
 import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
 import {
   getImageFilename,
@@ -1030,6 +1037,8 @@ export default function App() {
   const [wardrobeSelectMode, setWardrobeSelectMode] = useState(false);
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
+  const [bulkStyleTagDraft, setBulkStyleTagDraft] = useState(styleTagOptions[0] ?? "");
+  const [bulkClimateTagDraft, setBulkClimateTagDraft] = useState(editableClimateTagOptions[0] ?? "");
   const [editingId, setEditingId] = useState(null);
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
   const [editorAdvancedOpen, setEditorAdvancedOpen] = useState(false);
@@ -1451,6 +1460,116 @@ export default function App() {
     cancelEditSavedOutfit();
     setWardrobeManageOpen(false);
     setWardrobeSelectMode(true);
+  }
+
+  async function persistBulkSelectionUpdate(updater) {
+    const timestamp = new Date().toISOString();
+    let updatedEditingDraft = null;
+
+    const { nextItems, changedItems } = updateSelectedItems(items, selectedWardrobeItemIds, (item) => {
+      const draftItem = updater(item);
+      const normalizedItem = normalizeStoredItem(draftItem, normalizeTimestamp(item.createdAt) || timestamp);
+
+      if (!hasMeaningfulItemChange(item, normalizedItem)) {
+        return item;
+      }
+
+      const nextItem = {
+        ...normalizedItem,
+        createdAt: normalizeTimestamp(item.createdAt) || normalizedItem.createdAt,
+        updatedAt: timestamp
+      };
+
+      if (editingId === item.id) {
+        updatedEditingDraft = nextItem;
+      }
+
+      return nextItem;
+    });
+
+    if (!changedItems.length) {
+      return false;
+    }
+
+    await Promise.all(changedItems.map((item) => saveItem(item)));
+    setItems(nextItems);
+
+    if (updatedEditingDraft) {
+      setDraft(updatedEditingDraft);
+    }
+
+    return true;
+  }
+
+  async function moveSelectedItemsToList(list) {
+    await persistBulkSelectionUpdate((item) => ({
+      ...item,
+      list
+    }));
+  }
+
+  async function setSelectedItemsFavoriteState(favorite) {
+    await persistBulkSelectionUpdate((item) => ({
+      ...item,
+      favorite
+    }));
+  }
+
+  async function addSelectedTag(field, tag, allowedOptions) {
+    if (!tag) {
+      return;
+    }
+
+    await persistBulkSelectionUpdate((item) => ({
+      ...item,
+      [field]: addTagToItemTags(item[field], tag, allowedOptions)
+    }));
+  }
+
+  async function removeSelectedTag(field, tag, allowedOptions) {
+    if (!tag) {
+      return;
+    }
+
+    await persistBulkSelectionUpdate((item) => ({
+      ...item,
+      [field]: removeTagFromItemTags(item[field], tag, allowedOptions)
+    }));
+  }
+
+  async function handleBulkDeleteSelected() {
+    if (!selectedWardrobeItemCount) {
+      return;
+    }
+
+    const selectedItemLabel = selectedWardrobeItemCount === 1 ? "item" : "items";
+    const selectedCollectionLabel = selectedWardrobeItemCount === 1 ? "This selected wardrobe item" : "These selected wardrobe items";
+    const confirmed = await requestConfirmation({
+      title: `Delete ${selectedWardrobeItemCount} ${selectedItemLabel}?`,
+      message: `${selectedCollectionLabel} will be removed from outfits and saved outfits in this browser.`,
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const { nextItems, removedIds } = removeSelectedItems(items, selectedWardrobeItemIds);
+
+    await Promise.all(removedIds.map((itemId) => deleteItem(itemId)));
+    setItems(nextItems);
+    setOutfit((current) =>
+      removedIds.reduce((nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId), current)
+    );
+    setSavedOutfits((current) =>
+      current.map((savedOutfit) => ({
+        ...savedOutfit,
+        outfit: removedIds.reduce(
+          (nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId),
+          savedOutfit.outfit
+        )
+      }))
+    );
   }
 
   const visibleWardrobeItems = useMemo(() => {
@@ -4546,14 +4665,67 @@ export default function App() {
                 <>
                   {wardrobeSelectMode ? (
                     <div className="wardrobe-selection-bar" aria-label="Wardrobe selection">
-                      <strong>{selectedWardrobeItemCount} selected</strong>
-                      <div className="wardrobe-selection-actions">
-                        <button type="button" className="ghost-button" onClick={clearWardrobeSelection} disabled={!selectedWardrobeItemCount}>
-                          Clear
-                        </button>
-                        <button type="button" className="ghost-button" onClick={toggleWardrobeSelectMode}>
-                          Done
-                        </button>
+                      <div className="wardrobe-selection-summary">
+                        <strong>{selectedWardrobeItemCount} selected</strong>
+                        <div className="wardrobe-selection-actions">
+                          <button type="button" className="ghost-button" onClick={clearWardrobeSelection} disabled={!selectedWardrobeItemCount}>
+                            Clear
+                          </button>
+                          <button type="button" className="ghost-button" onClick={toggleWardrobeSelectMode}>
+                            Done
+                          </button>
+                        </div>
+                      </div>
+                      <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
+                        <div className="wardrobe-bulk-group">
+                          <button type="button" className="ghost-button" onClick={() => moveSelectedItemsToList("Wardrobe")} disabled={!selectedWardrobeItemCount}>
+                            To wardrobe
+                          </button>
+                          <button type="button" className="ghost-button" onClick={() => moveSelectedItemsToList("Wishlist")} disabled={!selectedWardrobeItemCount}>
+                            To wishlist
+                          </button>
+                          <button type="button" className="ghost-button" onClick={() => setSelectedItemsFavoriteState(true)} disabled={!selectedWardrobeItemCount}>
+                            Favorite
+                          </button>
+                          <button type="button" className="ghost-button" onClick={() => setSelectedItemsFavoriteState(false)} disabled={!selectedWardrobeItemCount}>
+                            Unfavorite
+                          </button>
+                          <button type="button" className="ghost-button danger" onClick={handleBulkDeleteSelected} disabled={!selectedWardrobeItemCount}>
+                            Delete
+                          </button>
+                        </div>
+                        <div className="wardrobe-bulk-group">
+                          <label className="wardrobe-bulk-tag-control">
+                            <span>Style</span>
+                            <select value={bulkStyleTagDraft} onChange={(event) => setBulkStyleTagDraft(event.target.value)}>
+                              {styleTagOptions.map((tag) => (
+                                <option key={tag} value={tag}>{tag}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <button type="button" className="ghost-button" onClick={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)} disabled={!selectedWardrobeItemCount || !bulkStyleTagDraft}>
+                            Add style
+                          </button>
+                          <button type="button" className="ghost-button" onClick={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)} disabled={!selectedWardrobeItemCount || !bulkStyleTagDraft}>
+                            Remove style
+                          </button>
+                        </div>
+                        <div className="wardrobe-bulk-group">
+                          <label className="wardrobe-bulk-tag-control">
+                            <span>Climate</span>
+                            <select value={bulkClimateTagDraft} onChange={(event) => setBulkClimateTagDraft(event.target.value)}>
+                              {editableClimateTagOptions.map((tag) => (
+                                <option key={tag} value={tag}>{tag}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <button type="button" className="ghost-button" onClick={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)} disabled={!selectedWardrobeItemCount || !bulkClimateTagDraft}>
+                            Add climate
+                          </button>
+                          <button type="button" className="ghost-button" onClick={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)} disabled={!selectedWardrobeItemCount || !bulkClimateTagDraft}>
+                            Remove climate
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ) : null}
