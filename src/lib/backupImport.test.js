@@ -257,3 +257,49 @@ test("prepareBackupImport preserves recentOutfits reset behavior", async () => {
   assert.deepEqual(prepared.backup.appState.recentOutfits, []);
   assert.deepEqual(prepared.appState.recentOutfits, []);
 });
+
+test("prepareBackupImport preserves additive outfitItemUuids metadata and backfills missing resolved slots", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "legacy_top",
+        itemUuid: "stable-top-uuid",
+        imageUrl: "data:image/png;base64,legacy",
+        createdAt: "2024-01-02T03:04:05.000Z"
+      },
+      {
+        id: "legacy_bottom",
+        itemUuid: "stable-bottom-uuid",
+        imageUrl: "data:image/png;base64,legacy-2",
+        createdAt: "2024-01-02T03:04:06.000Z"
+      }
+    ],
+    appState: {
+      outfit: { TopInner: "legacy_top", Bottom: "legacy_bottom" },
+      outfitItemUuids: { TopInner: "stable-top-uuid" },
+      savedOutfits: [
+        {
+          id: "saved_1",
+          outfit: { TopInner: "legacy_top", Bottom: "legacy_bottom" },
+          outfitItemUuids: { Bottom: "stable-bottom-uuid" },
+          layering: true
+        }
+      ]
+    }
+  });
+
+  assert.deepEqual(prepared.appState.outfitItemUuids, {
+    TopInner: "stable-top-uuid",
+    Bottom: "stable-bottom-uuid"
+  });
+  assert.deepEqual(prepared.backup.appState.outfitItemUuids, {
+    TopInner: "stable-top-uuid",
+    Bottom: "stable-bottom-uuid"
+  });
+  assert.deepEqual(prepared.appState.savedOutfits[0].outfitItemUuids, {
+    TopInner: "stable-top-uuid",
+    Bottom: "stable-bottom-uuid"
+  });
+});

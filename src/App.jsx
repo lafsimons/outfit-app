@@ -108,6 +108,7 @@ import {
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
+  backfillOutfitItemUuids,
   normalizeHydratedAppState,
   normalizeGenerationLists,
   normalizeSavedOutfit,
@@ -652,6 +653,10 @@ function createSavedOutfitName(savedOutfits) {
   return `Outfit ${savedOutfits.length + 1}`;
 }
 
+function syncOutfitItemUuids(outfit, outfitItemUuids, itemsById) {
+  return backfillOutfitItemUuids(outfit, outfitItemUuids, itemsById);
+}
+
 function getSavedOutfitPreviewSlots(savedOutfit) {
   return savedOutfit.layering
     ? ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"]
@@ -687,6 +692,13 @@ function clearItemIdFromOutfit(outfit, itemIdToClear) {
       itemId === itemIdToClear ? null : itemId
     ])
   );
+}
+
+function syncSavedOutfitItemUuids(savedOutfit, itemsById) {
+  return {
+    ...savedOutfit,
+    outfitItemUuids: syncOutfitItemUuids(savedOutfit.outfit, savedOutfit.outfitItemUuids, itemsById)
+  };
 }
 
 function createFitpicId() {
@@ -1025,6 +1037,7 @@ export default function App() {
   const [locked, setLocked] = useState({});
   const [excluded, setExcluded] = useState({});
   const [outfit, setOutfit] = useState({});
+  const [outfitItemUuids, setOutfitItemUuids] = useState({});
   const [ignoredImportImages, setIgnoredImportImages] = useState([]);
   const [savedOutfits, setSavedOutfits] = useState([]);
   const [likedOutfitKeys, setLikedOutfitKeys] = useState({});
@@ -1597,15 +1610,23 @@ export default function App() {
 
     await Promise.all(removedIds.map((itemId) => deleteItem(itemId)));
     setItems(nextItems);
-    setOutfit((current) =>
-      removedIds.reduce((nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId), current)
-    );
+    const nextCurrentOutfit = removedIds.reduce((nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId), outfit);
+    setOutfit(nextCurrentOutfit);
+    setOutfitItemUuids((current) => syncOutfitItemUuids(nextCurrentOutfit, current, itemsById));
     setSavedOutfits((current) =>
       current.map((savedOutfit) => ({
         ...savedOutfit,
         outfit: removedIds.reduce(
           (nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId),
           savedOutfit.outfit
+        ),
+        outfitItemUuids: syncOutfitItemUuids(
+          removedIds.reduce(
+            (nextOutfit, itemId) => clearItemIdFromOutfit(nextOutfit, itemId),
+            savedOutfit.outfit
+          ),
+          savedOutfit.outfitItemUuids,
+          itemsById
         )
       }))
     );
@@ -1789,13 +1810,15 @@ export default function App() {
       if (storedAppState) {
         const hydratedAppState = normalizeHydratedAppState(storedAppState, {
           fallbackOutfit: {},
-          normalizeWeatherSettings
+          normalizeWeatherSettings,
+          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
         setLayering(hydratedAppState.layering);
         setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
         setLocked(hydratedAppState.locked);
         setExcluded(hydratedAppState.excluded);
         setOutfit(hydratedAppState.outfit);
+        setOutfitItemUuids(hydratedAppState.outfitItemUuids);
         setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
         setIgnoredImportImages(hydratedAppState.ignoredImportImages);
         setSavedOutfits(hydratedAppState.savedOutfits);
@@ -1817,13 +1840,15 @@ export default function App() {
         const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
         const hydratedAppState = normalizeHydratedAppState(defaultState, {
           fallbackOutfit,
-          normalizeWeatherSettings
+          normalizeWeatherSettings,
+          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
         setLayering(hydratedAppState.layering);
         setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
         setLocked(hydratedAppState.locked);
         setExcluded(hydratedAppState.excluded);
         setOutfit(hydratedAppState.outfit);
+        setOutfitItemUuids(hydratedAppState.outfitItemUuids);
         setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
         setIgnoredImportImages(hydratedAppState.ignoredImportImages);
         setSavedOutfits(hydratedAppState.savedOutfits);
@@ -1864,6 +1889,7 @@ export default function App() {
       locked,
       excluded,
       outfit,
+      outfitItemUuids,
       ignoredImportImages,
       savedOutfits,
       likedOutfitKeys,
@@ -1878,7 +1904,7 @@ export default function App() {
       fitpics,
       wardrobeSort
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeSort, loading]);
+  }, [layering, accessoriesEnabled, locked, excluded, outfit, outfitItemUuids, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeSort, loading]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -1907,6 +1933,21 @@ export default function App() {
       return nextOutfit;
     });
   }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    setOutfitItemUuids((current) => {
+      const next = syncOutfitItemUuids(outfit, current, itemsById);
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
+    setSavedOutfits((current) => {
+      const next = current.map((savedOutfit) => syncSavedOutfitItemUuids(savedOutfit, itemsById));
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
+  }, [itemsById, outfit, loading]);
 
   useEffect(() => {
     const validIds = items.map((item) => item.id);
@@ -2225,6 +2266,7 @@ export default function App() {
     setLocked(hydratedAppState.locked);
     setExcluded(hydratedAppState.excluded);
     setOutfit(hydratedAppState.outfit);
+    setOutfitItemUuids(hydratedAppState.outfitItemUuids);
     setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
     setIgnoredImportImages(hydratedAppState.ignoredImportImages);
     setSavedOutfits(hydratedAppState.savedOutfits);
@@ -3027,13 +3069,26 @@ export default function App() {
     });
 
     if (!duplicate && editingId !== "new" && draft.id !== nextItem.id) {
-      setOutfit((current) =>
-        replaceItemIdInOutfit(current, draft.id, nextItem.id)
+      const nextCurrentOutfit = replaceItemIdInOutfit(outfit, draft.id, nextItem.id);
+      setOutfit(nextCurrentOutfit);
+      setOutfitItemUuids((current) =>
+        syncOutfitItemUuids(nextCurrentOutfit, current, {
+          ...itemsById,
+          [nextItem.id]: nextItem
+        })
       );
       setSavedOutfits((current) =>
         current.map((savedOutfit) => ({
           ...savedOutfit,
-          outfit: replaceItemIdInOutfit(savedOutfit.outfit, draft.id, nextItem.id)
+          outfit: replaceItemIdInOutfit(savedOutfit.outfit, draft.id, nextItem.id),
+          outfitItemUuids: syncOutfitItemUuids(
+            replaceItemIdInOutfit(savedOutfit.outfit, draft.id, nextItem.id),
+            savedOutfit.outfitItemUuids,
+            {
+              ...itemsById,
+              [nextItem.id]: nextItem
+            }
+          )
         }))
       );
     }
@@ -3249,11 +3304,18 @@ export default function App() {
 
     await deleteItem(itemId);
     setItems((current) => current.filter((item) => item.id !== itemId));
-    setOutfit((current) => clearItemIdFromOutfit(current, itemId));
+    const nextCurrentOutfit = clearItemIdFromOutfit(outfit, itemId);
+    setOutfit(nextCurrentOutfit);
+    setOutfitItemUuids((current) => syncOutfitItemUuids(nextCurrentOutfit, current, itemsById));
     setSavedOutfits((current) =>
       current.map((savedOutfit) => ({
         ...savedOutfit,
-        outfit: clearItemIdFromOutfit(savedOutfit.outfit, itemId)
+        outfit: clearItemIdFromOutfit(savedOutfit.outfit, itemId),
+        outfitItemUuids: syncOutfitItemUuids(
+          clearItemIdFromOutfit(savedOutfit.outfit, itemId),
+          savedOutfit.outfitItemUuids,
+          itemsById
+        )
       }))
     );
     return true;
@@ -3291,6 +3353,7 @@ export default function App() {
           name: createSavedOutfitName(current),
           description: "",
           outfit: { ...outfit },
+          outfitItemUuids: syncOutfitItemUuids(outfit, outfitItemUuids, itemsById),
           layering
         }),
         ...current

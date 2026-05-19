@@ -57,7 +57,8 @@ export async function prepareBackupImport(
 
   const hydratedAppState = normalizeHydratedAppState(nextAppState, {
     fallbackOutfit,
-    normalizeWeatherSettings
+    normalizeWeatherSettings,
+    itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
   });
 
   const loadedAppState = {
@@ -77,6 +78,7 @@ export async function prepareBackupImport(
         locked: loadedAppState.locked,
         excluded: loadedAppState.excluded,
         outfit: loadedAppState.outfit,
+        outfitItemUuids: loadedAppState.outfitItemUuids,
         ignoredImportImages: loadedAppState.ignoredImportImages,
         savedOutfits: loadedAppState.savedOutfits,
         likedOutfitKeys: loadedAppState.likedOutfitKeys,

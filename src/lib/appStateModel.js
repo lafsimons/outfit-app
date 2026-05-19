@@ -16,12 +16,41 @@ export function normalizeGenerationLists(generationLists) {
   };
 }
 
+export function normalizeOutfitItemUuids(outfitItemUuids) {
+  if (!outfitItemUuids || typeof outfitItemUuids !== "object" || Array.isArray(outfitItemUuids)) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(outfitItemUuids).map(([slot, itemUuid]) => [
+      slot,
+      typeof itemUuid === "string" && itemUuid.trim() ? itemUuid : null
+    ])
+  );
+}
+
+export function backfillOutfitItemUuids(outfit, outfitItemUuids, itemsById) {
+  const normalizedSidecar = normalizeOutfitItemUuids(outfitItemUuids);
+
+  return Object.fromEntries(
+    Object.entries(outfit ?? {}).map(([slot, itemId]) => {
+      if (!itemId) {
+        return [slot, null];
+      }
+
+      const resolvedItemUuid = itemId ? itemsById?.[itemId]?.itemUuid : null;
+      return [slot, resolvedItemUuid ?? normalizedSidecar[slot] ?? null];
+    })
+  );
+}
+
 export function normalizeSavedOutfit(savedOutfit) {
   return {
     id: savedOutfit.id,
     name: savedOutfit.name ?? "Saved outfit",
     description: savedOutfit.description ?? "",
     outfit: savedOutfit.outfit ?? {},
+    outfitItemUuids: normalizeOutfitItemUuids(savedOutfit.outfitItemUuids),
     layering: Boolean(savedOutfit.layering)
   };
 }
@@ -47,16 +76,22 @@ export function normalizeSavedOutfits(savedOutfits) {
   }, []);
 }
 
-export function normalizeHydratedAppState(appStateLike, { fallbackOutfit, normalizeWeatherSettings }) {
+export function normalizeHydratedAppState(appStateLike, { fallbackOutfit, normalizeWeatherSettings, itemsById = {} }) {
+  const outfit = appStateLike?.outfit ?? fallbackOutfit;
+
   return {
     layering: Boolean(appStateLike?.layering),
     accessoriesEnabled: appStateLike?.accessoriesEnabled ?? true,
     locked: appStateLike?.locked ?? {},
     excluded: appStateLike?.excluded ?? {},
-    outfit: appStateLike?.outfit ?? fallbackOutfit,
+    outfit,
+    outfitItemUuids: backfillOutfitItemUuids(outfit, appStateLike?.outfitItemUuids, itemsById),
     guidedDebugPayload: [],
     ignoredImportImages: appStateLike?.ignoredImportImages ?? [],
-    savedOutfits: normalizeSavedOutfits(appStateLike?.savedOutfits),
+    savedOutfits: normalizeSavedOutfits(appStateLike?.savedOutfits).map((savedOutfit) => ({
+      ...savedOutfit,
+      outfitItemUuids: backfillOutfitItemUuids(savedOutfit.outfit, savedOutfit.outfitItemUuids, itemsById)
+    })),
     likedOutfitKeys: normalizeLikedOutfitKeys(appStateLike?.likedOutfitKeys),
     outfitAffinity: normalizeOutfitAffinity(appStateLike?.outfitAffinity),
     recentOutfits: normalizeRecentOutfits(appStateLike?.recentOutfits),

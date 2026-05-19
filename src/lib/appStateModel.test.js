@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  backfillOutfitItemUuids,
   normalizeHydratedAppState,
   normalizeGenerationLists,
+  normalizeOutfitItemUuids,
   normalizeSavedOutfit,
   normalizeSavedOutfits
 } from "./appStateModel.js";
@@ -18,6 +20,25 @@ test("saved outfit default field filling preserves current behavior", () => {
       name: "Saved outfit",
       description: "",
       outfit: {},
+      outfitItemUuids: {},
+      layering: false
+    }
+  );
+});
+
+test("saved outfit normalization preserves additive outfitItemUuids sidecars", () => {
+  assert.deepEqual(
+    normalizeSavedOutfit({
+      id: "saved_1",
+      outfit: { TopInner: "top_1" },
+      outfitItemUuids: { TopInner: "uuid_top_1", Bottom: "" }
+    }),
+    {
+      id: "saved_1",
+      name: "Saved outfit",
+      description: "",
+      outfit: { TopInner: "top_1" },
+      outfitItemUuids: { TopInner: "uuid_top_1", Bottom: null },
       layering: false
     }
   );
@@ -78,7 +99,8 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
   assert.deepEqual(
     normalizeHydratedAppState(undefined, {
       fallbackOutfit: { TopInner: "fallback_top" },
-      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null }
+      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+      itemsById: {}
     }),
     {
       layering: false,
@@ -86,6 +108,7 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       locked: {},
       excluded: {},
       outfit: { TopInner: "fallback_top" },
+      outfitItemUuids: { TopInner: null },
       guidedDebugPayload: [],
       ignoredImportImages: [],
       savedOutfits: [],
@@ -111,7 +134,8 @@ test("hydrated app-state uses fallback outfit only when outfit is missing", () =
   assert.deepEqual(
     normalizeHydratedAppState({}, {
       fallbackOutfit,
-      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null }
+      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+      itemsById: {}
     }).outfit,
     fallbackOutfit
   );
@@ -120,7 +144,8 @@ test("hydrated app-state uses fallback outfit only when outfit is missing", () =
   assert.deepEqual(
     normalizeHydratedAppState({ outfit: explicitOutfit }, {
       fallbackOutfit,
-      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null }
+      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+      itemsById: {}
     }).outfit,
     explicitOutfit
   );
@@ -141,7 +166,8 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     wardrobeSort: "bad-sort"
   }, {
     fallbackOutfit: {},
-    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null }
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {}
   });
 
   assert.equal(hydrated.savedOutfits.length, 1);
@@ -165,6 +191,7 @@ test("hydrated app-state derives weather location draft and clamps generate coun
     generateCount: "3.6"
   }, {
     fallbackOutfit: {},
+    itemsById: {},
     normalizeWeatherSettings: (settings) => ({
       locationName: settings?.locationName ?? "",
       latitude: settings?.latitude ?? null,
@@ -187,8 +214,120 @@ test("hydrated app-state always resets guided debug payload", () => {
       guidedDebugPayload: [{ slot: "TopInner" }]
     }, {
       fallbackOutfit: {},
-      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null }
+      normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+      itemsById: {}
     }).guidedDebugPayload,
     []
+  );
+});
+
+test("legacy id-only current outfit hydration preserves outfit and backfills sidecar when item id resolves", () => {
+  const hydrated = normalizeHydratedAppState({
+    outfit: { TopInner: "top_1", Bottom: "bottom_1" }
+  }, {
+    fallbackOutfit: {},
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {
+      top_1: { id: "top_1", itemUuid: "uuid_top_1" }
+    }
+  });
+
+  assert.deepEqual(hydrated.outfit, { TopInner: "top_1", Bottom: "bottom_1" });
+  assert.deepEqual(hydrated.outfitItemUuids, {
+    TopInner: "uuid_top_1",
+    Bottom: null
+  });
+});
+
+test("legacy id-only saved outfit hydration preserves outfits and backfills sidecars when item ids resolve", () => {
+  const hydrated = normalizeHydratedAppState({
+    savedOutfits: [
+      {
+        id: "saved_1",
+        outfit: { TopInner: "top_1", Footwear: "shoe_1" },
+        layering: true
+      }
+    ]
+  }, {
+    fallbackOutfit: {},
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {
+      top_1: { id: "top_1", itemUuid: "uuid_top_1" },
+      shoe_1: { id: "shoe_1", itemUuid: "uuid_shoe_1" }
+    }
+  });
+
+  assert.deepEqual(hydrated.savedOutfits, [
+    {
+      id: "saved_1",
+      name: "Saved outfit",
+      description: "",
+      outfit: { TopInner: "top_1", Footwear: "shoe_1" },
+      outfitItemUuids: { TopInner: "uuid_top_1", Footwear: "uuid_shoe_1" },
+      layering: true
+    }
+  ]);
+});
+
+test("backfillOutfitItemUuids preserves existing sidecars and fills resolved ids", () => {
+  assert.deepEqual(
+    backfillOutfitItemUuids(
+      { TopInner: "top_1", Bottom: "bottom_1", Footwear: null },
+      { TopInner: "legacy_top_uuid", Footwear: "stale_uuid" },
+      {
+        top_1: { id: "top_1", itemUuid: "uuid_top_1" }
+      }
+    ),
+    {
+      TopInner: "uuid_top_1",
+      Bottom: null,
+      Footwear: null
+    }
+  );
+});
+
+test("rename repair sidecar sync keeps current behavior and updates to the resolved itemUuid", () => {
+  const renamedOutfit = { TopInner: "top_renamed" };
+
+  assert.deepEqual(
+    backfillOutfitItemUuids(
+      renamedOutfit,
+      { TopInner: "uuid_top_1" },
+      {
+        top_renamed: { id: "top_renamed", itemUuid: "uuid_top_1" }
+      }
+    ),
+    { TopInner: "uuid_top_1" }
+  );
+});
+
+test("delete cleanup sidecar sync keeps current behavior and clears the uuid when the slot is cleared", () => {
+  assert.deepEqual(
+    backfillOutfitItemUuids(
+      { TopInner: null, Bottom: "bottom_1" },
+      { TopInner: "uuid_top_1", Bottom: "uuid_bottom_1" },
+      {
+        bottom_1: { id: "bottom_1", itemUuid: "uuid_bottom_1" }
+      }
+    ),
+    {
+      TopInner: null,
+      Bottom: "uuid_bottom_1"
+    }
+  );
+});
+
+test("normalizeOutfitItemUuids keeps only string uuids and nulls invalid values", () => {
+  assert.deepEqual(
+    normalizeOutfitItemUuids({
+      TopInner: "uuid_top_1",
+      Bottom: "",
+      Footwear: 42
+    }),
+    {
+      TopInner: "uuid_top_1",
+      Bottom: null,
+      Footwear: null
+    }
   );
 });
