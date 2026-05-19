@@ -3,7 +3,9 @@ import ConfirmationDialog from "./components/ConfirmationDialog";
 import PreviewOverlay from "./components/PreviewOverlay";
 import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
 import {
+  backfillLocalSyncMetadata,
   exportBackup,
+  getOrCreateDeviceId,
   getDefaultData,
   replaceWithBackup,
   resetToDefaults
@@ -1774,7 +1776,7 @@ export default function App() {
     let cancelled = false;
 
     async function bootstrap() {
-      const [storedItems, storedAppState] = await Promise.all([loadItems(), load()]);
+      const [storedItems, storedAppState] = await Promise.all([loadItems(), load(), getOrCreateDeviceId()]);
       const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
         .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
@@ -1824,68 +1826,52 @@ export default function App() {
         await Promise.all(migratedItems.map((item) => saveItem(item)));
       }
 
-      setItems(effectiveItems);
-
+      let hydratedAppState;
       if (storedAppState) {
-        const hydratedAppState = normalizeHydratedAppState(storedAppState, {
+        hydratedAppState = normalizeHydratedAppState(storedAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
-        setLayering(hydratedAppState.layering);
-        setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
-        setLocked(hydratedAppState.locked);
-        setExcluded(hydratedAppState.excluded);
-        setOutfit(hydratedAppState.outfit);
-        setOutfitItemUuids(hydratedAppState.outfitItemUuids);
-        setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
-        setIgnoredImportImages(hydratedAppState.ignoredImportImages);
-        setSavedOutfits(hydratedAppState.savedOutfits);
-        setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
-        setOutfitAffinity(hydratedAppState.outfitAffinity);
-        setRecentOutfits(hydratedAppState.recentOutfits);
-        setGenerateCount(hydratedAppState.generateCount);
-        setGenerationLists(hydratedAppState.generationLists);
-        setGenerationMode(hydratedAppState.generationMode);
-        setOutfitFilters(hydratedAppState.outfitFilters);
-        setWeatherSettings(hydratedAppState.weatherSettings);
-        setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
-        setWeatherData(hydratedAppState.weatherData);
-        setFitpics(hydratedAppState.fitpics);
-        setWardrobeFilters(hydratedAppState.wardrobeFilters);
-        setWardrobeSort(hydratedAppState.wardrobeSort);
       } else {
         const defaultData = getDefaultData();
         const defaultState = defaultData.appState;
         const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
-        const hydratedAppState = normalizeHydratedAppState(defaultState, {
+        hydratedAppState = normalizeHydratedAppState(defaultState, {
           fallbackOutfit,
           normalizeWeatherSettings,
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
-        setLayering(hydratedAppState.layering);
-        setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
-        setLocked(hydratedAppState.locked);
-        setExcluded(hydratedAppState.excluded);
-        setOutfit(hydratedAppState.outfit);
-        setOutfitItemUuids(hydratedAppState.outfitItemUuids);
-        setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
-        setIgnoredImportImages(hydratedAppState.ignoredImportImages);
-        setSavedOutfits(hydratedAppState.savedOutfits);
-        setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
-        setOutfitAffinity(hydratedAppState.outfitAffinity);
-        setRecentOutfits(hydratedAppState.recentOutfits);
-        setGenerateCount(hydratedAppState.generateCount);
-        setGenerationLists(hydratedAppState.generationLists);
-        setGenerationMode(hydratedAppState.generationMode);
-        setOutfitFilters(hydratedAppState.outfitFilters);
-        setWeatherSettings(hydratedAppState.weatherSettings);
-        setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
-        setWeatherData(hydratedAppState.weatherData);
-        setFitpics(hydratedAppState.fitpics);
-        setWardrobeFilters(hydratedAppState.wardrobeFilters);
-        setWardrobeSort(hydratedAppState.wardrobeSort);
       }
+
+      setItems(effectiveItems);
+      setLayering(hydratedAppState.layering);
+      setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
+      setLocked(hydratedAppState.locked);
+      setExcluded(hydratedAppState.excluded);
+      setOutfit(hydratedAppState.outfit);
+      setOutfitItemUuids(hydratedAppState.outfitItemUuids);
+      setGuidedDebugPayload(hydratedAppState.guidedDebugPayload);
+      setIgnoredImportImages(hydratedAppState.ignoredImportImages);
+      setSavedOutfits(hydratedAppState.savedOutfits);
+      setLikedOutfitKeys(hydratedAppState.likedOutfitKeys);
+      setOutfitAffinity(hydratedAppState.outfitAffinity);
+      setRecentOutfits(hydratedAppState.recentOutfits);
+      setGenerateCount(hydratedAppState.generateCount);
+      setGenerationLists(hydratedAppState.generationLists);
+      setGenerationMode(hydratedAppState.generationMode);
+      setOutfitFilters(hydratedAppState.outfitFilters);
+      setWeatherSettings(hydratedAppState.weatherSettings);
+      setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
+      setWeatherData(hydratedAppState.weatherData);
+      setFitpics(hydratedAppState.fitpics);
+      setWardrobeFilters(hydratedAppState.wardrobeFilters);
+      setWardrobeSort(hydratedAppState.wardrobeSort);
+
+      await backfillLocalSyncMetadata({
+        items: effectiveItems,
+        savedOutfits: hydratedAppState.savedOutfits
+      });
 
       setLoading(false);
     }
