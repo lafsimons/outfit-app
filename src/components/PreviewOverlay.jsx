@@ -22,7 +22,7 @@ export default function PreviewOverlay({
       >
         <div className="preview-overlay-header">
           <div>
-            <p className="eyebrow">{eyebrow}</p>
+            {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
             <h2>{title}</h2>
             {meta ? <p className="preview-overlay-subtitle">{meta}</p> : null}
           </div>

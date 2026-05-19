@@ -202,6 +202,17 @@ function getCanUseDebugPopout() {
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
 const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
+const defaultWardrobeFilterSectionsOpen = {
+  brand: false,
+  garmentType: false,
+  type: false,
+  color: false,
+  style: false,
+  weight: false,
+  list: false,
+  favorite: false,
+  laundry: false
+};
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -1051,7 +1062,7 @@ export default function App() {
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
-  const [wardrobeSelectMode, setWardrobeSelectMode] = useState(false);
+  const [wardrobeStatsOpen, setWardrobeStatsOpen] = useState(false);
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
   const [bulkListDraft, setBulkListDraft] = useState(defaultItemList);
@@ -1066,6 +1077,8 @@ export default function App() {
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeSearch, setWardrobeSearch] = useState("");
+  const [wardrobeFilterSearch, setWardrobeFilterSearch] = useState("");
+  const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
   const [outfitPalette, setOutfitPalette] = useState([]);
@@ -1093,6 +1106,29 @@ export default function App() {
     [items]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const wardrobePreviewMeta = useMemo(() => {
+    if (!wardrobePreviewItem) {
+      return null;
+    }
+
+    const valueLabel = getNumericValue(wardrobePreviewItem.value) > 0
+      ? `Value ${formatCurrency(wardrobePreviewItem.value)}`
+      : null;
+    const quantityLabel = Number(wardrobePreviewItem.quantity) > 1
+      ? `Qty ${Math.round(Number(wardrobePreviewItem.quantity))}`
+      : null;
+
+    return [
+      wardrobePreviewItem.type?.trim() || null,
+      wardrobePreviewItem.size?.trim() || null,
+      valueLabel,
+      wardrobePreviewItem.list?.trim() || null,
+      quantityLabel,
+      excluded[wardrobePreviewItem.id] ? "Excluded from generation" : null
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }, [excluded, wardrobePreviewItem]);
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
 
   useEffect(() => {
@@ -1469,6 +1505,39 @@ export default function App() {
                 : "Hide excluded"
             : value
     }));
+  const wardrobeFilterPanelSections = useMemo(
+    () => [
+      { label: "Brand", key: "brand", options: wardrobeFilterOptions.brand, includeNone: true, kind: "multi" },
+      { label: "Garment", key: "garmentType", options: wardrobeFilterOptions.garmentType, includeNone: true, kind: "multi" },
+      { label: "Type", key: "type", options: wardrobeFilterOptions.type, includeNone: true, kind: "multi" },
+      { label: "Color", key: "color", options: wardrobeFilterOptions.color, includeNone: true, kind: "multi" },
+      { label: "Style", key: "style", options: wardrobeFilterOptions.style, includeNone: false, kind: "multi" },
+      { label: "Weight", key: "weight", options: wardrobeFilterOptions.weight, includeNone: true, kind: "multi" },
+      { label: "List", key: "list", options: wardrobeFilterOptions.list, includeNone: false, kind: "multi" },
+      {
+        label: "Favorite",
+        key: "favorite",
+        options: [
+          { label: "Favorites", value: "yes" },
+          { label: "Not favorites", value: "no" }
+        ],
+        includeNone: false,
+        kind: "single"
+      },
+      {
+        label: "Exclude",
+        key: "laundry",
+        options: [
+          { label: "Show excluded", value: "show" },
+          { label: "Hide excluded", value: "hide" }
+        ],
+        includeNone: false,
+        kind: "single"
+      }
+    ],
+    [wardrobeFilterOptions]
+  );
+  const normalizedWardrobeFilterSearch = wardrobeFilterSearch.trim().toLowerCase();
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -1493,18 +1562,8 @@ export default function App() {
     setWardrobeSelectionAnchorId(null);
   }
 
-  function toggleWardrobeSelectMode() {
-    if (wardrobeSelectMode) {
-      clearWardrobeSelection();
-      setWardrobeSelectMode(false);
-      return;
-    }
-
-    closeUtilityWindows();
-    setWardrobeSavedOpen(false);
-    cancelEditSavedOutfit();
-    setWardrobeManageOpen(false);
-    setWardrobeSelectMode(true);
+  function clearWardrobeSelectionState() {
+    clearWardrobeSelection();
   }
 
   async function persistBulkSelectionUpdate(updater) {
@@ -1642,6 +1701,11 @@ export default function App() {
     [visibleWardrobeItems]
   );
   const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
+  const hasWardrobeSelection = selectedWardrobeItemCount > 0;
+  const favoriteWardrobeItemCount = useMemo(
+    () => items.reduce((count, item) => count + (item.favorite ? 1 : 0), 0),
+    [items]
+  );
   const selectedWardrobeItems = useMemo(
     () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
     [itemsById, selectedWardrobeItemIds]
@@ -1906,18 +1970,6 @@ export default function App() {
   }, [bulkListDraft, itemListOptions]);
 
   useEffect(() => {
-    if (wardrobeSelectMode) {
-      return;
-    }
-
-    if (wardrobeSelectClickTimeoutRef.current !== null) {
-      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
-      wardrobeSelectClickTimeoutRef.current = null;
-    }
-    wardrobePendingSelectionRef.current = null;
-  }, [wardrobeSelectMode]);
-
-  useEffect(() => {
     if (!wardrobePreviewItemId || itemsById[wardrobePreviewItemId]) {
       return;
     }
@@ -2031,10 +2083,9 @@ export default function App() {
         return;
       }
 
-      if (wardrobeSelectMode) {
+      if (selectedWardrobeItemCount) {
         event.preventDefault();
         clearWardrobeSelection();
-        setWardrobeSelectMode(false);
         return;
       }
 
@@ -2060,7 +2111,7 @@ export default function App() {
     editingId,
     fitpicPreview,
     wardrobePreviewItemId,
-    wardrobeSelectMode,
+    selectedWardrobeItemCount,
     wardrobeFiltersOpen,
     wardrobeSavedOpen,
     wardrobeManageOpen,
@@ -2569,11 +2620,6 @@ export default function App() {
   }
 
   function handleWardrobePreviewClick(item, event) {
-    if (!wardrobeSelectMode) {
-      equipItem(item);
-      return;
-    }
-
     const shiftKey = event.shiftKey;
     const toggleKey = event.metaKey || event.ctrlKey;
     const pendingSelection = wardrobePendingSelectionRef.current;
@@ -2637,13 +2683,30 @@ export default function App() {
     setWardrobePreviewItemId(null);
   }
 
-  function handleWardrobePreviewDoubleClick(item) {
+  function handleWardrobePreviewDoubleClick(item, event) {
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
 
+    event.currentTarget.blur();
+    openWardrobePreview(item.id);
+  }
+
+  function handleWardrobePreviewKeyDown(item, event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (wardrobeSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
+      wardrobeSelectClickTimeoutRef.current = null;
+    }
+
+    wardrobePendingSelectionRef.current = null;
     openWardrobePreview(item.id);
   }
 
@@ -2666,6 +2729,42 @@ export default function App() {
 
     if (deleted) {
       closeWardrobePreview();
+    }
+  }
+
+  function equipWardrobePreviewItem() {
+    if (!wardrobePreviewItem) {
+      return;
+    }
+
+    equipItem(wardrobePreviewItem);
+  }
+
+  function toggleWardrobePreviewExcluded() {
+    if (!wardrobePreviewItem) {
+      return;
+    }
+
+    toggleExcluded(wardrobePreviewItem.id);
+  }
+
+  async function toggleWardrobePreviewFavorite() {
+    if (!wardrobePreviewItem) {
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const nextItem = {
+      ...wardrobePreviewItem,
+      favorite: !wardrobePreviewItem.favorite,
+      updatedAt: timestamp
+    };
+
+    await saveItem(nextItem);
+    setItems((current) => current.map((item) => (item.id === nextItem.id ? nextItem : item)));
+
+    if (editingId === nextItem.id) {
+      setDraft(nextItem);
     }
   }
 
@@ -2693,7 +2792,7 @@ export default function App() {
     }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
   }
 
-  function handleOutfitItemPreviewDoubleClick(item) {
+  function handleOutfitItemPreviewDoubleClick(item, event) {
     if (!item) {
       return;
     }
@@ -2704,6 +2803,7 @@ export default function App() {
     }
 
     pendingOutfitItemPreviewRef.current = null;
+    event.currentTarget.blur();
     openWardrobePreview(item.id);
   }
 
@@ -2825,6 +2925,14 @@ export default function App() {
 
   function clearWardrobeFilters() {
     setWardrobeFilters(emptyWardrobeFilters);
+    setWardrobeFilterSearch("");
+  }
+
+  function toggleWardrobeFilterSection(key) {
+    setWardrobeFilterSectionsOpen((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
   }
 
   function toggleWardrobeFilterValue(key, value) {
@@ -3497,7 +3605,7 @@ export default function App() {
         type="button"
         className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${item ? "has-item" : ""} ${isActive ? "is-active" : ""}`}
         onClick={() => handleOutfitItemPreviewClick(item, () => openAccessoryPicker(slot))}
-        onDoubleClick={() => handleOutfitItemPreviewDoubleClick(item)}
+        onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
         {item ? (
@@ -3651,7 +3759,20 @@ export default function App() {
     setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     cancelEditSavedOutfit();
-    setWardrobeFiltersOpen((current) => !current);
+    setWardrobeFiltersOpen((current) => {
+      const nextOpen = !current;
+
+      if (!nextOpen) {
+        setWardrobeFilterSearch("");
+      }
+
+      return nextOpen;
+    });
+  }
+
+  function closeWardrobeFilters() {
+    setWardrobeFiltersOpen(false);
+    setWardrobeFilterSearch("");
   }
 
   function toggleWardrobeSaved() {
@@ -3959,40 +4080,25 @@ export default function App() {
           return (
             <article
               key={item.id}
-              className={`wardrobe-card ${isEquipped ? "is-equipped" : ""} ${excluded[item.id] ? "is-excluded" : ""} ${isSelected ? "is-selected" : ""} ${wardrobeSelectMode ? "is-selection-mode" : ""}`}
+              className={`wardrobe-card ${isEquipped ? "is-equipped" : ""} ${excluded[item.id] ? "is-excluded" : ""} ${isSelected ? "is-selected" : ""}`}
             >
-              <button
-                type="button"
-                className={`exclude-toggle ${excluded[item.id] ? "is-active" : ""}`}
-                onClick={() => toggleExcluded(item.id)}
-                aria-label={excluded[item.id] ? "Include item in generation" : "Exclude item from generation"}
-              >
-                {excluded[item.id] ? "×" : ""}
-              </button>
-
-              {wardrobeSelectMode ? (
-                <span className="selection-checkmark" aria-hidden="true">
-                  {isSelected ? "✓" : ""}
-                </span>
-              ) : null}
-
               <button
                 type="button"
                 className={`wardrobe-preview ${isSelected ? "is-selected" : ""}`}
                 onClick={(event) => handleWardrobePreviewClick(item, event)}
-                onDoubleClick={() => handleWardrobePreviewDoubleClick(item)}
-                aria-pressed={wardrobeSelectMode ? isSelected : undefined}
-                aria-label={wardrobeSelectMode ? `Select ${buildDisplayName(item)} or double-click to preview` : `Equip ${buildDisplayName(item)} or double-click to preview`}
+                onDoubleClick={(event) => handleWardrobePreviewDoubleClick(item, event)}
+                onKeyDown={(event) => handleWardrobePreviewKeyDown(item, event)}
+                aria-pressed={isSelected}
+                aria-label={`Select ${buildDisplayName(item)}. Double-click or press Enter to preview.`}
               >
                 <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
+                {item.favorite ? (
+                  <span className="wardrobe-favorite-indicator" aria-hidden="true">♥</span>
+                ) : null}
               </button>
 
               <div className="wardrobe-meta">
                 <strong title={buildDisplayName(item)}>{buildDisplayName(item)}</strong>
-                <span title={`${item.brand || item.type || "No brand"} · ${item.color || "No color"}`}>
-                  {item.brand || item.type || "No brand"} · {item.color || "No color"}
-                </span>
-                {item.description ? <span title={item.description}>{item.description}</span> : null}
               </div>
             </article>
           );
@@ -4486,7 +4592,7 @@ export default function App() {
             type="button"
             className={`item-figure ${item ? "has-item" : "is-empty"}`}
             onClick={() => handleOutfitItemPreviewClick(item, () => openOutfitSlotPicker(slot))}
-            onDoubleClick={() => handleOutfitItemPreviewDoubleClick(item)}
+            onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
@@ -4860,15 +4966,14 @@ export default function App() {
             ) : (
               <div className="wardrobe-toolbar">
                 <div className="wardrobe-toolbar-main">
-                  <label className="wardrobe-search-field">
-                    <span>Search</span>
+                  <div className="wardrobe-search-field">
                     <input
                       type="search"
                       value={wardrobeSearch}
                       onChange={(event) => setWardrobeSearch(event.target.value)}
                       placeholder="Search wardrobe"
                     />
-                  </label>
+                  </div>
                   <button
                     type="button"
                     className={`secondary-button filter-button ${wardrobeFiltersOpen || hasActiveWardrobeFilters ? "is-active" : ""}`}
@@ -4880,10 +4985,9 @@ export default function App() {
                         : "No active filters"
                     }
                   >
-                    {hasActiveWardrobeFilters ? `Filter ${activeWardrobeFilterCount}` : "Filter"}
+                    Filter
                   </button>
-                  <label className="wardrobe-sort-field">
-                    <span>Sort</span>
+                  <div className="wardrobe-sort-field">
                     <select value={wardrobeSort} onChange={(event) => setWardrobeSort(event.target.value)}>
                       <option value="">Default</option>
                       <option value="garmentType">Garment type</option>
@@ -4898,17 +5002,18 @@ export default function App() {
                       <option value="newest">Newest</option>
                       <option value="oldest">Oldest</option>
                     </select>
-                  </label>
+                  </div>
                 </div>
                 <div className="wardrobe-header-actions">
                   <button
                     type="button"
-                    className={`secondary-button ${wardrobeSelectMode ? "is-active" : ""}`}
-                    onClick={toggleWardrobeSelectMode}
-                    aria-pressed={wardrobeSelectMode}
+                    className={`secondary-button ${hasWardrobeSelection ? "is-active" : ""}`}
+                    onClick={clearWardrobeSelectionState}
+                    aria-pressed={hasWardrobeSelection}
+                    disabled={!hasWardrobeSelection}
                   >
                     Select
-                    {wardrobeSelectMode ? (
+                    {hasWardrobeSelection ? (
                       <span className="wardrobe-toolbar-badge">{selectedWardrobeItemCount}</span>
                     ) : null}
                   </button>
@@ -4937,7 +5042,7 @@ export default function App() {
             </div>
 
             {wardrobeFiltersOpen ? (
-              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeFiltersOpen(false)} />
+              <div className="floating-backdrop filter-backdrop" onClick={closeWardrobeFilters} />
             ) : null}
 
             {wardrobeManageOpen ? (
@@ -4955,37 +5060,86 @@ export default function App() {
                 </button>
               </div>
               <div className="wardrobe-manage-grid">
-                <section className="wardrobe-manage-section wardrobe-worth-window is-open" aria-label="Wardrobe worth">
-                  <div className="wardrobe-worth-summary">
-                    <p className="eyebrow">Wardrobe worth</p>
-                    <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
-                    <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
-                  </div>
+                <section className="wardrobe-manage-section wardrobe-stats-section" aria-label="Wardrobe stats">
+                  <button
+                    type="button"
+                    className={`wardrobe-manage-toggle ${wardrobeStatsOpen ? "is-open" : ""}`}
+                    onClick={() => setWardrobeStatsOpen((current) => !current)}
+                    aria-expanded={wardrobeStatsOpen}
+                  >
+                    <div className="wardrobe-manage-toggle-copy">
+                      <p className="eyebrow">Wardrobe</p>
+                      <h2>Library Stats</h2>
+                      <span>
+                        {visibleWardrobeItems.length} visible · {favoriteWardrobeItemCount} favorites · {formatCurrency(wardrobeWorth.totalValue)} paid
+                      </span>
+                    </div>
+                    <span className="wardrobe-manage-toggle-icon" aria-hidden="true">
+                      {wardrobeStatsOpen ? "−" : "+"}
+                    </span>
+                  </button>
 
-                  <div className="worth-chart">
-                    {wardrobeWorth.rows.map((row) => (
-                      <div key={row.category} className="worth-row">
-                        <div className="worth-row-header">
-                          <strong>{row.category}</strong>
-                          <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
+                  {wardrobeStatsOpen ? (
+                    <>
+                      <div className="wardrobe-stats-grid">
+                        <div className="wardrobe-stat-card">
+                          <span>Items</span>
+                          <strong>{items.length}</strong>
                         </div>
-                        <div className="worth-bar-stack" aria-hidden="true">
-                          <div className="worth-bar-track">
-                            <div
-                              className="worth-bar worth-bar-retail"
-                              style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
-                            />
-                          </div>
-                          <div className="worth-bar-track">
-                            <div
-                              className="worth-bar"
-                              style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
-                            />
-                          </div>
+                        <div className="wardrobe-stat-card">
+                          <span>Visible</span>
+                          <strong>{visibleWardrobeItems.length}</strong>
+                        </div>
+                        <div className="wardrobe-stat-card">
+                          <span>Selected</span>
+                          <strong>{selectedWardrobeItemCount}</strong>
+                        </div>
+                        <div className="wardrobe-stat-card">
+                          <span>Favorites</span>
+                          <strong>{favoriteWardrobeItemCount}</strong>
+                        </div>
+                        <div className="wardrobe-stat-card">
+                          <span>Paid value</span>
+                          <strong>{formatCurrency(wardrobeWorth.totalValue)}</strong>
+                        </div>
+                        <div className="wardrobe-stat-card">
+                          <span>Retail value</span>
+                          <strong>{formatCurrency(wardrobeWorth.totalRetailValue)}</strong>
                         </div>
                       </div>
-                    ))}
-                  </div>
+
+                      <div className="wardrobe-worth-summary">
+                        <p className="eyebrow">Visible wardrobe worth</p>
+                        <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
+                        <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
+                      </div>
+
+                      <div className="worth-chart">
+                        {wardrobeWorth.rows.map((row) => (
+                          <div key={row.category} className="worth-row">
+                            <div className="worth-row-header">
+                              <strong>{row.category}</strong>
+                              <span>{row.count} pieces · {formatCurrency(row.value)} / {formatCurrency(row.retailValue)}</span>
+                            </div>
+                            <div className="worth-bar-stack" aria-hidden="true">
+                              <div className="worth-bar-track">
+                                <div
+                                  className="worth-bar worth-bar-retail"
+                                  style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
+                                />
+                              </div>
+                              <div className="worth-bar-track">
+                                <div
+                                  className="worth-bar"
+                                  style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
                 </section>
 
                 <section className="wardrobe-manage-section">
@@ -5011,7 +5165,7 @@ export default function App() {
               </div>
             </div>
 
-            {wardrobeSelectMode && !wardrobeSavedOpen ? (
+            {hasWardrobeSelection && !wardrobeSavedOpen ? (
               <WardrobeSelectionBar
                 selectedCount={selectedWardrobeItemCount}
                 bulkListDraft={bulkListDraft}
@@ -5025,7 +5179,7 @@ export default function App() {
                 editableClimateTagOptions={editableClimateTagOptions}
                 onEdit={editSelectedWardrobeItem}
                 onClear={clearWardrobeSelection}
-                onDone={toggleWardrobeSelectMode}
+                onDone={clearWardrobeSelectionState}
                 onMoveToList={moveSelectedItemsToList}
                 onFavorite={() => setSelectedItemsFavoriteState(true)}
                 onUnfavorite={() => setSelectedItemsFavoriteState(false)}
@@ -5052,92 +5206,108 @@ export default function App() {
                 <>
                   <div className="wardrobe-inline-utilities">
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
-                      <div className="wardrobe-panel-window-header">
-                        <div>
-                          <p className="eyebrow">Wardrobe</p>
-                          <h2>Filters</h2>
-                        </div>
-                        <button
-                          type="button"
-                          className="ghost-button filter-close-button"
-                          onClick={() => setWardrobeFiltersOpen(false)}
-                        >
-                          Close
-                        </button>
-                      </div>
                       <div className="wardrobe-controls-body">
-                        {[
-                          ["Brand", "brand", wardrobeFilterOptions.brand, true],
-                          ["Garment", "garmentType", wardrobeFilterOptions.garmentType, true],
-                          ["Type", "type", wardrobeFilterOptions.type, true],
-                          ["Color", "color", wardrobeFilterOptions.color, true],
-                          ["Style", "style", wardrobeFilterOptions.style, false],
-                          ["Weight", "weight", wardrobeFilterOptions.weight, true],
-                          ["List", "list", wardrobeFilterOptions.list, false]
-                        ].map(([label, key, options, includeNone]) => (
-                          <section key={key} className="wardrobe-filter-group">
-                            <p className="eyebrow">{label}</p>
-                            <div className="wardrobe-filter-options">
-                              {includeNone ? (
-                                <button
-                                  type="button"
-                                  className={`list-toggle ${wardrobeFilters[key].includes("__none__") ? "is-active" : ""}`}
-                                  onClick={() => toggleWardrobeFilterValue(key, "__none__")}
-                                  aria-pressed={wardrobeFilters[key].includes("__none__")}
-                                >
-                                  No {String(label).toLowerCase()}
-                                </button>
-                              ) : null}
-                              {options.map((option) => {
-                                const isSelected = wardrobeFilters[key].includes(option);
+                        <div className="wardrobe-filter-search">
+                          <input
+                            type="search"
+                            value={wardrobeFilterSearch}
+                            onChange={(event) => setWardrobeFilterSearch(event.target.value)}
+                            placeholder="Search filter options"
+                          />
+                        </div>
+                        {wardrobeFilterPanelSections.map((section) => {
+                          const selectedCount = section.kind === "multi"
+                            ? wardrobeFilters[section.key].length
+                            : wardrobeFilters[section.key]
+                              ? 1
+                              : 0;
+                          const groupMatchesSearch = !normalizedWardrobeFilterSearch
+                            || section.label.toLowerCase().includes(normalizedWardrobeFilterSearch);
+                          const resolvedOptions = section.options.map((option) => (
+                            typeof option === "string"
+                              ? { label: option, value: option }
+                              : option
+                          ));
+                          const filteredOptions = normalizedWardrobeFilterSearch && !groupMatchesSearch
+                            ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedWardrobeFilterSearch))
+                            : resolvedOptions;
+                          const noneLabel = `No ${section.label.toLowerCase()}`;
+                          const showNoneOption = section.includeNone && (
+                            !normalizedWardrobeFilterSearch
+                            || groupMatchesSearch
+                            || noneLabel.includes(normalizedWardrobeFilterSearch)
+                          );
+                          const isOpen = normalizedWardrobeFilterSearch ? true : Boolean(wardrobeFilterSectionsOpen[section.key]);
 
-                                return (
-                                  <button
-                                    key={option}
-                                    type="button"
-                                    className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                    onClick={() => toggleWardrobeFilterValue(key, option)}
-                                    aria-pressed={isSelected}
-                                  >
-                                    {option}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </section>
-                        ))}
-                        <label>
-                          Favorite
-                          <select
-                            value={wardrobeFilters.favorite}
-                            onChange={(event) => setWardrobeToggleFilter("favorite", event.target.value)}
-                          >
-                            <option value="">All</option>
-                            <option value="yes">Favorites</option>
-                            <option value="no">Not favorites</option>
-                          </select>
-                        </label>
-                        <label>
-                          Exclude
-                          <select
-                            value={wardrobeFilters.laundry}
-                            onChange={(event) => setWardrobeToggleFilter("laundry", event.target.value)}
-                          >
-                            <option value="">All</option>
-                            <option value="show">Show excluded</option>
-                            <option value="hide">Hide excluded</option>
-                          </select>
-                        </label>
+                          if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
+                            return null;
+                          }
+
+                          return (
+                            <section key={section.key} className={`wardrobe-filter-group ${isOpen ? "is-open" : ""}`}>
+                              <button
+                                type="button"
+                                className="wardrobe-filter-group-toggle"
+                                onClick={() => toggleWardrobeFilterSection(section.key)}
+                                aria-expanded={isOpen}
+                              >
+                                <span className="wardrobe-filter-group-copy">
+                                  <strong>{section.label}</strong>
+                                  {selectedCount ? (
+                                    <span className="wardrobe-filter-group-count">{selectedCount} selected</span>
+                                  ) : null}
+                                </span>
+                                <span className="wardrobe-filter-group-icon" aria-hidden="true">
+                                  {isOpen ? "−" : "+"}
+                                </span>
+                              </button>
+                              {isOpen ? (
+                                <div className="wardrobe-filter-options">
+                                  {showNoneOption ? (
+                                    <button
+                                      type="button"
+                                      className={`list-toggle ${wardrobeFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
+                                      onClick={() => toggleWardrobeFilterValue(section.key, "__none__")}
+                                      aria-pressed={wardrobeFilters[section.key].includes?.("__none__")}
+                                    >
+                                      {noneLabel}
+                                    </button>
+                                  ) : null}
+                                  {filteredOptions.length ? filteredOptions.map((option) => {
+                                    const isSelected = section.kind === "multi"
+                                      ? wardrobeFilters[section.key].includes(option.value)
+                                      : wardrobeFilters[section.key] === option.value;
+
+                                    return (
+                                      <button
+                                        key={option.value}
+                                        type="button"
+                                        className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                        onClick={() => (
+                                          section.kind === "multi"
+                                            ? toggleWardrobeFilterValue(section.key, option.value)
+                                            : setWardrobeToggleFilter(
+                                                section.key,
+                                                wardrobeFilters[section.key] === option.value ? "" : option.value
+                                              )
+                                        )}
+                                        aria-pressed={isSelected}
+                                      >
+                                        {option.label}
+                                      </button>
+                                    );
+                                  }) : (
+                                    <p className="wardrobe-filter-empty">No matching options.</p>
+                                  )}
+                                </div>
+                              ) : null}
+                            </section>
+                          );
+                        })}
                       </div>
                       <div className="wardrobe-controls-footer">
-                        <button type="button" className="ghost-button" onClick={clearWardrobeFilters}>
-                          Clear filters
-                        </button>
                         <button type="button" className="ghost-button" onClick={clearExcluded}>
                           Clear excluded
-                        </button>
-                        <button type="button" className="secondary-button" onClick={() => setWardrobeFiltersOpen(false)}>
-                          Apply
                         </button>
                       </div>
                     </div>
@@ -5269,12 +5439,21 @@ export default function App() {
 
         <PreviewOverlay
           open={Boolean(wardrobePreviewItem)}
-          eyebrow="Wardrobe"
+          eyebrow=""
           title={wardrobePreviewItem ? buildDisplayName(wardrobePreviewItem) : ""}
-          meta={null}
+          meta={wardrobePreviewMeta}
           onClose={closeWardrobePreview}
           actions={wardrobePreviewItem ? (
             <>
+              <button type="button" className="primary-button" onClick={equipWardrobePreviewItem} disabled={!resolveSlotForItem(wardrobePreviewItem)}>
+                Equip
+              </button>
+              <button type="button" className="ghost-button" onClick={toggleWardrobePreviewFavorite}>
+                {wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+              </button>
+              <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
+                {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
+              </button>
               <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
                 Edit
               </button>
