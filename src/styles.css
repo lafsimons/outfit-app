@@ -11,6 +11,8 @@
   --border: rgba(0, 0, 0, 0.14);
   --border-soft: rgba(0, 0, 0, 0.1);
   --border-strong: rgba(0, 0, 0, 0.34);
+  --focus-ring: rgba(17, 17, 17, 0.22);
+  --focus-ring-offset: rgba(255, 255, 255, 0.9);
   --primary: #343434;
   --primary-text: #fff;
   --soft: rgba(0, 0, 0, 0.06);
@@ -47,6 +49,18 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+:where(button, summary, input, select, textarea):focus {
+  outline: none;
+}
+
+:where(button, summary, input, select, textarea):focus:not(:focus-visible) {
+  box-shadow: none;
+}
+
+:where(button, summary, input, select, textarea):focus-visible {
+  box-shadow: 0 0 0 1px var(--focus-ring-offset), 0 0 0 3px var(--focus-ring);
 }
 
 button {
@@ -419,6 +433,11 @@ button:disabled {
   background: var(--surface);
   box-shadow: none;
   backdrop-filter: blur(18px);
+  pointer-events: none;
+}
+
+.controls-window * {
+  pointer-events: auto;
 }
 
 .controls-window-header {
@@ -665,7 +684,7 @@ button:disabled {
   position: fixed;
   left: 16px;
   bottom: calc(16px + env(safe-area-inset-bottom));
-  z-index: 30;
+  z-index: 80;
   transform: none;
   display: flex;
   flex-wrap: wrap;
@@ -730,7 +749,7 @@ button:disabled {
 }
 
 .filter-backdrop {
-  z-index: 34;
+  z-index: 21;
 }
 
 .active-panel-overlay {
@@ -821,6 +840,11 @@ button:disabled {
   transform: translateY(-1px);
 }
 
+.workspace-tab:focus-visible,
+.palette-tab:focus-visible {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.95), 0 0 0 3px rgba(17, 17, 17, 0.18);
+}
+
 .workspace-tab-icon {
   width: 30px;
   min-width: 30px;
@@ -873,15 +897,23 @@ button:disabled {
 
 .list-toggle,
 .upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
   background: var(--surface-soft);
   color: var(--text);
+  min-width: 0;
+  max-width: 100%;
   padding: 5px 8px;
   font-size: 0.7rem;
   font-weight: 600;
+  text-align: left;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .list-toggle.is-active,
@@ -1396,19 +1428,12 @@ button:disabled {
   place-items: center;
 }
 
-.item-figure:focus,
-.wardrobe-preview:focus,
-.accessory-slot:focus {
-  outline: none;
-}
-
 .item-figure:focus-visible,
-.accessory-slot:focus-visible {
-  box-shadow: inset 0 0 0 1px rgba(17, 17, 17, 0.22);
-}
-
-.wardrobe-preview:focus-visible {
-  box-shadow: none;
+.accessory-slot:focus-visible,
+.wardrobe-preview:focus-visible,
+.fitpic-image-button:focus-visible,
+.saved-outfit-load:focus-visible {
+  box-shadow: 0 0 0 1px var(--focus-ring-offset), 0 0 0 3px var(--focus-ring);
 }
 
 .wardrobe-preview {
@@ -1533,8 +1558,9 @@ button:disabled {
 .wardrobe-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-start;
+  gap: 8px 10px;
+  flex-wrap: wrap;
   min-width: 0;
 }
 
@@ -1543,7 +1569,8 @@ button:disabled {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
+  flex-wrap: nowrap;
 }
 
 .wardrobe-search-field,
@@ -1577,7 +1604,8 @@ button:disabled {
 }
 
 .wardrobe-sort-field {
-  flex: 0 0 164px;
+  flex: 0 1 164px;
+  min-width: 0;
 }
 
 .wardrobe-sort-group {
@@ -1594,13 +1622,20 @@ button:disabled {
   align-self: center;
 }
 
+.wardrobe-filter-anchor {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
 .wardrobe-controls,
 .wardrobe-manage-window {
   position: absolute;
   z-index: 45;
   display: none;
-  width: min(440px, calc(100vw - 36px));
-  max-height: min(72vh, 720px);
+  width: min(460px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: min(76vh, 720px);
   overflow: hidden;
   padding: 12px;
   border: 1px solid var(--border);
@@ -1610,13 +1645,32 @@ button:disabled {
 }
 
 .wardrobe-controls {
-  top: 48px;
+  top: calc(100% + 8px);
   left: 0;
+}
+
+.wardrobe-controls-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.wardrobe-controls-header .eyebrow,
+.wardrobe-controls-header h2 {
+  margin: 0;
+}
+
+.wardrobe-controls-header h2 {
+  margin-top: 2px;
+  font-size: 1rem;
 }
 
 .wardrobe-filter-group {
   display: grid;
   gap: 8px;
+  min-width: 0;
   padding: 8px 0;
   border-top: 1px solid var(--border-soft);
 }
@@ -1646,6 +1700,7 @@ button:disabled {
   justify-content: space-between;
   gap: 10px;
   width: 100%;
+  min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1654,8 +1709,10 @@ button:disabled {
 }
 
 .wardrobe-filter-group-copy {
-  display: inline-flex;
+  display: flex;
   align-items: baseline;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
 }
@@ -1682,9 +1739,13 @@ button:disabled {
 .wardrobe-filter-options {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 5px;
-  max-height: 176px;
+  max-width: 100%;
+  max-height: min(26vh, 196px);
+  min-width: 0;
   overflow: auto;
+  overflow-x: hidden;
   padding-right: 2px;
 }
 
@@ -1715,6 +1776,8 @@ button:disabled {
   flex-wrap: nowrap;
   align-items: center;
   flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 0;
 }
 
 .wardrobe-header-actions > button,
@@ -1908,16 +1971,19 @@ button:disabled {
   grid-template-columns: 1fr;
   gap: 10px;
   padding-right: 4px;
+  overscroll-behavior: contain;
 }
 
 .wardrobe-controls-footer {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  flex-shrink: 0;
   gap: 6px;
   padding-top: 10px;
   margin-top: 10px;
   border-top: 1px solid var(--border-soft);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 0%, var(--surface) 18%);
 }
 
 .wardrobe-controls-footer .active-filter-summary {
@@ -2043,6 +2109,8 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
+  max-width: 100%;
   padding: 3px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
@@ -2052,6 +2120,7 @@ button:disabled {
   font-weight: 600;
   line-height: 1.2;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .active-filter-chip span {
@@ -2139,7 +2208,7 @@ button:disabled {
   gap: 10px;
   margin-bottom: 8px;
   padding: 2px 0 6px;
-  background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 82%, rgba(247, 247, 247, 0) 100%);
+  background: transparent;
 }
 
 .active-panel-overlay .wardrobe-workspace {
@@ -3301,6 +3370,10 @@ button:disabled {
 
   .wardrobe-toolbar-main {
     flex-wrap: wrap;
+  }
+
+  .wardrobe-filter-anchor {
+    flex: 1 1 100%;
   }
 
   .wardrobe-search-field,
