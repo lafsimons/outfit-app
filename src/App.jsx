@@ -1023,6 +1023,10 @@ async function fetchWeatherForSavedLocation(settings) {
 }
 
 export default function App() {
+  const outfitSectionTabs = [
+    ["saved", "Saved"],
+    ["fitpics", "Fitpics"]
+  ];
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
   const outfitStageRef = useRef(null);
@@ -1052,6 +1056,7 @@ export default function App() {
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
+  const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
@@ -1060,7 +1065,6 @@ export default function App() {
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
-  const [wardrobeSavedOpen, setWardrobeSavedOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [wardrobeStatsOpen, setWardrobeStatsOpen] = useState(false);
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
@@ -1139,7 +1143,7 @@ export default function App() {
     const mediaQuery = window.matchMedia("(max-width: 960px)");
     const handleChange = (event) => {
       setIsMobileViewport(event.matches);
-      setDockExpanded(event.matches ? controlsOpen || activePanel === "wardrobe" || activePanel === "fitpics" : true);
+      setDockExpanded(event.matches ? controlsOpen || activePanel === "wardrobe" || activePanel === "outfits" : true);
     };
 
     handleChange(mediaQuery);
@@ -2066,13 +2070,6 @@ export default function App() {
         return;
       }
 
-      if (wardrobeSavedOpen) {
-        event.preventDefault();
-        cancelEditSavedOutfit();
-        setWardrobeSavedOpen(false);
-        return;
-      }
-
       if (wardrobeManageOpen) {
         event.preventDefault();
         setWardrobeManageOpen(false);
@@ -2109,7 +2106,6 @@ export default function App() {
     wardrobePreviewItemId,
     selectedWardrobeItemCount,
     wardrobeFiltersOpen,
-    wardrobeSavedOpen,
     wardrobeManageOpen,
     generationListsOpen
   ]);
@@ -2305,7 +2301,6 @@ export default function App() {
     setPickerAnchorSlot(null);
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
-    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
   }
 
@@ -3685,7 +3680,6 @@ export default function App() {
       setActiveAccessorySlot(null);
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
-      setWardrobeSavedOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
       setWardrobePreviewItemId(null);
@@ -3707,7 +3701,6 @@ export default function App() {
       setDockExpanded(isMobileViewport ? false : true);
     }
     setWardrobeFiltersOpen(false);
-    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setWardrobePreviewItemId(null);
@@ -3731,7 +3724,6 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
-    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
     setWardrobePreviewItemId(null);
@@ -3745,14 +3737,13 @@ export default function App() {
     setEditorReturnTarget(null);
     setControlsOpen((current) => {
       const nextOpen = !current;
-      setDockExpanded(isMobileViewport ? nextOpen || activePanel === "wardrobe" || activePanel === "fitpics" : true);
+      setDockExpanded(isMobileViewport ? nextOpen || activePanel === "wardrobe" || activePanel === "outfits" : true);
       return nextOpen;
     });
   }
 
   function openWardrobeFilters() {
     closeUtilityWindows();
-    setWardrobeSavedOpen(false);
     setWardrobeManageOpen(false);
     cancelEditSavedOutfit();
     setWardrobeFiltersOpen((current) => {
@@ -3771,25 +3762,8 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
-  function toggleWardrobeSaved() {
-    closeUtilityWindows();
-    setWardrobeManageOpen(false);
-    clearWardrobeSelection();
-    setWardrobeSelectMode(false);
-    setWardrobeSavedOpen((current) => {
-      const nextOpen = !current;
-
-      if (!nextOpen) {
-        cancelEditSavedOutfit();
-      }
-
-      return nextOpen;
-    });
-  }
-
   function toggleWardrobeManage() {
     closeUtilityWindows();
-    setWardrobeSavedOpen(false);
     cancelEditSavedOutfit();
     setWardrobeManageOpen((current) => !current);
   }
@@ -3797,13 +3771,7 @@ export default function App() {
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
     cancelEditSavedOutfit();
-    setWardrobeSavedOpen(false);
     setActivePanel(null);
-  }
-
-  function closeSavedOutfitsView() {
-    cancelEditSavedOutfit();
-    setWardrobeSavedOpen(false);
   }
 
   function renderOutfitSlotPicker() {
@@ -4054,6 +4022,42 @@ export default function App() {
           </div>
         )}
       </section>
+    );
+  }
+
+  function renderFitpicsContent() {
+    if (!fitpics.length) {
+      return (
+        <div className="editor-placeholder">
+          <p>Upload fitpics and they will be collected here.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="fitpic-list">
+        {fitpics.map((fitpic) => (
+          <article key={fitpic.id} className="fitpic-card">
+            <button
+              type="button"
+              className="fitpic-image-button"
+              onClick={() => {
+                closeUtilityWindows();
+                setFitpicPreview(fitpic);
+              }}
+            >
+              <img src={fitpic.imageData} alt={fitpic.name} />
+            </button>
+            <div>
+              <strong>{fitpic.name}</strong>
+              <span>{new Date(fitpic.createdAt).toLocaleDateString()}</span>
+            </div>
+            <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
+              Delete
+            </button>
+          </article>
+        ))}
+      </div>
     );
   }
 
@@ -4656,7 +4660,7 @@ export default function App() {
             <div className={`workspace-tab-group ${isDockExpanded ? "is-expanded" : ""}`}>
               {[
                 ["wardrobe", "Wardrobe"],
-                ["fitpics", "Fitpics"]
+                ["outfits", "Outfits"]
               ].map(([panel, label]) => (
                 <button
                   key={panel}
@@ -4948,18 +4952,7 @@ export default function App() {
         {activePanel === "wardrobe" ? (
         <div className="wardrobe-workspace">
           <div className="panel wardrobe-panel">
-          <div className="panel-header">
-            {wardrobeSavedOpen ? (
-              <div className="wardrobe-subview-header">
-                <div>
-                  <p className="eyebrow">Wardrobe</p>
-                  <h2>Saved Outfits</h2>
-                </div>
-                <button type="button" className="ghost-button" onClick={closeSavedOutfitsView}>
-                  Back to wardrobe
-                </button>
-              </div>
-            ) : (
+            <div className="panel-header">
               <div className="wardrobe-toolbar">
                 <div className="wardrobe-toolbar-main">
                   <div className="wardrobe-search-field">
@@ -5001,7 +4994,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="wardrobe-header-actions">
-                  {hasWardrobeSelection && !wardrobeSavedOpen ? (
+                  {hasWardrobeSelection ? (
                     <WardrobeSelectionBar
                       inline
                       selectedCount={selectedWardrobeItemCount}
@@ -5028,14 +5021,6 @@ export default function App() {
                   ) : null}
                   <button
                     type="button"
-                    className={`secondary-button ${wardrobeSavedOpen ? "is-active" : ""}`}
-                    onClick={toggleWardrobeSaved}
-                    aria-expanded={wardrobeSavedOpen}
-                  >
-                    Saved Outfits
-                  </button>
-                  <button
-                    type="button"
                     className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                     onClick={toggleWardrobeManage}
                     aria-expanded={wardrobeManageOpen}
@@ -5047,7 +5032,6 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            )}
             </div>
 
             {wardrobeFiltersOpen ? (
@@ -5183,203 +5167,187 @@ export default function App() {
             />
 
             <div className="wardrobe-panel-scroll">
-              {wardrobeSavedOpen ? (
-                renderSavedOutfitsContent()
-              ) : (
-                <>
-                  <div className="wardrobe-inline-utilities">
-                    <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
-                      <div className="wardrobe-controls-body">
-                        <div className="wardrobe-filter-search">
-                          <input
-                            type="search"
-                            value={wardrobeFilterSearch}
-                            onChange={(event) => setWardrobeFilterSearch(event.target.value)}
-                            placeholder="Search filter options"
-                          />
-                        </div>
-                        {wardrobeFilterPanelSections.map((section) => {
-                          const selectedCount = section.kind === "multi"
-                            ? wardrobeFilters[section.key].length
-                            : wardrobeFilters[section.key]
-                              ? 1
-                              : 0;
-                          const groupMatchesSearch = !normalizedWardrobeFilterSearch
-                            || section.label.toLowerCase().includes(normalizedWardrobeFilterSearch);
-                          const resolvedOptions = section.options.map((option) => (
-                            typeof option === "string"
-                              ? { label: option, value: option }
-                              : option
-                          ));
-                          const filteredOptions = normalizedWardrobeFilterSearch && !groupMatchesSearch
-                            ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedWardrobeFilterSearch))
-                            : resolvedOptions;
-                          const noneLabel = `No ${section.label.toLowerCase()}`;
-                          const showNoneOption = section.includeNone && (
-                            !normalizedWardrobeFilterSearch
-                            || groupMatchesSearch
-                            || noneLabel.includes(normalizedWardrobeFilterSearch)
-                          );
-                          const isOpen = normalizedWardrobeFilterSearch ? true : Boolean(wardrobeFilterSectionsOpen[section.key]);
+              <>
+                <div className="wardrobe-inline-utilities">
+                  <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`}>
+                    <div className="wardrobe-controls-body">
+                      <div className="wardrobe-filter-search">
+                        <input
+                          type="search"
+                          value={wardrobeFilterSearch}
+                          onChange={(event) => setWardrobeFilterSearch(event.target.value)}
+                          placeholder="Search filter options"
+                        />
+                      </div>
+                      {wardrobeFilterPanelSections.map((section) => {
+                        const selectedCount = section.kind === "multi"
+                          ? wardrobeFilters[section.key].length
+                          : wardrobeFilters[section.key]
+                            ? 1
+                            : 0;
+                        const groupMatchesSearch = !normalizedWardrobeFilterSearch
+                          || section.label.toLowerCase().includes(normalizedWardrobeFilterSearch);
+                        const resolvedOptions = section.options.map((option) => (
+                          typeof option === "string"
+                            ? { label: option, value: option }
+                            : option
+                        ));
+                        const filteredOptions = normalizedWardrobeFilterSearch && !groupMatchesSearch
+                          ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedWardrobeFilterSearch))
+                          : resolvedOptions;
+                        const noneLabel = `No ${section.label.toLowerCase()}`;
+                        const showNoneOption = section.includeNone && (
+                          !normalizedWardrobeFilterSearch
+                          || groupMatchesSearch
+                          || noneLabel.includes(normalizedWardrobeFilterSearch)
+                        );
+                        const isOpen = normalizedWardrobeFilterSearch ? true : Boolean(wardrobeFilterSectionsOpen[section.key]);
 
-                          if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
-                            return null;
-                          }
+                        if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
+                          return null;
+                        }
 
-                          return (
-                            <section key={section.key} className={`wardrobe-filter-group ${isOpen ? "is-open" : ""}`}>
-                              <button
-                                type="button"
-                                className="wardrobe-filter-group-toggle"
-                                onClick={() => toggleWardrobeFilterSection(section.key)}
-                                aria-expanded={isOpen}
-                              >
-                                <span className="wardrobe-filter-group-copy">
-                                  <strong>{section.label}</strong>
-                                  {selectedCount ? (
-                                    <span className="wardrobe-filter-group-count">{selectedCount} selected</span>
-                                  ) : null}
-                                </span>
-                                <span className="wardrobe-filter-group-icon" aria-hidden="true">
-                                  {isOpen ? "−" : "+"}
-                                </span>
-                              </button>
-                              {isOpen ? (
-                                <div className="wardrobe-filter-options">
-                                  {showNoneOption ? (
+                        return (
+                          <section key={section.key} className={`wardrobe-filter-group ${isOpen ? "is-open" : ""}`}>
+                            <button
+                              type="button"
+                              className="wardrobe-filter-group-toggle"
+                              onClick={() => toggleWardrobeFilterSection(section.key)}
+                              aria-expanded={isOpen}
+                            >
+                              <span className="wardrobe-filter-group-copy">
+                                <strong>{section.label}</strong>
+                                {selectedCount ? (
+                                  <span className="wardrobe-filter-group-count">{selectedCount} selected</span>
+                                ) : null}
+                              </span>
+                              <span className="wardrobe-filter-group-icon" aria-hidden="true">
+                                {isOpen ? "−" : "+"}
+                              </span>
+                            </button>
+                            {isOpen ? (
+                              <div className="wardrobe-filter-options">
+                                {showNoneOption ? (
+                                  <button
+                                    type="button"
+                                    className={`list-toggle ${wardrobeFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
+                                    onClick={() => toggleWardrobeFilterValue(section.key, "__none__")}
+                                    aria-pressed={wardrobeFilters[section.key].includes?.("__none__")}
+                                  >
+                                    {noneLabel}
+                                  </button>
+                                ) : null}
+                                {filteredOptions.length ? filteredOptions.map((option) => {
+                                  const isSelected = section.kind === "multi"
+                                    ? wardrobeFilters[section.key].includes(option.value)
+                                    : wardrobeFilters[section.key] === option.value;
+
+                                  return (
                                     <button
+                                      key={option.value}
                                       type="button"
-                                      className={`list-toggle ${wardrobeFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
-                                      onClick={() => toggleWardrobeFilterValue(section.key, "__none__")}
-                                      aria-pressed={wardrobeFilters[section.key].includes?.("__none__")}
+                                      className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                      onClick={() => (
+                                        section.kind === "multi"
+                                          ? toggleWardrobeFilterValue(section.key, option.value)
+                                          : setWardrobeToggleFilter(
+                                              section.key,
+                                              wardrobeFilters[section.key] === option.value ? "" : option.value
+                                            )
+                                      )}
+                                      aria-pressed={isSelected}
                                     >
-                                      {noneLabel}
+                                      {option.label}
                                     </button>
-                                  ) : null}
-                                  {filteredOptions.length ? filteredOptions.map((option) => {
-                                    const isSelected = section.kind === "multi"
-                                      ? wardrobeFilters[section.key].includes(option.value)
-                                      : wardrobeFilters[section.key] === option.value;
-
-                                    return (
-                                      <button
-                                        key={option.value}
-                                        type="button"
-                                        className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                        onClick={() => (
-                                          section.kind === "multi"
-                                            ? toggleWardrobeFilterValue(section.key, option.value)
-                                            : setWardrobeToggleFilter(
-                                                section.key,
-                                                wardrobeFilters[section.key] === option.value ? "" : option.value
-                                              )
-                                        )}
-                                        aria-pressed={isSelected}
-                                      >
-                                        {option.label}
-                                      </button>
-                                    );
-                                  }) : (
-                                    <p className="wardrobe-filter-empty">No matching options.</p>
-                                  )}
-                                </div>
-                              ) : null}
-                            </section>
-                          );
-                        })}
-                      </div>
-                      <div className="wardrobe-controls-footer">
-                        {wardrobeSearch || hasActiveWardrobeFilters ? (
-                          <div className="active-filter-summary" aria-label="Active wardrobe filters">
-                            <div className="active-filter-chips">
-                              {wardrobeSearch ? (
-                                <span className="active-filter-chip">
-                                  <span>Search</span>
-                                  {wardrobeSearch}
-                                </span>
-                              ) : null}
-                              {activeWardrobeFilterChips.map((filter) => (
-                                <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
-                                  <span>{filter.label}</span>
-                                  {filter.value}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => {
-                            clearWardrobeFilters();
-                            setWardrobeSearch("");
-                          }}
-                          disabled={!wardrobeSearch && !hasActiveWardrobeFilters}
-                        >
-                          Clear search + filters
-                        </button>
-                        <button type="button" className="ghost-button" onClick={clearExcluded}>
-                          Clear excluded
-                        </button>
-                      </div>
+                                  );
+                                }) : (
+                                  <p className="wardrobe-filter-empty">No matching options.</p>
+                                )}
+                              </div>
+                            ) : null}
+                          </section>
+                        );
+                      })}
                     </div>
-
-                    <div className="wardrobe-results-count">
-                      {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
+                    <div className="wardrobe-controls-footer">
+                      {wardrobeSearch || hasActiveWardrobeFilters ? (
+                        <div className="active-filter-summary" aria-label="Active wardrobe filters">
+                          <div className="active-filter-chips">
+                            {wardrobeSearch ? (
+                              <span className="active-filter-chip">
+                                <span>Search</span>
+                                {wardrobeSearch}
+                              </span>
+                            ) : null}
+                            {activeWardrobeFilterChips.map((filter) => (
+                              <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
+                                <span>{filter.label}</span>
+                                {filter.value}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => {
+                          clearWardrobeFilters();
+                          setWardrobeSearch("");
+                        }}
+                        disabled={!wardrobeSearch && !hasActiveWardrobeFilters}
+                      >
+                        Clear search + filters
+                      </button>
+                      <button type="button" className="ghost-button" onClick={clearExcluded}>
+                        Clear excluded
+                      </button>
                     </div>
                   </div>
 
-                  {renderWardrobeGrid()}
-                </>
-              )}
+                  <div className="wardrobe-results-count">
+                    {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
+                  </div>
+                </div>
+
+                {renderWardrobeGrid()}
+              </>
             </div>
           </div>
         </div>
         ) : null}
 
-        {activePanel === "fitpics" ? (
+        {activePanel === "outfits" ? (
         <section className="insights-stack">
-          <div className="panel fitpics-panel">
+          <div className="panel fitpics-panel outfits-panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Fitpics</p>
-                <h2>Fitpic archive</h2>
+                <p className="eyebrow">Outfits</p>
+                <h2>Outfit archive</h2>
               </div>
-              <label className="upload-button">
-                Upload
-                <input type="file" accept="image/*" multiple onChange={handleFitpicUpload} />
-              </label>
+              {activeOutfitsTab === "fitpics" ? (
+                <label className="upload-button">
+                  Upload
+                  <input type="file" accept="image/*" multiple onChange={handleFitpicUpload} />
+                </label>
+              ) : null}
+            </div>
+            <div className="outfits-panel-tabs" role="tablist" aria-label="Outfits sections">
+              {outfitSectionTabs.map(([tab, label]) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`outfits-panel-tab ${activeOutfitsTab === tab ? "is-active" : ""}`}
+                  onClick={() => setActiveOutfitsTab(tab)}
+                  role="tab"
+                  aria-selected={activeOutfitsTab === tab}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
-            {fitpics.length ? (
-              <div className="fitpic-list">
-                {fitpics.map((fitpic) => (
-                  <article key={fitpic.id} className="fitpic-card">
-                    <button
-                      type="button"
-                      className="fitpic-image-button"
-                      onClick={() => {
-                        closeUtilityWindows();
-                        setFitpicPreview(fitpic);
-                      }}
-                    >
-                      <img src={fitpic.imageData} alt={fitpic.name} />
-                    </button>
-                    <div>
-                      <strong>{fitpic.name}</strong>
-                      <span>{new Date(fitpic.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
-                      Delete
-                    </button>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="editor-placeholder">
-                <p>Upload fitpics and they will be collected here.</p>
-              </div>
-            )}
+            {activeOutfitsTab === "saved" ? renderSavedOutfitsContent() : renderFitpicsContent()}
           </div>
         </section>
         ) : null}

@@ -2334,6 +2334,34 @@ button:disabled {
   padding: 14px;
 }
 
+.outfits-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.outfits-panel-tabs {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.outfits-panel-tab {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--panel);
+  color: var(--muted);
+  padding: 8px 12px;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+}
+
+.outfits-panel-tab.is-active {
+  border-color: var(--text);
+  background: var(--soft);
+  color: var(--text);
+}
+
 .wardrobe-worth-summary {
   display: grid;
   gap: 3px;
