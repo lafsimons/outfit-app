@@ -232,6 +232,10 @@ const advancedTrackedFields = [
   "layerType",
   "accessorySlot"
 ];
+const stylingEditorFields = ["styleTags", "climateTags"];
+const advancedEditorFields = advancedTrackedFields.filter(
+  (field) => !["name", "description", "brand", "list", "favorite", ...stylingEditorFields].includes(field)
+);
 
 function normalizeStoredItem(item, fallbackCreatedAt) {
   return normalizeItem(item, {
@@ -251,6 +255,71 @@ function normalizeQuantity(value) {
     return 1;
   }
   return Math.max(1, Math.round(parsed));
+}
+
+function createEmptyBulkMetadataDraft() {
+  return {
+    typeMode: "keep",
+    typeValue: "",
+    colorMode: "keep",
+    colorValue: "",
+    brandMode: "keep",
+    brandValue: "",
+    nameMode: "keep",
+    nameValue: "",
+    descriptionMode: "keep",
+    descriptionValue: "",
+    sizeMode: "keep",
+    sizeValue: "",
+    weightMode: "keep",
+    weightValue: "",
+    quantityMode: "keep",
+    quantityValue: "",
+    valueMode: "keep",
+    valueValue: "",
+    retailValueMode: "keep",
+    retailValueValue: "",
+    styleTagsToAdd: [],
+    styleTagsToRemove: [],
+    climateTagsToAdd: [],
+    climateTagsToRemove: []
+  };
+}
+
+function toggleBulkTagAssignment(currentDraft, addKey, removeKey, tag) {
+  const addSet = new Set(currentDraft[addKey] ?? []);
+  const removeSet = new Set(currentDraft[removeKey] ?? []);
+
+  if (addSet.has(tag)) {
+    addSet.delete(tag);
+  } else {
+    addSet.add(tag);
+    removeSet.delete(tag);
+  }
+
+  return {
+    ...currentDraft,
+    [addKey]: Array.from(addSet),
+    [removeKey]: Array.from(removeSet)
+  };
+}
+
+function toggleBulkTagRemoval(currentDraft, addKey, removeKey, tag) {
+  const addSet = new Set(currentDraft[addKey] ?? []);
+  const removeSet = new Set(currentDraft[removeKey] ?? []);
+
+  if (removeSet.has(tag)) {
+    removeSet.delete(tag);
+  } else {
+    removeSet.add(tag);
+    addSet.delete(tag);
+  }
+
+  return {
+    ...currentDraft,
+    [addKey]: Array.from(addSet),
+    [removeKey]: Array.from(removeSet)
+  };
 }
 
 
@@ -1075,11 +1144,12 @@ export default function App() {
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
   const [bulkListDraft, setBulkListDraft] = useState(defaultItemList);
-  const [bulkStyleTagDraft, setBulkStyleTagDraft] = useState(styleTagOptions[0] ?? "");
-  const [bulkClimateTagDraft, setBulkClimateTagDraft] = useState(editableClimateTagOptions[0] ?? "");
+  const [bulkMetadataEditorOpen, setBulkMetadataEditorOpen] = useState(false);
+  const [bulkMetadataDraft, setBulkMetadataDraft] = useState(createEmptyBulkMetadataDraft);
   const [editingId, setEditingId] = useState(null);
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
   const [editorAdvancedOpen, setEditorAdvancedOpen] = useState(false);
+  const [editorStylingOpen, setEditorStylingOpen] = useState(false);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
@@ -1503,6 +1573,16 @@ export default function App() {
     [draft, resolvedTypeDefaults]
   );
   const advancedOverrideSet = useMemo(() => new Set(advancedOverrideFields), [advancedOverrideFields]);
+  const advancedMetadataOverrideCount = useMemo(
+    () => advancedOverrideFields.filter((field) => advancedEditorFields.includes(field)).length,
+    [advancedOverrideFields]
+  );
+  const stylingOverrideCount = useMemo(
+    () => advancedOverrideFields.filter((field) => stylingEditorFields.includes(field)).length,
+    [advancedOverrideFields]
+  );
+  const selectedStyleTagCount = normalizeTagList(draft.styleTags, styleTagOptions).length;
+  const selectedClimateTagCount = normalizeTagList(draft.climateTags, editableClimateTagOptions).length;
   const itemListOptions = useMemo(
     () => getItemListOptions([
       ...items.map((item) => item.list),
@@ -1631,6 +1711,8 @@ export default function App() {
   function clearWardrobeSelection() {
     setSelectedWardrobeItemIds([]);
     setWardrobeSelectionAnchorId(null);
+    setBulkMetadataEditorOpen(false);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
   }
 
   async function persistBulkSelectionUpdate(updater) {
@@ -1679,12 +1761,34 @@ export default function App() {
     }));
   }
 
-  function editSelectedWardrobeItem() {
-    if (selectedWardrobeItems.length !== 1) {
+  function openBulkMetadataEditor() {
+    if (selectedWardrobeItems.length < 2) {
       return;
     }
 
-    startEdit(selectedWardrobeItems[0]);
+    closeUtilityWindows();
+    setWardrobeFiltersOpen(false);
+    setWardrobeManageOpen(false);
+    setImageUploadError("");
+    setImageProcessing(false);
+    setItemImageDragActive(false);
+    setEditingId(null);
+    setEditorReturnTarget(null);
+    setEditorAdvancedOpen(false);
+    setDraft(emptyForm);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
+    setBulkMetadataEditorOpen(true);
+  }
+
+  function editSelectedWardrobeItems() {
+    if (selectedWardrobeItems.length === 1) {
+      startEdit(selectedWardrobeItems[0]);
+      return;
+    }
+
+    if (selectedWardrobeItems.length > 1) {
+      openBulkMetadataEditor();
+    }
   }
 
   async function setSelectedItemsFavoriteState(favorite) {
@@ -1694,26 +1798,124 @@ export default function App() {
     }));
   }
 
-  async function addSelectedTag(field, tag, allowedOptions) {
-    if (!tag) {
+  async function setSelectedItemsExcludedState(shouldExclude) {
+    if (!selectedWardrobeItemIds.length) {
       return;
     }
 
-    await persistBulkSelectionUpdate((item) => ({
-      ...item,
-      [field]: addTagToItemTags(item[field], tag, allowedOptions)
+    const selectedIdSet = new Set(selectedWardrobeItemIds);
+
+    setExcluded((current) => {
+      const nextExcluded = { ...current };
+
+      if (shouldExclude) {
+        selectedWardrobeItemIds.forEach((itemId) => {
+          nextExcluded[itemId] = true;
+        });
+      } else {
+        selectedWardrobeItemIds.forEach((itemId) => {
+          delete nextExcluded[itemId];
+        });
+      }
+
+      if (!shouldExclude) {
+        return nextExcluded;
+      }
+
+      setOutfit((previous) => {
+        const sanitized = Object.fromEntries(
+          Object.entries(previous).map(([slot, equippedId]) => [
+            slot,
+            selectedIdSet.has(equippedId) ? null : equippedId
+          ])
+        );
+
+        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      });
+
+      return nextExcluded;
+    });
+  }
+
+  function setBulkMetadataFieldMode(field, mode) {
+    setBulkMetadataDraft((current) => ({
+      ...current,
+      [`${field}Mode`]: mode
     }));
   }
 
-  async function removeSelectedTag(field, tag, allowedOptions) {
-    if (!tag) {
-      return;
-    }
-
-    await persistBulkSelectionUpdate((item) => ({
-      ...item,
-      [field]: removeTagFromItemTags(item[field], tag, allowedOptions)
+  function setBulkMetadataFieldValue(field, value) {
+    setBulkMetadataDraft((current) => ({
+      ...current,
+      [`${field}Value`]: value
     }));
+  }
+
+  function toggleBulkMetadataTag(tagGroup, mode, tag) {
+    const keyMap = {
+      styleTags: ["styleTagsToAdd", "styleTagsToRemove"],
+      climateTags: ["climateTagsToAdd", "climateTagsToRemove"]
+    };
+    const [addKey, removeKey] = keyMap[tagGroup];
+
+    setBulkMetadataDraft((current) =>
+      mode === "add"
+        ? toggleBulkTagAssignment(current, addKey, removeKey, tag)
+        : toggleBulkTagRemoval(current, addKey, removeKey, tag)
+    );
+  }
+
+  async function applyBulkMetadataChanges(event) {
+    event.preventDefault();
+
+    const didUpdate = await persistBulkSelectionUpdate((item) => {
+      let nextItem = { ...item };
+
+      if (bulkMetadataDraft.typeMode === "set") {
+        nextItem = applyTypeDefaultsToDraft(nextItem, bulkMetadataDraft.typeValue);
+      } else if (bulkMetadataDraft.typeMode === "clear") {
+        nextItem = applyTypeDefaultsToDraft(nextItem, "");
+      }
+
+      [
+        ["color", ""],
+        ["brand", ""],
+        ["name", ""],
+        ["description", ""],
+        ["size", ""],
+        ["weight", ""],
+        ["quantity", ""],
+        ["value", ""],
+        ["retailValue", ""]
+      ].forEach(([field, emptyValue]) => {
+        const mode = bulkMetadataDraft[`${field}Mode`];
+
+        if (mode === "set") {
+          nextItem[field] = bulkMetadataDraft[`${field}Value`];
+        } else if (mode === "clear") {
+          nextItem[field] = emptyValue;
+        }
+      });
+
+      bulkMetadataDraft.styleTagsToAdd.forEach((tag) => {
+        nextItem.styleTags = addTagToItemTags(nextItem.styleTags, tag, styleTagOptions);
+      });
+      bulkMetadataDraft.styleTagsToRemove.forEach((tag) => {
+        nextItem.styleTags = removeTagFromItemTags(nextItem.styleTags, tag, styleTagOptions);
+      });
+      bulkMetadataDraft.climateTagsToAdd.forEach((tag) => {
+        nextItem.climateTags = addTagToItemTags(nextItem.climateTags, tag, editableClimateTagOptions);
+      });
+      bulkMetadataDraft.climateTagsToRemove.forEach((tag) => {
+        nextItem.climateTags = removeTagFromItemTags(nextItem.climateTags, tag, editableClimateTagOptions);
+      });
+
+      return nextItem;
+    });
+
+    if (didUpdate) {
+      setBulkMetadataDraft(createEmptyBulkMetadataDraft());
+    }
   }
 
   async function handleBulkDeleteSelected() {
@@ -1777,6 +1979,16 @@ export default function App() {
     () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
     [itemsById, selectedWardrobeItemIds]
   );
+  const areAllSelectedWardrobeItemsFavorite = useMemo(
+    () => selectedWardrobeItems.length > 0 && selectedWardrobeItems.every((item) => Boolean(item.favorite)),
+    [selectedWardrobeItems]
+  );
+  const areAllSelectedWardrobeItemsExcluded = useMemo(
+    () => selectedWardrobeItems.length > 0 && selectedWardrobeItems.every((item) => Boolean(excluded[item.id])),
+    [excluded, selectedWardrobeItems]
+  );
+  const bulkFavoriteActionLabel = areAllSelectedWardrobeItemsFavorite ? "Unfavorite" : "Favorite";
+  const bulkExcludeActionLabel = areAllSelectedWardrobeItemsExcluded ? "Include" : "Exclude";
 
   const wardrobeWorth = useMemo(() => {
     const categories = garmentTypes;
@@ -2035,6 +2247,13 @@ export default function App() {
       setBulkListDraft(itemListOptions[0] ?? defaultItemList);
     }
   }, [bulkListDraft, itemListOptions]);
+
+  useEffect(() => {
+    if (!selectedWardrobeItemIds.length && bulkMetadataEditorOpen) {
+      setBulkMetadataEditorOpen(false);
+      setBulkMetadataDraft(createEmptyBulkMetadataDraft());
+    }
+  }, [bulkMetadataEditorOpen, selectedWardrobeItemIds.length]);
 
   useEffect(() => {
     if (!wardrobePreviewItemId || itemsById[wardrobePreviewItemId]) {
@@ -2967,8 +3186,11 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
+    setBulkMetadataEditorOpen(false);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
     setEditorReturnTarget("wardrobe");
     setEditorAdvancedOpen(false);
+    setEditorStylingOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
   }
@@ -2978,7 +3200,7 @@ export default function App() {
     const shouldOpenAdvanced = getAdvancedOverrideFields(
       normalizedItem,
       resolveTypeDefaults(normalizedItem.type)
-    ).length > 0;
+    ).some((field) => advancedEditorFields.includes(field));
 
     closeUtilityWindows();
     setWardrobeFiltersOpen(false);
@@ -2986,17 +3208,23 @@ export default function App() {
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
+    setBulkMetadataEditorOpen(false);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
     const requestedReturnTarget = options.returnTarget ?? "wardrobe";
     setEditorReturnTarget(requestedReturnTarget);
     setEditorAdvancedOpen(shouldOpenAdvanced);
+    setEditorStylingOpen(false);
     setEditingId(item.id);
     setDraft(normalizedItem);
   }
 
   function cancelEdit() {
+    setBulkMetadataEditorOpen(false);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
     setEditingId(null);
     setEditorReturnTarget(null);
     setEditorAdvancedOpen(false);
+    setEditorStylingOpen(false);
     setDraft(emptyForm);
     setImageUploadError("");
     setImageProcessing(false);
@@ -3205,10 +3433,10 @@ export default function App() {
         <span>{label}</span>
         {advancedOverrideSet.has(field) ? (
           <span className="editor-label-actions">
-            <span className="field-status-badge">Custom</span>
+            <span className="field-status-text">Custom</span>
             <button
               type="button"
-              className="ghost-button editor-inline-reset"
+              className="editor-inline-reset"
               onClick={() => resetAdvancedField(field)}
             >
               Reset
@@ -3820,6 +4048,8 @@ export default function App() {
       }
       wardrobePendingSelectionRef.current = null;
       cancelEditSavedOutfit();
+      setBulkMetadataEditorOpen(false);
+      setBulkMetadataDraft(createEmptyBulkMetadataDraft());
       setEditingId(null);
       setEditorReturnTarget(null);
       return nextPanel;
@@ -3868,6 +4098,8 @@ export default function App() {
     }
     wardrobePendingSelectionRef.current = null;
     cancelEditSavedOutfit();
+    setBulkMetadataEditorOpen(false);
+    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
     setEditingId(null);
     setEditorReturnTarget(null);
     setControlsOpen((current) => {
@@ -4363,12 +4595,308 @@ export default function App() {
     return <main className="app-shell loading-state">Loading wardrobe…</main>;
   }
 
-  const editorTitle = editingId
-    ? editingId === "new"
-      ? "Add wardrobe item"
-      : "Edit wardrobe item"
-    : "Item editor";
-  const isMobileFullscreenEditorOpen = Boolean(editingId && isMobileViewport);
+  const editorTitle = bulkMetadataEditorOpen
+    ? `Edit ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}`
+    : editingId
+      ? editingId === "new"
+        ? "Add wardrobe item"
+        : "Edit wardrobe item"
+      : "Item editor";
+  const isMobileFullscreenEditorOpen = Boolean((editingId || bulkMetadataEditorOpen) && isMobileViewport);
+
+  const bulkMetadataEditorBody = bulkMetadataEditorOpen ? (
+    <form className="editor-form bulk-metadata-editor" onSubmit={applyBulkMetadataChanges}>
+      <div className="id-preview bulk-edit-summary">
+        <span>Bulk metadata editor</span>
+        <strong>{selectedWardrobeItemCount} selected item{selectedWardrobeItemCount === 1 ? "" : "s"}</strong>
+      </div>
+
+      <div className="editor-advanced-panel bulk-metadata-grid">
+        <label>
+          <span className="editor-label-row"><span>Type</span></span>
+          <select value={bulkMetadataDraft.typeMode} onChange={(event) => setBulkMetadataFieldMode("type", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.typeMode === "set" ? (
+            <>
+              <input
+                list="item-type-suggestions"
+                value={bulkMetadataDraft.typeValue}
+                onChange={(event) => setBulkMetadataFieldValue("type", event.target.value)}
+                placeholder="Shirt, jacket, trousers..."
+              />
+              <datalist id="item-type-suggestions">
+                {typeSuggestions.map((type) => (
+                  <option key={type} value={type} />
+                ))}
+              </datalist>
+            </>
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Color</span></span>
+          <select value={bulkMetadataDraft.colorMode} onChange={(event) => setBulkMetadataFieldMode("color", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.colorMode === "set" ? (
+            <>
+              <input
+                list="item-color-suggestions"
+                value={bulkMetadataDraft.colorValue}
+                onChange={(event) => setBulkMetadataFieldValue("color", event.target.value)}
+                placeholder="Black"
+              />
+              <datalist id="item-color-suggestions">
+                {colorSuggestions.map((color) => (
+                  <option key={color} value={color} />
+                ))}
+              </datalist>
+            </>
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Brand</span></span>
+          <select value={bulkMetadataDraft.brandMode} onChange={(event) => setBulkMetadataFieldMode("brand", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.brandMode === "set" ? (
+            <>
+              <input
+                list="item-brand-suggestions"
+                value={bulkMetadataDraft.brandValue}
+                onChange={(event) => setBulkMetadataFieldValue("brand", event.target.value)}
+                placeholder="Brand"
+              />
+              <datalist id="item-brand-suggestions">
+                {brandSuggestions.map((brand) => (
+                  <option key={brand} value={brand} />
+                ))}
+              </datalist>
+            </>
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Name</span></span>
+          <select value={bulkMetadataDraft.nameMode} onChange={(event) => setBulkMetadataFieldMode("name", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.nameMode === "set" ? (
+            <>
+              <input
+                list="item-name-suggestions"
+                value={bulkMetadataDraft.nameValue}
+                onChange={(event) => setBulkMetadataFieldValue("name", event.target.value)}
+                placeholder="Grey wool beanie"
+              />
+              <datalist id="item-name-suggestions">
+                {nameSuggestions.map((name) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
+            </>
+          ) : null}
+        </label>
+
+        <label className="bulk-metadata-span-2">
+          <span className="editor-label-row"><span>Description</span></span>
+          <select value={bulkMetadataDraft.descriptionMode} onChange={(event) => setBulkMetadataFieldMode("description", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.descriptionMode === "set" ? (
+            <textarea
+              value={bulkMetadataDraft.descriptionValue}
+              onChange={(event) => setBulkMetadataFieldValue("description", event.target.value)}
+              rows={3}
+              placeholder="Notes, context, fabric, fit, or styling details"
+            />
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Size</span></span>
+          <select value={bulkMetadataDraft.sizeMode} onChange={(event) => setBulkMetadataFieldMode("size", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.sizeMode === "set" ? (
+            <input
+              value={bulkMetadataDraft.sizeValue}
+              onChange={(event) => setBulkMetadataFieldValue("size", event.target.value)}
+              placeholder="M"
+            />
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Weight</span></span>
+          <select value={bulkMetadataDraft.weightMode} onChange={(event) => setBulkMetadataFieldMode("weight", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.weightMode === "set" ? (
+            <select value={bulkMetadataDraft.weightValue} onChange={(event) => setBulkMetadataFieldValue("weight", event.target.value)}>
+              <option value="">No weight</option>
+              {weightOptions.map((weight) => (
+                <option key={weight} value={weight}>
+                  {weight}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Quantity</span></span>
+          <select value={bulkMetadataDraft.quantityMode} onChange={(event) => setBulkMetadataFieldMode("quantity", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.quantityMode === "set" ? (
+            <input
+              inputMode="numeric"
+              value={bulkMetadataDraft.quantityValue}
+              onChange={(event) => setBulkMetadataFieldValue("quantity", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="1"
+            />
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Paid value</span></span>
+          <select value={bulkMetadataDraft.valueMode} onChange={(event) => setBulkMetadataFieldMode("value", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.valueMode === "set" ? (
+            <input
+              inputMode="numeric"
+              value={bulkMetadataDraft.valueValue}
+              onChange={(event) => setBulkMetadataFieldValue("value", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="120"
+            />
+          ) : null}
+        </label>
+
+        <label>
+          <span className="editor-label-row"><span>Retail value</span></span>
+          <select value={bulkMetadataDraft.retailValueMode} onChange={(event) => setBulkMetadataFieldMode("retailValue", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+            <option value="clear">Clear</option>
+          </select>
+          {bulkMetadataDraft.retailValueMode === "set" ? (
+            <input
+              inputMode="numeric"
+              value={bulkMetadataDraft.retailValueValue}
+              onChange={(event) => setBulkMetadataFieldValue("retailValue", event.target.value.replace(/[^\d]/g, ""))}
+              placeholder="280"
+            />
+          ) : null}
+        </label>
+
+        <section className="metadata-tag-group" aria-label="Style metadata">
+          <span className="editor-label-row"><span>Style tags</span></span>
+          <div className="bulk-tag-editor">
+            <div>
+              <p className="bulk-tag-heading">Add</p>
+              <div className="metadata-tag-options">
+                {styleTagOptions.map((tag) => (
+                  <button
+                    key={`style-add-${tag}`}
+                    type="button"
+                    className={`list-toggle ${(bulkMetadataDraft.styleTagsToAdd ?? []).includes(tag) ? "is-active" : ""}`}
+                    onClick={() => toggleBulkMetadataTag("styleTags", "add", tag)}
+                    aria-pressed={(bulkMetadataDraft.styleTagsToAdd ?? []).includes(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="bulk-tag-heading">Remove</p>
+              <div className="metadata-tag-options">
+                {styleTagOptions.map((tag) => (
+                  <button
+                    key={`style-remove-${tag}`}
+                    type="button"
+                    className={`list-toggle is-muted ${(bulkMetadataDraft.styleTagsToRemove ?? []).includes(tag) ? "is-active" : ""}`}
+                    onClick={() => toggleBulkMetadataTag("styleTags", "remove", tag)}
+                    aria-pressed={(bulkMetadataDraft.styleTagsToRemove ?? []).includes(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="metadata-tag-group" aria-label="Climate metadata">
+          <span className="editor-label-row"><span>Climate tags</span></span>
+          <div className="bulk-tag-editor">
+            <div>
+              <p className="bulk-tag-heading">Add</p>
+              <div className="metadata-tag-options">
+                {editableClimateTagOptions.map((tag) => (
+                  <button
+                    key={`climate-add-${tag}`}
+                    type="button"
+                    className={`list-toggle ${(bulkMetadataDraft.climateTagsToAdd ?? []).includes(tag) ? "is-active" : ""}`}
+                    onClick={() => toggleBulkMetadataTag("climateTags", "add", tag)}
+                    aria-pressed={(bulkMetadataDraft.climateTagsToAdd ?? []).includes(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="bulk-tag-heading">Remove</p>
+              <div className="metadata-tag-options">
+                {editableClimateTagOptions.map((tag) => (
+                  <button
+                    key={`climate-remove-${tag}`}
+                    type="button"
+                    className={`list-toggle is-muted ${(bulkMetadataDraft.climateTagsToRemove ?? []).includes(tag) ? "is-active" : ""}`}
+                    onClick={() => toggleBulkMetadataTag("climateTags", "remove", tag)}
+                    aria-pressed={(bulkMetadataDraft.climateTagsToRemove ?? []).includes(tag)}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div className="form-actions">
+        <button type="submit" className="primary-button">Apply metadata</button>
+        <button type="button" className="secondary-button" onClick={() => setBulkMetadataDraft(createEmptyBulkMetadataDraft())}>
+          Reset
+        </button>
+        <button type="button" className="secondary-button" onClick={cancelEdit}>Close</button>
+      </div>
+    </form>
+  ) : null;
 
   const editorBody = editingId ? (
     <form className="editor-form" onSubmit={submitItem}>
@@ -4430,9 +4958,6 @@ export default function App() {
             </div>
           </label>
         </div>
-        <p className="item-image-note">
-          Drop image here or choose image. Images are saved in this browser and included in backup JSON. Background removal runs locally and may take a moment.
-        </p>
         {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
       </div>
 
@@ -4455,14 +4980,20 @@ export default function App() {
         <div className="editor-derived-field">
           <span className="editor-label-row">
             <span>Garment</span>
-            {advancedOverrideSet.has("garmentType") ? <span className="field-status-badge">Custom</span> : null}
+            {advancedOverrideSet.has("garmentType") ? (
+              <span className="editor-label-actions">
+                <span className="field-status-text">Custom</span>
+                <button
+                  type="button"
+                  className="editor-inline-reset"
+                  onClick={() => resetAdvancedField("garmentType")}
+                >
+                  Reset
+                </button>
+              </span>
+            ) : null}
           </span>
           <strong>{draft.garmentType || resolvedTypeDefaults.garmentType || "Top"}</strong>
-          <span>
-            {advancedOverrideSet.has("garmentType")
-              ? "Overridden in Advanced"
-              : "Auto-derived from type"}
-          </span>
         </div>
 
         <label>
@@ -4481,7 +5012,7 @@ export default function App() {
         </datalist>
 
         <label>
-          List
+          {renderAdvancedLabel("List", "list")}
           <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
             {itemListOptions.map((list) => (
               <option key={list} value={list}>
@@ -4489,6 +5020,72 @@ export default function App() {
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="checkbox-field editor-favorite-field">
+          <span className="editor-label-row">
+            <span>Favorite</span>
+            {advancedOverrideSet.has("favorite") ? (
+              <span className="editor-label-actions">
+                <span className="field-status-text">Custom</span>
+                <button
+                  type="button"
+                  className="editor-inline-reset"
+                  onClick={() => resetAdvancedField("favorite")}
+                >
+                  Reset
+                </button>
+              </span>
+            ) : null}
+          </span>
+          <span className="editor-favorite-toggle">
+            <input
+              type="checkbox"
+              checked={Boolean(draft.favorite)}
+              onChange={(event) => setAdvancedField("favorite", event.target.checked)}
+            />
+            <span>{draft.favorite ? "Saved as favorite" : "Mark as favorite"}</span>
+          </span>
+        </label>
+
+        <label>
+          {renderAdvancedLabel("Brand", "brand")}
+          <input
+            list="item-brand-suggestions"
+            value={draft.brand}
+            onChange={(event) => setAdvancedField("brand", event.target.value)}
+            placeholder="Brand"
+          />
+        </label>
+        <datalist id="item-brand-suggestions">
+          {brandSuggestions.map((brand) => (
+            <option key={brand} value={brand} />
+          ))}
+        </datalist>
+
+        <label>
+          {renderAdvancedLabel("Name", "name")}
+          <input
+            list="item-name-suggestions"
+            value={draft.name}
+            onChange={(event) => setAdvancedField("name", event.target.value)}
+            placeholder="Grey wool beanie"
+          />
+        </label>
+        <datalist id="item-name-suggestions">
+          {nameSuggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+
+        <label className="editor-span-2">
+          {renderAdvancedLabel("Description", "description")}
+          <textarea
+            value={draft.description}
+            onChange={(event) => setAdvancedField("description", event.target.value)}
+            rows={2}
+            placeholder="Notes, context, fabric, fit, or styling details"
+          />
         </label>
       </div>
 
@@ -4502,8 +5099,8 @@ export default function App() {
           {editorAdvancedOpen ? "Hide advanced" : "Advanced"}
         </button>
         <span className="editor-advanced-summary">
-          {advancedOverrideFields.length
-            ? `${advancedOverrideFields.length} custom field${advancedOverrideFields.length === 1 ? "" : "s"}`
+          {advancedMetadataOverrideCount
+            ? `${advancedMetadataOverrideCount} custom field${advancedMetadataOverrideCount === 1 ? "" : "s"}`
             : "Defaults active"}
         </span>
       </div>
@@ -4565,46 +5162,6 @@ export default function App() {
           ) : null}
 
           <label>
-            {renderAdvancedLabel("Brand", "brand")}
-            <input
-              list="item-brand-suggestions"
-              value={draft.brand}
-              onChange={(event) => setAdvancedField("brand", event.target.value)}
-              placeholder="Brand"
-            />
-          </label>
-          <datalist id="item-brand-suggestions">
-            {brandSuggestions.map((brand) => (
-              <option key={brand} value={brand} />
-            ))}
-          </datalist>
-
-          <label>
-            {renderAdvancedLabel("Name", "name")}
-            <input
-              list="item-name-suggestions"
-              value={draft.name}
-              onChange={(event) => setAdvancedField("name", event.target.value)}
-              placeholder="Grey wool beanie"
-            />
-          </label>
-          <datalist id="item-name-suggestions">
-            {nameSuggestions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
-
-          <label>
-            {renderAdvancedLabel("Description", "description")}
-            <textarea
-              value={draft.description}
-              onChange={(event) => setAdvancedField("description", event.target.value)}
-              rows={3}
-              placeholder="Notes, context, fabric, fit, or styling details"
-            />
-          </label>
-
-          <label>
             {renderAdvancedLabel("Size", "size")}
             <input value={draft.size} onChange={(event) => setAdvancedField("size", event.target.value)} placeholder="M" />
           </label>
@@ -4651,7 +5208,29 @@ export default function App() {
               placeholder="280"
             />
           </label>
+        </div>
+      ) : null}
 
+      <div className="editor-advanced-toggle-row">
+        <button
+          type="button"
+          className={`ghost-button editor-advanced-toggle ${editorStylingOpen ? "is-active" : ""}`}
+          onClick={() => setEditorStylingOpen((current) => !current)}
+          aria-expanded={editorStylingOpen}
+        >
+          {editorStylingOpen ? "Hide styling" : "Styling"}
+        </button>
+        <span className="editor-advanced-summary">
+          {selectedStyleTagCount || selectedClimateTagCount
+            ? `${selectedStyleTagCount + selectedClimateTagCount} tag${selectedStyleTagCount + selectedClimateTagCount === 1 ? "" : "s"} selected`
+            : stylingOverrideCount
+              ? `${stylingOverrideCount} custom field${stylingOverrideCount === 1 ? "" : "s"}`
+              : "No styling tags"}
+        </span>
+      </div>
+
+      {editorStylingOpen ? (
+        <div className="editor-advanced-panel editor-styling-panel">
           <section className="metadata-tag-group" aria-label="Style metadata">
             {renderAdvancedLabel("Style tags", "styleTags")}
             <div className="metadata-tag-options">
@@ -4693,15 +5272,6 @@ export default function App() {
               })}
             </div>
           </section>
-
-          <label className="checkbox-field">
-            <input
-              type="checkbox"
-              checked={Boolean(draft.favorite)}
-              onChange={(event) => setAdvancedField("favorite", event.target.checked)}
-            />
-            {renderAdvancedLabel("Favorite", "favorite")}
-          </label>
         </div>
       ) : null}
 
@@ -4720,6 +5290,8 @@ export default function App() {
         <button type="button" className="secondary-button" onClick={cancelEdit}>Cancel</button>
       </div>
     </form>
+  ) : bulkMetadataEditorOpen ? (
+    bulkMetadataEditorBody
   ) : (
     <div className="editor-placeholder">
       <p>Select an item to edit it, or use Add item to create a wardrobe entry.</p>
@@ -5145,9 +5717,6 @@ export default function App() {
                           <p className="eyebrow">Wardrobe</p>
                           <h2>Filters</h2>
                         </div>
-                        <button type="button" className="ghost-button filter-close-button" onClick={(event) => closeWardrobeFilters(event)}>
-                          Close
-                        </button>
                       </div>
                       <div className="wardrobe-controls-body">
                         <div className="wardrobe-filter-search">
@@ -5278,9 +5847,6 @@ export default function App() {
                         >
                           Clear search + filters
                         </button>
-                        <button type="button" className="ghost-button" onClick={clearExcluded}>
-                          Clear excluded
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -5308,23 +5874,16 @@ export default function App() {
                       selectedCount={selectedWardrobeItemCount}
                       bulkListDraft={bulkListDraft}
                       setBulkListDraft={setBulkListDraft}
-                      bulkStyleTagDraft={bulkStyleTagDraft}
-                      setBulkStyleTagDraft={setBulkStyleTagDraft}
-                      bulkClimateTagDraft={bulkClimateTagDraft}
-                      setBulkClimateTagDraft={setBulkClimateTagDraft}
                       itemListOptions={itemListOptions}
-                      styleTagOptions={styleTagOptions}
-                      editableClimateTagOptions={editableClimateTagOptions}
-                      onEdit={editSelectedWardrobeItem}
+                      favoriteActionLabel={bulkFavoriteActionLabel}
+                      excludeActionLabel={bulkExcludeActionLabel}
+                      onEdit={editSelectedWardrobeItems}
                       onClear={clearWardrobeSelection}
                       onMoveToList={moveSelectedItemsToList}
-                      onFavorite={() => setSelectedItemsFavoriteState(true)}
-                      onUnfavorite={() => setSelectedItemsFavoriteState(false)}
+                      onFavoriteToggle={() => setSelectedItemsFavoriteState(!areAllSelectedWardrobeItemsFavorite)}
+                      onExcludeToggle={() => setSelectedItemsExcludedState(!areAllSelectedWardrobeItemsExcluded)}
                       onDelete={handleBulkDeleteSelected}
-                      onAddStyle={() => addSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                      onRemoveStyle={() => removeSelectedTag("styleTags", bulkStyleTagDraft, styleTagOptions)}
-                      onAddClimate={() => addSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
-                      onRemoveClimate={() => removeSelectedTag("climateTags", bulkClimateTagDraft, editableClimateTagOptions)}
+                      onCloseEdit={cancelEdit}
                     />
                   ) : null}
                   <button
@@ -5351,15 +5910,6 @@ export default function App() {
             ) : null}
 
             <div className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`} aria-label="Wardrobe management">
-              <div className="wardrobe-panel-window-header">
-                <div>
-                  <p className="eyebrow">Wardrobe</p>
-                  <h2>Manage Library</h2>
-                </div>
-                <button type="button" className="ghost-button filter-close-button" onClick={() => setWardrobeManageOpen(false)}>
-                  Close
-                </button>
-              </div>
               <div className="wardrobe-manage-grid">
                 <section className="wardrobe-manage-section wardrobe-stats-section" aria-label="Wardrobe stats">
                   <button
@@ -5369,7 +5919,6 @@ export default function App() {
                     aria-expanded={wardrobeStatsOpen}
                   >
                     <div className="wardrobe-manage-toggle-copy">
-                      <p className="eyebrow">Wardrobe</p>
                       <h2>Library Stats</h2>
                       <span>
                         {visibleWardrobeItems.length} visible · {favoriteWardrobeItemCount} favorites · {formatCurrency(wardrobeWorth.totalValue)} paid
@@ -5444,7 +5993,6 @@ export default function App() {
                 </section>
 
                 <section className="wardrobe-manage-section">
-                  <p className="eyebrow">Library actions</p>
                   <div className="wardrobe-manage-actions">
                     <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
                       Export wardrobe image
@@ -5527,14 +6075,14 @@ export default function App() {
         </div>
         ) : null}
 
-        {editingId ? (
+        {editingId || bulkMetadataEditorOpen ? (
           <aside
             ref={editorRef}
             className={`panel floating-item-editor ${isMobileViewport ? "is-mobile-fullscreen" : ""} ${activePanel === "wardrobe" ? "is-wardrobe-editor" : ""}`}
           >
             <div className="panel-header side-editor-header">
               <div>
-                <p className="eyebrow">Item editor</p>
+                <p className="eyebrow">{bulkMetadataEditorOpen ? "Bulk editor" : "Item editor"}</p>
                 <h2>{editorTitle}</h2>
               </div>
               <button type="button" className="ghost-button" onClick={cancelEdit}>

@@ -1,26 +1,27 @@
+import { useEffect, useState } from "react";
+
 export default function WardrobeSelectionBar({
   inline = false,
   selectedCount,
   bulkListDraft,
   setBulkListDraft,
-  bulkStyleTagDraft,
-  setBulkStyleTagDraft,
-  bulkClimateTagDraft,
-  setBulkClimateTagDraft,
   itemListOptions,
-  styleTagOptions,
-  editableClimateTagOptions,
+  favoriteActionLabel,
+  excludeActionLabel,
   onEdit,
   onClear,
   onMoveToList,
-  onFavorite,
-  onUnfavorite,
+  onFavoriteToggle,
+  onExcludeToggle,
   onDelete,
-  onAddStyle,
-  onRemoveStyle,
-  onAddClimate,
-  onRemoveClimate
+  onCloseEdit
 }) {
+  const [activeAction, setActiveAction] = useState(null);
+
+  useEffect(() => {
+    setActiveAction(null);
+  }, [selectedCount]);
+
   return (
     <div className={`wardrobe-selection-bar ${inline ? "is-inline" : ""}`.trim()} aria-label="Wardrobe selection">
       <div className="wardrobe-selection-summary">
@@ -31,73 +32,90 @@ export default function WardrobeSelectionBar({
           </button>
         </div>
         <div className="wardrobe-selection-actions">
-          <button type="button" className="ghost-button" onClick={onEdit} disabled={selectedCount !== 1}>
+          <button type="button" className="ghost-button" onClick={onEdit} disabled={!selectedCount}>
             Edit
           </button>
           <details className="wardrobe-selection-more">
             <summary className="ghost-button" aria-label="More selection actions">Actions ▾</summary>
             <div className="wardrobe-selection-menu">
-              <div className="wardrobe-selection-menu-actions">
-                <button type="button" className="ghost-button" onClick={onFavorite} disabled={!selectedCount}>
-                  Favorite
+              <div className="wardrobe-selection-menu-section">
+                <button
+                  type="button"
+                  className="ghost-button wardrobe-selection-menu-button"
+                  onClick={() => {
+                    onFavoriteToggle();
+                    setActiveAction(null);
+                    onCloseEdit?.();
+                  }}
+                  disabled={!selectedCount}
+                >
+                  {favoriteActionLabel}
                 </button>
-                <button type="button" className="ghost-button" onClick={onUnfavorite} disabled={!selectedCount}>
-                  Unfavorite
+                <button
+                  type="button"
+                  className={`ghost-button wardrobe-selection-menu-button ${activeAction === "list" ? "is-active" : ""}`}
+                  onClick={() => setActiveAction("list")}
+                  disabled={!selectedCount}
+                >
+                  List
                 </button>
-                <button type="button" className="ghost-button danger" onClick={onDelete} disabled={!selectedCount}>
+                <button
+                  type="button"
+                  className="ghost-button wardrobe-selection-menu-button"
+                  onClick={() => {
+                    onExcludeToggle();
+                    setActiveAction(null);
+                    onCloseEdit?.();
+                  }}
+                  disabled={!selectedCount}
+                >
+                  {excludeActionLabel}
+                </button>
+              </div>
+
+              <div className="wardrobe-selection-menu-section wardrobe-selection-menu-section-danger">
+                <button
+                  type="button"
+                  className="ghost-button wardrobe-selection-menu-button wardrobe-selection-menu-button-danger"
+                  onClick={() => {
+                    onDelete();
+                    setActiveAction(null);
+                    onCloseEdit?.();
+                  }}
+                  disabled={!selectedCount}
+                >
                   Delete
                 </button>
               </div>
 
-              <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
-                <div className="wardrobe-bulk-group">
-                  <label className="wardrobe-bulk-tag-control">
-                    <span>Move</span>
-                    <select value={bulkListDraft} onChange={(event) => setBulkListDraft(event.target.value)}>
-                      {itemListOptions.map((list) => (
-                        <option key={list} value={list}>{list}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button type="button" className="ghost-button" onClick={() => onMoveToList(bulkListDraft)} disabled={!selectedCount || !bulkListDraft}>
-                    Apply
-                  </button>
-                </div>
+              {activeAction ? (
+                <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
+                  {activeAction === "list" ? (
+                    <div className="wardrobe-bulk-group">
+                      <label className="wardrobe-bulk-tag-control">
+                        <span>Assign list</span>
+                        <select value={bulkListDraft} onChange={(event) => setBulkListDraft(event.target.value)}>
+                          {itemListOptions.map((list) => (
+                            <option key={list} value={list}>{list}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => {
+                          onMoveToList(bulkListDraft);
+                          setActiveAction(null);
+                        }}
+                        disabled={!selectedCount || !bulkListDraft}
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  ) : null}
 
-                <div className="wardrobe-bulk-group">
-                  <label className="wardrobe-bulk-tag-control">
-                    <span>Style</span>
-                    <select value={bulkStyleTagDraft} onChange={(event) => setBulkStyleTagDraft(event.target.value)}>
-                      {styleTagOptions.map((tag) => (
-                        <option key={tag} value={tag}>{tag}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button type="button" className="ghost-button" onClick={onAddStyle} disabled={!selectedCount || !bulkStyleTagDraft}>
-                    Add
-                  </button>
-                  <button type="button" className="ghost-button" onClick={onRemoveStyle} disabled={!selectedCount || !bulkStyleTagDraft}>
-                    Remove
-                  </button>
                 </div>
-
-                <div className="wardrobe-bulk-group">
-                  <label className="wardrobe-bulk-tag-control">
-                    <span>Climate</span>
-                    <select value={bulkClimateTagDraft} onChange={(event) => setBulkClimateTagDraft(event.target.value)}>
-                      {editableClimateTagOptions.map((tag) => (
-                        <option key={tag} value={tag}>{tag}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <button type="button" className="ghost-button" onClick={onAddClimate} disabled={!selectedCount || !bulkClimateTagDraft}>
-                    Add
-                  </button>
-                  <button type="button" className="ghost-button" onClick={onRemoveClimate} disabled={!selectedCount || !bulkClimateTagDraft}>
-                    Remove
-                  </button>
-                </div>
-              </div>
+              ) : null}
             </div>
           </details>
         </div>
