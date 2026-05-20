@@ -1559,7 +1559,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px 10px;
+  gap: 10px 12px;
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -1567,7 +1567,7 @@ button:disabled {
 .wardrobe-toolbar-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
   flex: 1 1 0;
   flex-wrap: nowrap;
@@ -1607,12 +1607,12 @@ button:disabled {
 }
 
 .wardrobe-search-field {
-  flex: 1 1 260px;
+  flex: 1 1 280px;
   min-width: 0;
 }
 
 .wardrobe-sort-field {
-  flex: 0 1 164px;
+  flex: 0 1 clamp(148px, 15vw, 154px);
   min-width: 0;
 }
 
@@ -1779,7 +1779,7 @@ button:disabled {
 
 .wardrobe-header-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   justify-content: flex-end;
   flex-wrap: nowrap;
   align-items: center;
