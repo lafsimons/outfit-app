@@ -110,6 +110,11 @@ import {
   normalizeSavedOutfit,
   normalizeSavedOutfits
 } from "./lib/appStateModel";
+import {
+  createImportedFitpicFromFile,
+  normalizeFitpic,
+  replaceFitpicImageFromFile
+} from "./lib/fitpics";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -794,6 +799,61 @@ function loadImage(dataUrl) {
   });
 }
 
+function formatFitpicDate(value) {
+  const parsed = typeof value === "string" ? Date.parse(value) : NaN;
+
+  if (!Number.isFinite(parsed)) {
+    return "";
+  }
+
+  return new Date(parsed).toLocaleDateString();
+}
+
+function formatFitpicFileSize(value) {
+  const size = Number(value);
+
+  if (!Number.isFinite(size) || size <= 0) {
+    return "";
+  }
+
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  const units = ["KB", "MB", "GB"];
+  let normalizedSize = size / 1024;
+  let unitIndex = 0;
+
+  while (normalizedSize >= 1024 && unitIndex < units.length - 1) {
+    normalizedSize /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${normalizedSize.toFixed(normalizedSize >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatFitpicDimensions(fitpic) {
+  if (!fitpic.sourceImageWidth || !fitpic.sourceImageHeight) {
+    return "";
+  }
+
+  return `${fitpic.sourceImageWidth} × ${fitpic.sourceImageHeight}`;
+}
+
+function formatFitpicImportMeta(fitpic) {
+  const importedDate = formatFitpicDate(fitpic.importedAt || fitpic.createdAt);
+  const dimensions = formatFitpicDimensions(fitpic);
+  const details = [importedDate, dimensions].filter(Boolean);
+  return details.join(" • ");
+}
+
+function parseFitpicTagsInput(value) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
 function getFallbackPaletteColor(item) {
   const rgb = getColorRgb(item);
   return rgb ? rgbToHex(rgb) : "#8c8c8c";
@@ -1099,6 +1159,8 @@ export default function App() {
   ];
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
+  const fitpicUploadInputRef = useRef(null);
+  const fitpicReplaceInputRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
   const outfitDebugRef = useRef(null);
@@ -1137,6 +1199,11 @@ export default function App() {
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
+  const [editingFitpicId, setEditingFitpicId] = useState(null);
+  const [fitpicDraft, setFitpicDraft] = useState({ name: "", description: "", tagsText: "", favorite: false });
+  const [fitpicImportError, setFitpicImportError] = useState("");
+  const [fitpicImporting, setFitpicImporting] = useState(false);
+  const [fitpicDropActive, setFitpicDropActive] = useState(false);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
@@ -1179,12 +1246,23 @@ export default function App() {
   const wardrobePendingSelectionRef = useRef(null);
   const outfitItemPreviewClickTimeoutRef = useRef(null);
   const pendingOutfitItemPreviewRef = useRef(null);
+  const fitpicDropDepthRef = useRef(0);
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const editingFitpic = editingFitpicId ? fitpics.find((fitpic) => fitpic.id === editingFitpicId) ?? null : null;
+
+  useEffect(() => {
+    if (!fitpicPreview) {
+      return;
+    }
+
+    const nextPreview = fitpics.find((fitpic) => fitpic.id === fitpicPreview.id) ?? null;
+    setFitpicPreview(nextPreview);
+  }, [fitpicPreview, fitpics]);
 
   function noteInteractionModality(event) {
     if (event.type === "pointerdown") {
@@ -4041,6 +4119,7 @@ export default function App() {
       setWardrobeFiltersOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
+      cancelEditFitpic();
       setWardrobePreviewItemId(null);
       if (wardrobeSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
@@ -4064,6 +4143,7 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
+    cancelEditFitpic();
     setWardrobePreviewItemId(null);
     setOutfitFiltersOpen(false);
     setGenerationListsOpen(false);
@@ -4091,6 +4171,7 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
+    cancelEditFitpic();
     setWardrobePreviewItemId(null);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
@@ -4405,38 +4486,84 @@ export default function App() {
   }
 
   function renderFitpicsContent() {
-    if (!fitpics.length) {
-      return (
-        <div className="editor-placeholder">
-          <p>Upload fitpics and they will be collected here.</p>
-        </div>
-      );
-    }
-
     return (
-      <div className="fitpic-list">
-        {fitpics.map((fitpic) => (
-          <article key={fitpic.id} className="fitpic-card">
-            <button
-              type="button"
-              className="fitpic-image-button"
-              onClick={() => {
-                closeUtilityWindows();
-                setFitpicPreview(fitpic);
-              }}
-            >
-              <img src={fitpic.imageData} alt={fitpic.name} />
-            </button>
-            <div>
-              <strong>{fitpic.name}</strong>
-              <span>{new Date(fitpic.createdAt).toLocaleDateString()}</span>
-            </div>
-            <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
-              Delete
-            </button>
-          </article>
-        ))}
-      </div>
+      <section className="fitpics-content" aria-label="Fitpics">
+        <div
+          className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
+          onDragEnter={handleFitpicDragEnter}
+          onDragOver={handleFitpicDragOver}
+          onDragLeave={handleFitpicDragLeave}
+          onDrop={handleFitpicDrop}
+        >
+          <div className="fitpic-dropzone-copy">
+            <p className="eyebrow">Import fitpics</p>
+            <h3>Drop one or more images here</h3>
+            <p>Imported fitpics keep their existing records, appear here immediately, and can be edited afterward.</p>
+            {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
+          </div>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => fitpicUploadInputRef.current?.click()}
+            disabled={fitpicImporting}
+          >
+            {fitpicImporting ? "Importing…" : "Choose images"}
+          </button>
+          <input
+            ref={fitpicUploadInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="fitpic-file-input"
+            onChange={handleFitpicUpload}
+          />
+        </div>
+
+        {!fitpics.length ? (
+          <div className="editor-placeholder fitpics-empty-state">
+            <p>No fitpics yet.</p>
+            <p>Import outfit photos here to build an editable visual archive.</p>
+          </div>
+        ) : (
+          <div className="fitpic-list">
+            {fitpics.map((fitpic) => (
+              <article key={fitpic.id} className="fitpic-card">
+                <button
+                  type="button"
+                  className="fitpic-image-button"
+                  onClick={() => openFitpicPreview(fitpic)}
+                >
+                  <img src={fitpic.imageData} alt={fitpic.name} />
+                </button>
+                <div className="fitpic-card-copy">
+                  <strong title={fitpic.name}>{fitpic.name}</strong>
+                  <span>{formatFitpicImportMeta(fitpic) || formatFitpicDate(fitpic.createdAt)}</span>
+                  {fitpic.tags.length ? (
+                    <span className="fitpic-card-tags" title={fitpic.tags.join(", ")}>
+                      {fitpic.tags.join(", ")}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="fitpic-card-actions">
+                  <button
+                    type="button"
+                    className={`ghost-button ${fitpic.favorite ? "is-active" : ""}`}
+                    onClick={() => toggleFitpicFavorite(fitpic.id)}
+                  >
+                    {fitpic.favorite ? "Favorited" : "Favorite"}
+                  </button>
+                  <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpic)}>
+                    Edit
+                  </button>
+                  <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
+                    Delete
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
     );
   }
 
@@ -4538,24 +4665,183 @@ export default function App() {
     }
   }
 
-  async function handleFitpicUpload(event) {
-    const files = [...event.target.files];
+  function openFitpicPreview(fitpic) {
+    closeUtilityWindows();
+    setEditingFitpicId(null);
+    setFitpicPreview(fitpic);
+  }
+
+  function startEditFitpic(fitpic) {
+    closeUtilityWindows();
+    setFitpicPreview(null);
+    setFitpicImportError("");
+    setEditingFitpicId(fitpic.id);
+    setFitpicDraft({
+      name: fitpic.name ?? "",
+      description: fitpic.description ?? "",
+      tagsText: Array.isArray(fitpic.tags) ? fitpic.tags.join(", ") : "",
+      favorite: Boolean(fitpic.favorite)
+    });
+  }
+
+  function cancelEditFitpic() {
+    setEditingFitpicId(null);
+    setFitpicImportError("");
+    setFitpicDraft({ name: "", description: "", tagsText: "", favorite: false });
+  }
+
+  function saveFitpicDraft(event) {
+    event.preventDefault();
+
+    if (!editingFitpic) {
+      cancelEditFitpic();
+      return;
+    }
+
+    const trimmedName = fitpicDraft.name.trim();
+    const nextTags = parseFitpicTagsInput(fitpicDraft.tagsText);
+    const updatedAt = new Date().toISOString();
+    const nextFitpic = normalizeFitpic({
+      ...editingFitpic,
+      name: trimmedName || editingFitpic.name,
+      description: fitpicDraft.description.trim(),
+      tags: nextTags,
+      favorite: fitpicDraft.favorite,
+      updatedAt
+    });
+
+    setFitpics((current) =>
+      current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
+    );
+    cancelEditFitpic();
+  }
+
+  async function importFitpicFiles(fileList) {
+    const files = [...(fileList ?? [])];
 
     if (!files.length) {
       return;
     }
 
-    const nextFitpics = await Promise.all(
-      files.map(async (file) => ({
-        id: createFitpicId(),
-        name: file.name.replace(/\.[^.]+$/, ""),
-        imageData: await readFileAsDataUrl(file),
-        createdAt: new Date().toISOString()
-      }))
-    );
+    const imageFiles = files.filter((file) => file?.type?.startsWith("image/"));
 
-    setFitpics((current) => [...nextFitpics, ...current]);
-    event.target.value = "";
+    if (!imageFiles.length) {
+      setFitpicImportError("No image files were found.");
+      return;
+    }
+
+    try {
+      setFitpicImporting(true);
+      setFitpicImportError("");
+      const nextFitpics = await Promise.all(
+        imageFiles.map((file) =>
+          createImportedFitpicFromFile(file, {
+            createId: createFitpicId,
+            readFileAsDataUrl,
+            loadImage,
+            compressImageSource
+          })
+        )
+      );
+
+      setFitpics((current) => [...nextFitpics, ...current]);
+
+      if (imageFiles.length !== files.length) {
+        setFitpicImportError("Imported the image files and ignored non-image files.");
+      }
+    } catch (error) {
+      setFitpicImportError(error?.message || "These images could not be imported.");
+    } finally {
+      setFitpicImporting(false);
+    }
+  }
+
+  async function handleFitpicUpload(event) {
+    try {
+      await importFitpicFiles(event.target.files);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function handleFitpicDragEnter(event) {
+    event.preventDefault();
+
+    if (!event.dataTransfer?.types?.includes("Files")) {
+      return;
+    }
+
+    fitpicDropDepthRef.current += 1;
+    setFitpicDropActive(true);
+  }
+
+  function handleFitpicDragOver(event) {
+    event.preventDefault();
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "copy";
+    }
+  }
+
+  function handleFitpicDragLeave(event) {
+    event.preventDefault();
+
+    if (!event.dataTransfer?.types?.includes("Files")) {
+      return;
+    }
+
+    fitpicDropDepthRef.current = Math.max(0, fitpicDropDepthRef.current - 1);
+
+    if (fitpicDropDepthRef.current === 0) {
+      setFitpicDropActive(false);
+    }
+  }
+
+  async function handleFitpicDrop(event) {
+    event.preventDefault();
+    fitpicDropDepthRef.current = 0;
+    setFitpicDropActive(false);
+    await importFitpicFiles(event.dataTransfer?.files);
+  }
+
+  async function replaceEditingFitpicImage(event) {
+    const [file] = event.target.files ?? [];
+
+    if (!file || !editingFitpic) {
+      return;
+    }
+
+    try {
+      setFitpicImportError("");
+      const nextFitpic = await replaceFitpicImageFromFile(editingFitpic, file, {
+        readFileAsDataUrl,
+        loadImage,
+        compressImageSource
+      });
+      setFitpics((current) =>
+        current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
+      );
+    } catch (error) {
+      setFitpicImportError(error?.message || "This image could not be used.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function toggleFitpicFavorite(fitpicId) {
+    const updatedAt = new Date().toISOString();
+
+    setFitpics((current) =>
+      current.map((fitpic) =>
+        fitpic.id === fitpicId
+          ? normalizeFitpic({
+              ...fitpic,
+              favorite: !fitpic.favorite,
+              updatedAt
+            })
+          : fitpic
+      )
+    );
   }
 
   async function deleteFitpic(fitpicId) {
@@ -4570,6 +4856,14 @@ export default function App() {
     }
 
     setFitpics((current) => current.filter((fitpic) => fitpic.id !== fitpicId));
+
+    if (fitpicPreview?.id === fitpicId) {
+      setFitpicPreview(null);
+    }
+
+    if (editingFitpicId === fitpicId) {
+      cancelEditFitpic();
+    }
   }
 
   function removeAccessoryFromSlot(slot) {
@@ -6029,12 +6323,6 @@ export default function App() {
                 <p className="eyebrow">Outfits</p>
                 <h2>Outfit archive</h2>
               </div>
-              {activeOutfitsTab === "fitpics" ? (
-                <label className="upload-button">
-                  Upload
-                  <input type="file" accept="image/*" multiple onChange={handleFitpicUpload} />
-                </label>
-              ) : null}
             </div>
             <div className="outfits-panel-tabs" role="tablist" aria-label="Outfits sections">
               {outfitSectionTabs.map(([tab, label]) => (
@@ -6138,10 +6426,169 @@ export default function App() {
           open={Boolean(fitpicPreview)}
           eyebrow="Fitpic"
           title={fitpicPreview?.name ?? ""}
-          meta={fitpicPreview ? new Date(fitpicPreview.createdAt).toLocaleDateString() : null}
+          meta={fitpicPreview ? formatFitpicImportMeta(fitpicPreview) || formatFitpicDate(fitpicPreview.createdAt) : null}
           onClose={() => setFitpicPreview(null)}
+          actions={fitpicPreview ? (
+            <>
+              <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpicPreview)}>
+                Edit
+              </button>
+              <button
+                type="button"
+                className={`ghost-button ${fitpicPreview.favorite ? "is-active" : ""}`}
+                onClick={() => toggleFitpicFavorite(fitpicPreview.id)}
+              >
+                {fitpicPreview.favorite ? "Favorited" : "Favorite"}
+              </button>
+            </>
+          ) : null}
         >
-          {fitpicPreview ? <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} /> : null}
+          {fitpicPreview ? (
+            <div className="fitpic-preview-content">
+              <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} />
+              {(fitpicPreview.description || fitpicPreview.tags.length) ? (
+                <div className="fitpic-preview-copy">
+                  {fitpicPreview.description ? <p>{fitpicPreview.description}</p> : null}
+                  {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(", ")}</p> : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </PreviewOverlay>
+
+        <PreviewOverlay
+          open={Boolean(editingFitpic)}
+          eyebrow="Edit fitpic"
+          title={editingFitpic?.name ?? "Fitpic"}
+          meta={editingFitpic ? formatFitpicImportMeta(editingFitpic) : null}
+          onClose={cancelEditFitpic}
+          actions={editingFitpic ? (
+            <>
+              <button type="submit" form="fitpic-editor-form" className="primary-button">
+                Save
+              </button>
+              <button type="button" className="ghost-button" onClick={cancelEditFitpic}>
+                Cancel
+              </button>
+              <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(editingFitpic.id)}>
+                Delete
+              </button>
+            </>
+          ) : null}
+        >
+          {editingFitpic ? (
+            <form id="fitpic-editor-form" className="fitpic-editor" onSubmit={saveFitpicDraft}>
+              <div className="fitpic-editor-media">
+                <img className="fitpic-editor-image" src={editingFitpic.imageData} alt={editingFitpic.name} />
+                <div className="fitpic-editor-media-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => fitpicReplaceInputRef.current?.click()}
+                  >
+                    Replace image
+                  </button>
+                  <input
+                    ref={fitpicReplaceInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="fitpic-file-input"
+                    onChange={replaceEditingFitpicImage}
+                  />
+                </div>
+              </div>
+
+              <div className="fitpic-editor-fields">
+                <label>
+                  <span className="editor-label-row"><span>Name / title</span></span>
+                  <input
+                    value={fitpicDraft.name}
+                    onChange={(event) =>
+                      setFitpicDraft((current) => ({
+                        ...current,
+                        name: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span className="editor-label-row"><span>Description</span></span>
+                  <textarea
+                    rows="4"
+                    value={fitpicDraft.description}
+                    onChange={(event) =>
+                      setFitpicDraft((current) => ({
+                        ...current,
+                        description: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span className="editor-label-row"><span>Tags</span></span>
+                  <input
+                    value={fitpicDraft.tagsText}
+                    onChange={(event) =>
+                      setFitpicDraft((current) => ({
+                        ...current,
+                        tagsText: event.target.value
+                      }))
+                    }
+                    placeholder="casual, summer, black"
+                  />
+                </label>
+
+                <label className="fitpic-favorite-field">
+                  <input
+                    type="checkbox"
+                    checked={fitpicDraft.favorite}
+                    onChange={(event) =>
+                      setFitpicDraft((current) => ({
+                        ...current,
+                        favorite: event.target.checked
+                      }))
+                    }
+                  />
+                  <span>Favorite</span>
+                </label>
+
+                {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
+
+                <div className="fitpic-metadata-panel">
+                  <p className="eyebrow">Import metadata</p>
+                  <div className="fitpic-metadata-grid">
+                    <span>Imported</span>
+                    <strong>{formatFitpicDate(editingFitpic.importedAt) || "Unknown"}</strong>
+                    <span>Filename</span>
+                    <strong title={editingFitpic.sourceOriginalFilename || editingFitpic.name}>
+                      {editingFitpic.sourceOriginalFilename || "Unknown"}
+                    </strong>
+                    <span>Type</span>
+                    <strong>{editingFitpic.sourceMimeType || "Unknown"}</strong>
+                    <span>Extension</span>
+                    <strong>{editingFitpic.sourceFileExtension || "Unknown"}</strong>
+                    <span>Size</span>
+                    <strong>{formatFitpicFileSize(editingFitpic.sourceFileSize) || "Unknown"}</strong>
+                    <span>Dimensions</span>
+                    <strong>{formatFitpicDimensions(editingFitpic) || "Unknown"}</strong>
+                    <span>Aspect / orientation</span>
+                    <strong>
+                      {editingFitpic.sourceAspectRatio ? editingFitpic.sourceAspectRatio.toString() : "Unknown"}
+                      {editingFitpic.sourceOrientation ? ` • ${editingFitpic.sourceOrientation}` : ""}
+                    </strong>
+                    <span>Captured</span>
+                    <strong>{formatFitpicDate(editingFitpic.sourceCapturedAt || editingFitpic.sourceOriginalCreatedAt) || "Unknown"}</strong>
+                    <span>Camera</span>
+                    <strong>{[editingFitpic.sourceCameraMake, editingFitpic.sourceCameraModel].filter(Boolean).join(" ") || "Unknown"}</strong>
+                    <span>Lens</span>
+                    <strong>{editingFitpic.sourceLensModel || "Unknown"}</strong>
+                  </div>
+                </div>
+              </div>
+            </form>
+          ) : null}
         </PreviewOverlay>
       </section>
     </main>

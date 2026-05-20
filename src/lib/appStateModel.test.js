@@ -266,6 +266,44 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   assert.equal(hydrated.wardrobeSort, "newest");
 });
 
+test("hydrated app-state normalizes fitpics additively for legacy and metadata-rich records", () => {
+  const hydrated = normalizeHydratedAppState({
+    fitpics: [
+      {
+        id: "legacy-fitpic",
+        name: "Legacy",
+        imageData: "data:image/png;base64,legacy",
+        createdAt: "2024-02-01T00:00:00.000Z"
+      },
+      {
+        id: "rich-fitpic",
+        fitpicUuid: "fitpic-uuid-2",
+        name: "Rich",
+        imageData: "data:image/png;base64,rich",
+        createdAt: "2024-03-01T00:00:00.000Z",
+        importedAt: "2024-03-02T00:00:00.000Z",
+        sourceOriginalFilename: "rich.png",
+        sourceFileExtension: "png",
+        tags: ["  Spring ", "spring", ""],
+        favorite: 1
+      }
+    ]
+  }, {
+    fallbackOutfit: {},
+    normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
+    itemsById: {}
+  });
+
+  assert.equal(hydrated.fitpics.length, 2);
+  assert.equal(hydrated.fitpics[0].fitpicUuid.length > 0, true);
+  assert.equal(hydrated.fitpics[0].images.preview, "data:image/png;base64,legacy");
+  assert.equal(hydrated.fitpics[0].importedAt, "2024-02-01T00:00:00.000Z");
+  assert.equal(hydrated.fitpics[1].fitpicUuid, "fitpic-uuid-2");
+  assert.deepEqual(hydrated.fitpics[1].tags, ["Spring"]);
+  assert.equal(hydrated.fitpics[1].favorite, true);
+  assert.equal(hydrated.fitpics[1].sourceFileExtension, "png");
+});
+
 test("hydrated app-state wardrobe filter normalization preserves backward compatibility defaults", () => {
   const hydrated = normalizeHydratedAppState({
     wardrobeFilters: []

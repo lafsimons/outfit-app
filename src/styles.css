@@ -2568,29 +2568,78 @@ button:disabled {
 
 .fitpic-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
   max-height: calc(100vh - 176px - env(safe-area-inset-bottom));
   overflow: auto;
   padding-right: 0;
 }
 
+.fitpics-content {
+  display: grid;
+  gap: 14px;
+}
+
+.fitpic-dropzone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-panel);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 60%),
+    var(--surface);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.fitpic-dropzone.is-drag-active {
+  border-color: var(--text);
+  background: var(--soft);
+  transform: translateY(-1px);
+}
+
+.fitpic-dropzone.is-processing {
+  opacity: 0.8;
+}
+
+.fitpic-dropzone-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.fitpic-dropzone-copy h3,
+.fitpic-dropzone-copy p {
+  margin: 0;
+}
+
+.fitpic-file-input {
+  display: none;
+}
+
+.fitpics-empty-state {
+  min-height: 160px;
+}
+
 .fitpic-card {
   display: grid;
-  gap: 7px;
+  gap: 10px;
   align-content: start;
-  min-height: 230px;
-  padding: 9px;
+  min-height: 0;
+  padding: 10px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel);
   background: var(--surface-solid);
+  overflow: hidden;
 }
 
 .fitpic-card img {
   width: 100%;
-  height: 140px;
+  aspect-ratio: 4 / 5;
+  height: auto;
   object-fit: cover;
-  border-radius: var(--radius-panel);
+  border-radius: calc(var(--radius-panel) - 4px);
   background: var(--preview-end);
 }
 
@@ -2600,6 +2649,113 @@ button:disabled {
   padding: 0;
   border: none;
   background: transparent;
+}
+
+.fitpic-card-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.fitpic-card-copy strong,
+.fitpic-card-copy span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fitpic-card-copy strong,
+.fitpic-card-copy span,
+.fitpic-card-tags {
+  white-space: nowrap;
+}
+
+.fitpic-card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.fitpic-card-actions .ghost-button {
+  width: 100%;
+}
+
+.fitpic-import-error {
+  margin: 0;
+  color: #b04545;
+}
+
+.fitpic-preview-content {
+  display: grid;
+  gap: 14px;
+}
+
+.fitpic-preview-copy,
+.fitpic-preview-copy p {
+  margin: 0;
+}
+
+.fitpic-editor {
+  display: grid;
+  gap: 18px;
+}
+
+.fitpic-editor-media {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-editor-image {
+  width: 100%;
+  max-height: 58vh;
+  object-fit: contain;
+  border-radius: var(--radius-panel);
+  background: var(--preview-end);
+}
+
+.fitpic-editor-media-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.fitpic-editor-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.fitpic-favorite-field {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.fitpic-metadata-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-metadata-panel .eyebrow {
+  margin: 0;
+}
+
+.fitpic-metadata-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 140px) minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.fitpic-metadata-grid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.fitpic-metadata-grid strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .confirm-backdrop {
@@ -3828,6 +3984,18 @@ button:disabled {
 
   .bulk-metadata-span-2 {
     grid-column: auto;
+  }
+
+  .fitpic-dropzone {
+    grid-template-columns: 1fr;
+  }
+
+  .fitpic-card-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .fitpic-metadata-grid {
+    grid-template-columns: 1fr;
   }
 
   .editor-list-favorite-row {

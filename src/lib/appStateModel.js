@@ -7,6 +7,7 @@ import {
   normalizeOutfitFilters,
   normalizeRecentOutfits
 } from "./generation.js";
+import { normalizeFitpics } from "./fitpics.js";
 import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./wardrobeLibrary.js";
 
 export function createOutfitUuid() {
@@ -122,7 +123,7 @@ export function normalizeHydratedAppState(
     weatherSettings: normalizeWeatherSettings(appStateLike?.weatherSettings),
     weatherLocationDraft: appStateLike?.weatherSettings?.locationName ?? "",
     weatherData: appStateLike?.weatherData ?? null,
-    fitpics: appStateLike?.fitpics ?? [],
+    fitpics: normalizeFitpics(appStateLike?.fitpics),
     wardrobeFilters: normalizeWardrobeFilters(appStateLike?.wardrobeFilters),
     wardrobeSort: normalizeWardrobeSort(appStateLike?.wardrobeSort)
   };
