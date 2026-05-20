@@ -234,7 +234,7 @@ const advancedTrackedFields = [
 ];
 const stylingEditorFields = ["styleTags", "climateTags"];
 const advancedEditorFields = advancedTrackedFields.filter(
-  (field) => !["name", "description", "brand", "list", "favorite", ...stylingEditorFields].includes(field)
+  (field) => !["name", "description", "brand", "list", "favorite", "garmentType", ...stylingEditorFields].includes(field)
 );
 
 function normalizeStoredItem(item, fallbackCreatedAt) {
@@ -4915,28 +4915,32 @@ export default function App() {
           )}
         </div>
         <div className="item-image-actions">
-          <label className="upload-button">
-            {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-            <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
-          </label>
-          {draft.imageUrl.trim() ? (
-            <button type="button" className="ghost-button" onClick={resetDraftImageCrop} disabled={imageProcessing}>
-              Reset crop
+          <div className="item-image-action-group item-image-action-group-primary">
+            <label className="upload-button">
+              {draft.imageUrl.trim() ? "Change image" : "Choose image"}
+              <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
+            </label>
+            {draft.imageUrl.trim() ? (
+              <button type="button" className="ghost-button" onClick={resetDraftImageCrop} disabled={imageProcessing}>
+                Reset crop
+              </button>
+            ) : null}
+          </div>
+          <div className="item-image-action-group item-image-action-group-secondary">
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={removeDraftBackground}
+              disabled={!canRemoveDraftBackground || imageProcessing}
+            >
+              {imageProcessing ? "Removing..." : "Remove background"}
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={removeDraftBackground}
-            disabled={!canRemoveDraftBackground || imageProcessing}
-          >
-            {imageProcessing ? "Removing..." : "Remove background"}
-          </button>
-          {draft.imageUrl.trim() ? (
-            <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
-              Remove image
-            </button>
-          ) : null}
+            {draft.imageUrl.trim() ? (
+              <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
+                Remove image
+              </button>
+            ) : null}
+          </div>
           <label className="image-size-field">
             Image size
             <div className="image-scale-control">
@@ -4977,24 +4981,26 @@ export default function App() {
           ))}
         </datalist>
 
-        <div className="editor-derived-field">
-          <span className="editor-label-row">
-            <span>Garment</span>
-            {advancedOverrideSet.has("garmentType") ? (
-              <span className="editor-label-actions">
-                <span className="field-status-text">Custom</span>
-                <button
-                  type="button"
-                  className="editor-inline-reset"
-                  onClick={() => resetAdvancedField("garmentType")}
-                >
-                  Reset
-                </button>
-              </span>
-            ) : null}
-          </span>
-          <strong>{draft.garmentType || resolvedTypeDefaults.garmentType || "Top"}</strong>
-        </div>
+        <label>
+          {renderAdvancedLabel("Garment", "garmentType")}
+          <select
+            value={draft.garmentType}
+            onChange={(event) =>
+              setDraft((current) =>
+                applyGarmentRules(
+                  { ...current, garmentType: event.target.value },
+                  resolveTypeDefaults(current.type)
+                )
+              )
+            }
+          >
+            {garmentTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label>
           Color
@@ -5011,23 +5017,21 @@ export default function App() {
           ))}
         </datalist>
 
-        <label>
-          {renderAdvancedLabel("List", "list")}
-          <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
-            {itemListOptions.map((list) => (
-              <option key={list} value={list}>
-                {list}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="editor-list-favorite-row">
+          <label>
+            {renderAdvancedLabel("List", "list")}
+            <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
+              {itemListOptions.map((list) => (
+                <option key={list} value={list}>
+                  {list}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label className="checkbox-field editor-favorite-field">
-          <span className="editor-label-row">
-            <span>Favorite</span>
-            {advancedOverrideSet.has("favorite") ? (
-              <span className="editor-label-actions">
-                <span className="field-status-text">Custom</span>
+          <div className="editor-favorite-field" aria-label="Favorite">
+            <div className="editor-favorite-actions">
+              {advancedOverrideSet.has("favorite") ? (
                 <button
                   type="button"
                   className="editor-inline-reset"
@@ -5035,18 +5039,19 @@ export default function App() {
                 >
                   Reset
                 </button>
-              </span>
-            ) : null}
-          </span>
-          <span className="editor-favorite-toggle">
-            <input
-              type="checkbox"
-              checked={Boolean(draft.favorite)}
-              onChange={(event) => setAdvancedField("favorite", event.target.checked)}
-            />
-            <span>{draft.favorite ? "Saved as favorite" : "Mark as favorite"}</span>
-          </span>
-        </label>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={`editor-favorite-button ${draft.favorite ? "is-active" : ""}`}
+              aria-pressed={Boolean(draft.favorite)}
+              aria-label={draft.favorite ? "Remove from favorites" : "Add to favorites"}
+              onClick={() => setAdvancedField("favorite", !draft.favorite)}
+            >
+              <span aria-hidden="true">{draft.favorite ? "♥" : "♡"}</span>
+            </button>
+          </div>
+        </div>
 
         <label>
           {renderAdvancedLabel("Brand", "brand")}
@@ -5069,7 +5074,7 @@ export default function App() {
             list="item-name-suggestions"
             value={draft.name}
             onChange={(event) => setAdvancedField("name", event.target.value)}
-            placeholder="Grey wool beanie"
+            placeholder=""
           />
         </label>
         <datalist id="item-name-suggestions">
@@ -5107,27 +5112,6 @@ export default function App() {
 
       {editorAdvancedOpen ? (
         <div className="editor-advanced-panel">
-          <label>
-            {renderAdvancedLabel("Garment type", "garmentType")}
-            <select
-              value={draft.garmentType}
-              onChange={(event) =>
-                setDraft((current) =>
-                  applyGarmentRules(
-                    { ...current, garmentType: event.target.value },
-                    resolveTypeDefaults(current.type)
-                  )
-                )
-              }
-            >
-              {garmentTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </label>
-
           {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
             <label>
               {renderAdvancedLabel("Layer type", "layerType")}
