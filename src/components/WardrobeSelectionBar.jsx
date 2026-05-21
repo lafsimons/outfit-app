@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function WardrobeSelectionBar({
   inline = false,
@@ -17,31 +17,90 @@ export default function WardrobeSelectionBar({
   onCloseEdit
 }) {
   const [activeAction, setActiveAction] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   useEffect(() => {
     setActiveAction(null);
+    setMenuOpen(false);
   }, [selectedCount]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (menuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setMenuOpen(false);
+      setActiveAction(null);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [menuOpen]);
+
+  function preventPointerFocus(event) {
+    if (event.detail !== 0) {
+      event.preventDefault();
+    }
+  }
 
   return (
     <div className={`wardrobe-selection-bar ${inline ? "is-inline" : ""}`.trim()} aria-label="Wardrobe selection">
       <div className="wardrobe-selection-summary">
-        <div className="wardrobe-selection-count">
+        <div className="wardrobe-selection-count wardrobe-selection-chip">
           <span>{selectedCount} selected</span>
-          <button type="button" className="wardrobe-selection-clear" onClick={onClear} aria-label="Clear selection">
+          <button
+            type="button"
+            className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+            onMouseDown={preventPointerFocus}
+            onClick={onClear}
+            aria-label="Clear selection"
+          >
             ×
           </button>
         </div>
-        <div className="wardrobe-selection-actions">
-          <button type="button" className="ghost-button" onClick={onEdit} disabled={!selectedCount}>
+        <div className="wardrobe-selection-actions wardrobe-toolbar-context-actions">
+          <button
+            type="button"
+            className="secondary-button wardrobe-selection-edit-button"
+            onMouseDown={preventPointerFocus}
+            onClick={() => {
+              setMenuOpen(false);
+              setActiveAction(null);
+              onEdit();
+            }}
+            disabled={!selectedCount}
+          >
             Edit
           </button>
-          <details className="wardrobe-selection-more">
-            <summary className="ghost-button" aria-label="More selection actions">Actions ▾</summary>
-            <div className="wardrobe-selection-menu">
+          <div ref={menuRef} className="wardrobe-selection-more">
+            <button
+              type="button"
+              className={`ghost-button wardrobe-selection-actions-trigger ${menuOpen || activeAction ? "is-active" : ""}`}
+              aria-label="More selection actions"
+              aria-expanded={menuOpen || Boolean(activeAction)}
+              aria-haspopup="menu"
+              onMouseDown={preventPointerFocus}
+              onClick={() => {
+                setActiveAction(null);
+                setMenuOpen((current) => !current);
+              }}
+              disabled={!selectedCount}
+            >
+              Actions ▾
+            </button>
+            {menuOpen || activeAction ? (
+              <div className="wardrobe-selection-menu">
               <div className="wardrobe-selection-menu-section">
                 <button
                   type="button"
                   className={`ghost-button wardrobe-selection-menu-button ${activeAction === "list" ? "is-active" : ""}`}
+                  onMouseDown={preventPointerFocus}
                   onClick={() => setActiveAction("list")}
                   disabled={!selectedCount}
                 >
@@ -55,9 +114,11 @@ export default function WardrobeSelectionBar({
                 <button
                   type="button"
                   className="ghost-button wardrobe-selection-menu-button"
+                  onMouseDown={preventPointerFocus}
                   onClick={() => {
                     onFavoriteToggle();
                     setActiveAction(null);
+                    setMenuOpen(false);
                     onCloseEdit?.();
                   }}
                   disabled={!selectedCount}
@@ -67,9 +128,11 @@ export default function WardrobeSelectionBar({
                 <button
                   type="button"
                   className="ghost-button wardrobe-selection-menu-button"
+                  onMouseDown={preventPointerFocus}
                   onClick={() => {
                     onExcludeToggle();
                     setActiveAction(null);
+                    setMenuOpen(false);
                     onCloseEdit?.();
                   }}
                   disabled={!selectedCount}
@@ -82,9 +145,11 @@ export default function WardrobeSelectionBar({
                 <button
                   type="button"
                   className="ghost-button wardrobe-selection-menu-button wardrobe-selection-menu-button-danger"
+                  onMouseDown={preventPointerFocus}
                   onClick={() => {
                     onDelete();
                     setActiveAction(null);
+                    setMenuOpen(false);
                     onCloseEdit?.();
                   }}
                   disabled={!selectedCount}
@@ -108,9 +173,11 @@ export default function WardrobeSelectionBar({
                       <button
                         type="button"
                         className="ghost-button"
+                        onMouseDown={preventPointerFocus}
                         onClick={() => {
                           onMoveToList(bulkListDraft);
                           setActiveAction(null);
+                          setMenuOpen(false);
                         }}
                         disabled={!selectedCount || !bulkListDraft}
                       >
@@ -122,7 +189,8 @@ export default function WardrobeSelectionBar({
                 </div>
               ) : null}
             </div>
-          </details>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

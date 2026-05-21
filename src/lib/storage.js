@@ -3,7 +3,7 @@ import defaultAppState from "../data/defaultAppState.js";
 import { BACKUP_SOURCE, BACKUP_VERSION, INDEXED_DB_NAME } from "./appIdentity.js";
 
 const DB_NAME = INDEXED_DB_NAME;
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const ITEM_STORE = "items";
 const APP_STORE = "appState";
 const SYNC_STATE_STORE = "syncState";
