@@ -1560,7 +1560,7 @@ button:disabled {
   align-items: center;
   justify-content: flex-start;
   gap: 10px 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   min-width: 0;
 }
 
@@ -1571,6 +1571,13 @@ button:disabled {
   min-width: 0;
   flex: 1 1 0;
   flex-wrap: nowrap;
+}
+
+.wardrobe-primary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .wardrobe-search-field,
@@ -1788,6 +1795,7 @@ button:disabled {
   min-width: 0;
 }
 
+.wardrobe-primary-actions > button,
 .wardrobe-header-actions > button,
 .preview-overlay-header-actions > button,
 .wardrobe-controls-footer > button,
@@ -1901,6 +1909,11 @@ button:disabled {
 .wardrobe-selection-menu-section {
   display: grid;
   gap: 0;
+}
+
+.wardrobe-selection-menu-separator {
+  height: 1px;
+  background: var(--border-soft);
 }
 
 .wardrobe-selection-menu-section-danger {
@@ -3903,9 +3916,19 @@ button:disabled {
   .wardrobe-header-actions {
     justify-content: stretch;
     flex-wrap: wrap;
+    width: 100%;
+    margin-left: 0;
   }
 
   .wardrobe-header-actions > button {
+    flex: 1;
+  }
+
+  .wardrobe-primary-actions {
+    width: 100%;
+  }
+
+  .wardrobe-primary-actions > button {
     flex: 1;
   }
 

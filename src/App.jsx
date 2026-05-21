@@ -1242,6 +1242,7 @@ export default function App() {
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
   const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
   const [canUseDebugPopout, setCanUseDebugPopout] = useState(getCanUseDebugPopout);
+  const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
   const outfitItemPreviewClickTimeoutRef = useRef(null);
@@ -2244,6 +2245,14 @@ export default function App() {
       return;
     }
 
+    setHasHydratedAppState(true);
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading || !hasHydratedAppState) {
+      return;
+    }
+
     saveAppState({
       itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
       imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
@@ -2268,7 +2277,30 @@ export default function App() {
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort
     });
-  }, [layering, accessoriesEnabled, locked, excluded, outfit, outfitItemUuids, ignoredImportImages, savedOutfits, likedOutfitKeys, outfitAffinity, recentOutfits, generateCount, generationLists, generationMode, outfitFilters, weatherSettings, weatherData, fitpics, wardrobeFilters, wardrobeSort, loading]);
+  }, [
+    layering,
+    accessoriesEnabled,
+    locked,
+    excluded,
+    outfit,
+    outfitItemUuids,
+    ignoredImportImages,
+    savedOutfits,
+    likedOutfitKeys,
+    outfitAffinity,
+    recentOutfits,
+    generateCount,
+    generationLists,
+    generationMode,
+    outfitFilters,
+    weatherSettings,
+    weatherData,
+    fitpics,
+    wardrobeFilters,
+    wardrobeSort,
+    loading,
+    hasHydratedAppState
+  ]);
 
   useEffect(() => {
     if (loading || !items.length) {
@@ -5990,12 +6022,6 @@ export default function App() {
                     </button>
 
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`} aria-label="Wardrobe filters">
-                      <div className="wardrobe-controls-header">
-                        <div>
-                          <p className="eyebrow">Wardrobe</p>
-                          <h2>Filters</h2>
-                        </div>
-                      </div>
                       <div className="wardrobe-controls-body">
                         <div className="wardrobe-filter-search">
                           <input
@@ -6097,7 +6123,7 @@ export default function App() {
                       </div>
                       <div className="wardrobe-controls-footer">
                         {wardrobeSearch || hasActiveWardrobeFilters ? (
-                          <div className="active-filter-summary" aria-label="Active wardrobe filters">
+                          <div className="active-filter-summary" aria-label="Active filters">
                             <div className="active-filter-chips">
                               {wardrobeSearch ? (
                                 <span className="active-filter-chip">
@@ -6144,6 +6170,19 @@ export default function App() {
                       <option value="oldest">Oldest</option>
                     </select>
                   </div>
+                  <div className="wardrobe-primary-actions">
+                    <button
+                      type="button"
+                      className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
+                      onClick={toggleWardrobeManage}
+                      aria-expanded={wardrobeManageOpen}
+                    >
+                      Manage
+                    </button>
+                    <button type="button" className="primary-button" onClick={(event) => startCreate(event)}>
+                      Add Item
+                    </button>
+                  </div>
                 </div>
                 <div className="wardrobe-header-actions">
                   {hasWardrobeSelection ? (
@@ -6164,17 +6203,6 @@ export default function App() {
                       onCloseEdit={cancelEdit}
                     />
                   ) : null}
-                  <button
-                    type="button"
-                    className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
-                    onClick={toggleWardrobeManage}
-                    aria-expanded={wardrobeManageOpen}
-                  >
-                    Manage
-                  </button>
-                  <button type="button" className="primary-button" onClick={(event) => startCreate(event)}>
-                    Add Item
-                  </button>
                 </div>
               </div>
             </div>

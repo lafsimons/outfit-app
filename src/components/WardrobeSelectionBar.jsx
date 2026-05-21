@@ -41,6 +41,19 @@ export default function WardrobeSelectionBar({
               <div className="wardrobe-selection-menu-section">
                 <button
                   type="button"
+                  className={`ghost-button wardrobe-selection-menu-button ${activeAction === "list" ? "is-active" : ""}`}
+                  onClick={() => setActiveAction("list")}
+                  disabled={!selectedCount}
+                >
+                  List
+                </button>
+              </div>
+
+              <div className="wardrobe-selection-menu-separator" aria-hidden="true" />
+
+              <div className="wardrobe-selection-menu-section">
+                <button
+                  type="button"
                   className="ghost-button wardrobe-selection-menu-button"
                   onClick={() => {
                     onFavoriteToggle();
@@ -50,14 +63,6 @@ export default function WardrobeSelectionBar({
                   disabled={!selectedCount}
                 >
                   {favoriteActionLabel}
-                </button>
-                <button
-                  type="button"
-                  className={`ghost-button wardrobe-selection-menu-button ${activeAction === "list" ? "is-active" : ""}`}
-                  onClick={() => setActiveAction("list")}
-                  disabled={!selectedCount}
-                >
-                  List
                 </button>
                 <button
                   type="button"
