@@ -1462,6 +1462,7 @@ export default function App() {
         return true;
       });
   }, [accessoriesEnabled, itemsById, outfit]);
+  const hasLockedOutfitSlots = visibleSlots.some((slot) => Boolean(locked[slot]));
   const currentOutfitKey = useMemo(() => getOutfitKey(outfit, layering), [outfit, layering]);
   const isCurrentOutfitLiked = Boolean(likedOutfitKeys[currentOutfitKey]);
   const currentSavedOutfit = useMemo(
@@ -3216,6 +3217,20 @@ export default function App() {
       ...current,
       [slot]: !current[slot]
     }));
+  }
+
+  function unlockAllOutfitSlots() {
+    setLocked((current) => {
+      if (!visibleSlots.some((slot) => current[slot])) {
+        return current;
+      }
+
+      const nextLocked = { ...current };
+      visibleSlots.forEach((slot) => {
+        nextLocked[slot] = false;
+      });
+      return nextLocked;
+    });
   }
 
   function equipItem(item) {
@@ -6472,6 +6487,11 @@ export default function App() {
               <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
                 Export outfit image
               </button>
+              {hasLockedOutfitSlots ? (
+                <button type="button" className="ghost-button" onClick={unlockAllOutfitSlots}>
+                  Unlock all
+                </button>
+              ) : null}
             </div>
 
             <div className="controls-group">
