@@ -246,14 +246,14 @@ async function seedLegacyDatabase({ items = [], appState = null } = {}) {
 }
 
 async function getStoreNames() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const storeNames = [...db.objectStoreNames.stores.keys()].sort();
   db.close();
   return storeNames;
 }
 
 async function getSyncMetadataRows() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const transaction = db.transaction("syncMetadata", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("syncMetadata").getAll());
   await transactionDone(transaction);
@@ -262,7 +262,7 @@ async function getSyncMetadataRows() {
 }
 
 async function getSyncStateRows() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const transaction = db.transaction("syncState", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("syncState").getAll());
   await transactionDone(transaction);
@@ -271,7 +271,7 @@ async function getSyncStateRows() {
 }
 
 async function getStoredItems() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const transaction = db.transaction("items", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("items").getAll());
   await transactionDone(transaction);
@@ -805,7 +805,7 @@ test("legacy OA metadata rows are normalized and migrated on read", async () => 
     lastLocalChangeAt: ""
   });
 
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const transaction = db.transaction("syncMetadata", "readwrite");
   transaction.objectStore("syncMetadata").put({
     key: "oa:item:item-uuid-legacy",
@@ -845,7 +845,7 @@ test("legacy OA metadata rows are normalized and migrated on read", async () => 
 
 test("legacy sync state row is normalized to the shared singleton shape", async () => {
   await getOrCreateDeviceId();
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 2));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
   const transaction = db.transaction("syncState", "readwrite");
   transaction.objectStore("syncState").delete("state");
   transaction.objectStore("syncState").put({

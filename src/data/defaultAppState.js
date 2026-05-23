@@ -48,7 +48,18 @@ const defaultAppState = {
     climate: [],
     color: []
   },
-  fitpics: []
+  fitpics: [],
+  windowState: {
+    outfitEditor: {
+      width: 396
+    },
+    wardrobeEditor: {
+      width: 396
+    },
+    addImagesWindow: {
+      width: 396
+    }
+  }
 };
 
 export default defaultAppState;

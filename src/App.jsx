@@ -208,6 +208,11 @@ function getCanUseDebugPopout() {
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
 const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
+const defaultWindowState = {
+  outfitEditor: { width: 396 },
+  wardrobeEditor: { width: 396 },
+  addImagesWindow: { width: 396 }
+};
 const defaultWardrobeFilterSectionsOpen = {
   brand: false,
   garmentType: false,
@@ -259,7 +264,20 @@ function normalizeQuantity(value) {
   if (!Number.isFinite(parsed)) {
     return 1;
   }
+
   return Math.max(1, Math.round(parsed));
+}
+
+function getEditorWindowStateKey(editingId, editorReturnTarget) {
+  if (editorReturnTarget === "outfit") {
+    return "outfitEditor";
+  }
+
+  if (editingId === "new") {
+    return "addImagesWindow";
+  }
+
+  return "wardrobeEditor";
 }
 
 function createEmptyBulkMetadataDraft() {
@@ -1194,10 +1212,13 @@ export default function App() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
+  const [selectedSavedOutfitId, setSelectedSavedOutfitId] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
+  const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
+  const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [editingFitpicId, setEditingFitpicId] = useState(null);
@@ -1207,6 +1228,7 @@ export default function App() {
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
+  const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
@@ -1217,7 +1239,7 @@ export default function App() {
   const [editorReturnTarget, setEditorReturnTarget] = useState(null);
   const [editorAdvancedOpen, setEditorAdvancedOpen] = useState(false);
   const [editorStylingOpen, setEditorStylingOpen] = useState(false);
-  const [wardrobeEditorWidth, setWardrobeEditorWidth] = useState(396);
+  const [windowState, setWindowState] = useState(defaultWindowState);
   const [draft, setDraft] = useState(emptyForm);
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
@@ -1228,6 +1250,10 @@ export default function App() {
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
+  const [dashboardFilterSearch, setDashboardFilterSearch] = useState("");
+  const [dashboardFilterSectionsOpen, setDashboardFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
+  const [dashboardFilters, setDashboardFilters] = useState(emptyWardrobeFilters);
+  const [dashboardSort, setDashboardSort] = useState(DEFAULT_WARDROBE_SORT);
   const [outfitPalette, setOutfitPalette] = useState([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
@@ -1255,7 +1281,13 @@ export default function App() {
     [items]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const isWardrobePreviewItemEquipped = wardrobePreviewItem
+    ? Object.values(outfit).includes(wardrobePreviewItem.id)
+    : false;
   const editingFitpic = editingFitpicId ? fitpics.find((fitpic) => fitpic.id === editingFitpicId) ?? null : null;
+  const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
+  const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
+    ?? defaultWindowState[activeEditorWindowStateKey].width;
 
   useEffect(() => {
     if (!fitpicPreview) {
@@ -1678,6 +1710,14 @@ export default function App() {
     ]),
     [draft.list, generationLists, items, wardrobeFilters.list]
   );
+  const dashboardItemListOptions = useMemo(
+    () => getItemListOptions([
+      ...items.map((item) => item.list),
+      ...Object.keys(generationLists ?? {}),
+      ...(dashboardFilters.list ?? [])
+    ]),
+    [dashboardFilters.list, generationLists, items]
+  );
   const wardrobeSearchTextById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
     [items]
@@ -1690,12 +1730,25 @@ export default function App() {
       }),
     [itemListOptions, items, wardrobeFilters]
   );
+  const dashboardFilterOptions = useMemo(
+    () =>
+      getWardrobeFilterOptions(items, dashboardFilters, {
+        itemListOptions: dashboardItemListOptions,
+        styleTagOptions
+      }),
+    [dashboardItemListOptions, items, dashboardFilters]
+  );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.entries(wardrobeFilters).reduce(
     (count, [key, value]) => count + (wardrobeMultiValueFilterKeys.includes(key) ? value.length : value ? 1 : 0),
     0
   );
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
+  const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
+    (count, [key, value]) => count + (wardrobeMultiValueFilterKeys.includes(key) ? value.length : value ? 1 : 0),
+    0
+  );
+  const hasActiveDashboardFilters = activeDashboardFilterCount > 0;
   const includedGenerationLists = useMemo(
     () => itemListOptions.filter((list) => isGenerationListEnabled(list)),
     [itemListOptions, generationLists]
@@ -1725,6 +1778,37 @@ export default function App() {
     ),
     ["Exclude", wardrobeFilters.laundry],
     ["Favorite", wardrobeFilters.favorite]
+  ]
+    .filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
+    .map(([label, value]) => ({
+      label,
+      value:
+        value === "__none__"
+          ? `No ${label.toLowerCase()}`
+          : label === "Favorite"
+            ? value === "yes"
+              ? "Yes"
+              : "No"
+            : label === "Exclude"
+              ? value === "show"
+                ? "Show excluded"
+                : "Hide excluded"
+              : value
+    }));
+  const activeDashboardFilterChips = [
+    ...[
+      ["Brand", dashboardFilters.brand],
+      ["Type", dashboardFilters.type],
+      ["Garment", dashboardFilters.garmentType],
+      ["Color", dashboardFilters.color],
+      ["Style", dashboardFilters.style],
+      ["Weight", dashboardFilters.weight],
+      ["List", dashboardFilters.list]
+    ].flatMap(([label, values]) =>
+      values.map((value) => [label, value])
+    ),
+    ["Exclude", dashboardFilters.laundry],
+    ["Favorite", dashboardFilters.favorite]
   ]
     .filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
     .map(([label, value]) => ({
@@ -1774,7 +1858,40 @@ export default function App() {
     ],
     [wardrobeFilterOptions]
   );
+  const dashboardFilterPanelSections = useMemo(
+    () => [
+      { label: "Brand", key: "brand", options: dashboardFilterOptions.brand, includeNone: true, kind: "multi" },
+      { label: "Garment", key: "garmentType", options: dashboardFilterOptions.garmentType, includeNone: true, kind: "multi" },
+      { label: "Type", key: "type", options: dashboardFilterOptions.type, includeNone: true, kind: "multi" },
+      { label: "Color", key: "color", options: dashboardFilterOptions.color, includeNone: true, kind: "multi" },
+      { label: "Style", key: "style", options: dashboardFilterOptions.style, includeNone: false, kind: "multi" },
+      { label: "Weight", key: "weight", options: dashboardFilterOptions.weight, includeNone: true, kind: "multi" },
+      { label: "List", key: "list", options: dashboardFilterOptions.list, includeNone: false, kind: "multi" },
+      {
+        label: "Favorite",
+        key: "favorite",
+        options: [
+          { label: "Favorites", value: "yes" },
+          { label: "Not favorites", value: "no" }
+        ],
+        includeNone: false,
+        kind: "single"
+      },
+      {
+        label: "Exclude",
+        key: "laundry",
+        options: [
+          { label: "Show excluded", value: "show" },
+          { label: "Hide excluded", value: "hide" }
+        ],
+        includeNone: false,
+        kind: "single"
+      }
+    ],
+    [dashboardFilterOptions]
+  );
   const normalizedWardrobeFilterSearch = wardrobeFilterSearch.trim().toLowerCase();
+  const normalizedDashboardFilterSearch = dashboardFilterSearch.trim().toLowerCase();
 
   function requestConfirmation({ title, message, confirmLabel = "Confirm" }) {
     return new Promise((resolve) => {
@@ -2056,6 +2173,10 @@ export default function App() {
     const filtered = filterWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById);
     return sortWardrobeItems(filtered, wardrobeSort);
   }, [excluded, items, wardrobeFilters, wardrobeSearch, wardrobeSearchTextById, wardrobeSort]);
+  const visibleDashboardItems = useMemo(() => {
+    const filtered = filterWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById);
+    return sortWardrobeItems(filtered, dashboardSort);
+  }, [dashboardFilters, dashboardSort, excluded, items, wardrobeSearchTextById]);
   const visibleWardrobeItemIds = useMemo(
     () => visibleWardrobeItems.map((item) => item.id),
     [visibleWardrobeItems]
@@ -2065,6 +2186,10 @@ export default function App() {
   const favoriteWardrobeItemCount = useMemo(
     () => items.reduce((count, item) => count + (item.favorite ? 1 : 0), 0),
     [items]
+  );
+  const favoriteDashboardItemCount = useMemo(
+    () => visibleDashboardItems.reduce((count, item) => count + (item.favorite ? 1 : 0), 0),
+    [visibleDashboardItems]
   );
   const selectedWardrobeItems = useMemo(
     () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
@@ -2104,6 +2229,28 @@ export default function App() {
 
     return { rows, totalValue, totalRetailValue, totalCount, maxValue };
   }, [visibleWardrobeItems]);
+  const dashboardWorth = useMemo(() => {
+    const categories = garmentTypes;
+    const byCategory = Object.fromEntries(
+      categories.map((category) => [category, { category, count: 0, value: 0, retailValue: 0 }])
+    );
+
+    visibleDashboardItems.forEach((item) => {
+      const category = getWorthCategory(item);
+      const quantity = normalizeQuantity(item.quantity);
+      byCategory[category].count += quantity;
+      byCategory[category].value += getNumericValue(item.value) * quantity;
+      byCategory[category].retailValue += getNumericValue(item.retailValue) * quantity;
+    });
+
+    const rows = categories.map((category) => byCategory[category]);
+    const totalValue = rows.reduce((sum, row) => sum + row.value, 0);
+    const totalRetailValue = rows.reduce((sum, row) => sum + row.retailValue, 0);
+    const totalCount = rows.reduce((sum, row) => sum + row.count, 0);
+    const maxValue = Math.max(...rows.flatMap((row) => [row.value, row.retailValue]), 1);
+
+    return { rows, totalValue, totalRetailValue, totalCount, maxValue };
+  }, [visibleDashboardItems]);
   const hasWardrobeEditorOpen = Boolean(editingId || bulkMetadataEditorOpen);
   const showInlineWardrobeEditor = Boolean(
     hasWardrobeEditorOpen && activePanel === "wardrobe" && editorReturnTarget !== "outfit" && !isMobileViewport
@@ -2240,6 +2387,7 @@ export default function App() {
       setFitpics(hydratedAppState.fitpics);
       setWardrobeFilters(hydratedAppState.wardrobeFilters);
       setWardrobeSort(hydratedAppState.wardrobeSort);
+      setWindowState(hydratedAppState.windowState);
 
       await backfillLocalSyncMetadata({
         items: effectiveItems,
@@ -2291,7 +2439,8 @@ export default function App() {
       weatherData,
       fitpics,
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
-      wardrobeSort
+      wardrobeSort,
+      windowState
     });
   }, [
     layering,
@@ -2314,6 +2463,7 @@ export default function App() {
     fitpics,
     wardrobeFilters,
     wardrobeSort,
+    windowState,
     loading,
     hasHydratedAppState
   ]);
@@ -2390,11 +2540,31 @@ export default function App() {
   }, [itemsById, wardrobePreviewItemId]);
 
   useEffect(() => {
-    if (!activeOutfitSlot && !activeAccessorySlot) {
+    if (!selectedSavedOutfitId) {
+      return;
+    }
+
+    if (activeOutfitsTab !== "saved" || !savedOutfits.some((savedOutfit) => savedOutfit.id === selectedSavedOutfitId)) {
+      setSelectedSavedOutfitId(null);
+    }
+  }, [activeOutfitsTab, savedOutfits, selectedSavedOutfitId]);
+
+  useEffect(() => {
+    if (!activeOutfitSlot && !activeAccessorySlot && !selectedOutfitSlot && !selectedAccessorySlot) {
       return undefined;
     }
 
     function handleDocumentPointerDown(event) {
+      if (
+        event.target instanceof Element &&
+        (
+          event.target.closest(".outfit-slot.is-active") ||
+          event.target.closest(".accessory-slot.is-active")
+        )
+      ) {
+        return;
+      }
+
       if (workspaceTabsRef.current?.contains(event.target)) {
         return;
       }
@@ -2403,12 +2573,17 @@ export default function App() {
         return;
       }
 
-      closePickerOverlay();
+      if (activeOutfitSlot || activeAccessorySlot) {
+        closePickerOverlay();
+        return;
+      }
+
+      clearSelectedOutfitItem();
     }
 
     document.addEventListener("pointerdown", handleDocumentPointerDown, true);
     return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
-  }, [activeOutfitSlot, activeAccessorySlot]);
+  }, [activeAccessorySlot, activeOutfitSlot, selectedAccessorySlot, selectedOutfitSlot]);
 
   useEffect(() => {
     if (!outfitDebugOpen) {
@@ -2502,6 +2677,13 @@ export default function App() {
         return;
       }
 
+      if (selectedOutfitSlot || selectedAccessorySlot) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        clearSelectedOutfitItem();
+        return;
+      }
+
       if (wardrobeFiltersOpen) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -2551,13 +2733,16 @@ export default function App() {
     selectedWardrobeItemCount,
     wardrobeFiltersOpen,
     wardrobeManageOpen,
-    generationListsOpen
+    generationListsOpen,
+    selectedAccessorySlot,
+    selectedOutfitSlot
   ]);
 
   function handleGenerate() {
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    clearSelectedOutfitItem();
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setWardrobeManageOpen(false);
@@ -2749,6 +2934,7 @@ export default function App() {
     setFitpics(hydratedAppState.fitpics);
     setWardrobeFilters(hydratedAppState.wardrobeFilters);
     setWardrobeSort(hydratedAppState.wardrobeSort);
+    setWindowState(hydratedAppState.windowState);
     setEditingId(null);
     setEditorReturnTarget(null);
     setDraft(emptyForm);
@@ -2756,6 +2942,7 @@ export default function App() {
     setControlsOpen(true);
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
+    clearSelectedOutfitItem();
     setPickerAnchorSlot(null);
     setFitpicPreview(null);
     setWardrobeFiltersOpen(false);
@@ -3222,13 +3409,25 @@ export default function App() {
     }
   }
 
-  function handleOutfitItemPreviewClick(item, openPicker, event) {
+  function handleOutfitItemPreviewClick(item, selectItem, openPicker, event) {
     if (event) {
       registerPointerActivatedControl(event);
     }
 
     if (!item) {
+      clearSelectedOutfitItem();
       openPicker();
+      if (event) {
+        blurPointerActivatedControl(event);
+      }
+      return;
+    }
+
+    if (!isMobileViewport) {
+      if (event?.detail <= 1) {
+        selectItem();
+      }
+
       if (event) {
         blurPointerActivatedControl(event);
       }
@@ -3268,8 +3467,24 @@ export default function App() {
     }
 
     pendingOutfitItemPreviewRef.current = null;
+    clearSelectedOutfitItem();
     event.currentTarget.blur();
     openWardrobePreview(item.id);
+  }
+
+  function selectOutfitItem(slot) {
+    setSelectedOutfitSlot(slot);
+    setSelectedAccessorySlot(null);
+  }
+
+  function selectAccessoryItem(slot) {
+    setSelectedAccessorySlot(slot);
+    setSelectedOutfitSlot(null);
+  }
+
+  function clearSelectedOutfitItem() {
+    setSelectedOutfitSlot(null);
+    setSelectedAccessorySlot(null);
   }
 
   function resolveSlotForItem(item) {
@@ -3388,7 +3603,9 @@ export default function App() {
     setWardrobeManageOpen(false);
   }
 
-  function toggleExcluded(itemId) {
+  function toggleExcluded(itemId, options = {}) {
+    const { rerollOnEquippedExclude = true } = options;
+
     setExcluded((current) => {
       const nextValue = !current[itemId];
       const nextExcluded = {
@@ -3396,7 +3613,7 @@ export default function App() {
         [itemId]: nextValue
       };
 
-      if (!nextValue) {
+      if (!nextValue || !rerollOnEquippedExclude) {
         return nextExcluded;
       }
 
@@ -3424,8 +3641,20 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function clearDashboardFilters() {
+    setDashboardFilters(emptyWardrobeFilters);
+    setDashboardFilterSearch("");
+  }
+
   function toggleWardrobeFilterSection(key) {
     setWardrobeFilterSectionsOpen((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
+  function toggleDashboardFilterSection(key) {
+    setDashboardFilterSectionsOpen((current) => ({
       ...current,
       [key]: !current[key]
     }));
@@ -3445,8 +3674,29 @@ export default function App() {
     });
   }
 
+  function toggleDashboardFilterValue(key, value) {
+    setDashboardFilters((current) => {
+      const selectedValues = current[key] ?? [];
+      const isSelected = selectedValues.includes(value);
+
+      return {
+        ...current,
+        [key]: isSelected
+          ? selectedValues.filter((selectedValue) => selectedValue !== value)
+          : [...selectedValues, value]
+      };
+    });
+  }
+
   function setWardrobeToggleFilter(key, value) {
     setWardrobeFilters((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function setDashboardToggleFilter(key, value) {
+    setDashboardFilters((current) => ({
       ...current,
       [key]: value
     }));
@@ -4059,6 +4309,7 @@ export default function App() {
     );
     setActiveAccessorySlot(null);
     setActiveOutfitSlot(null);
+    clearSelectedOutfitItem();
   }
 
   function renderSavedOutfitPreview(savedOutfit) {
@@ -4093,14 +4344,14 @@ export default function App() {
 
   function renderAccessorySlot(slot) {
     const item = itemsById[outfit[slot]];
-    const isActive = activeAccessorySlot === slot;
+    const isActive = activeAccessorySlot === slot || selectedAccessorySlot === slot;
 
     return (
       <button
         key={slot}
         type="button"
         className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${item ? "has-item" : ""} ${isActive ? "is-active" : ""}`}
-        onClick={(event) => handleOutfitItemPreviewClick(item, () => openAccessoryPicker(slot), event)}
+        onClick={(event) => handleOutfitItemPreviewClick(item, () => selectAccessoryItem(slot), () => openAccessoryPicker(slot), event)}
         onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
         aria-label={`${getAccessoryLabel(slot)} options`}
       >
@@ -4118,9 +4369,11 @@ export default function App() {
     setActiveAccessorySlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
+      setSelectedAccessorySlot(nextSlot);
 
       if (nextSlot) {
         setActiveOutfitSlot(null);
+        setSelectedOutfitSlot(null);
         setActivePanel(null);
       }
 
@@ -4133,9 +4386,11 @@ export default function App() {
     setActiveOutfitSlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
+      setSelectedOutfitSlot(nextSlot);
 
       if (nextSlot) {
         setActiveAccessorySlot(null);
+        setSelectedAccessorySlot(null);
         setActivePanel(null);
       }
 
@@ -4162,7 +4417,9 @@ export default function App() {
   function closePickerOverlay() {
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    clearSelectedOutfitItem();
     setPickerAnchorSlot(null);
+    clearSelectedOutfitItem();
   }
 
   function closeUtilityWindows() {
@@ -4187,8 +4444,10 @@ export default function App() {
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
+      clearSelectedOutfitItem();
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
+      setDashboardFiltersOpen(false);
       setWardrobeManageOpen(false);
       setFitpicPreview(null);
       cancelEditFitpic();
@@ -4209,10 +4468,12 @@ export default function App() {
 
   function closeWorkspacePanel() {
     setActivePanel(null);
+    clearSelectedOutfitItem();
     if (!controlsOpen) {
       setDockExpanded(isMobileViewport ? false : true);
     }
     setWardrobeFiltersOpen(false);
+    setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
     cancelEditFitpic();
@@ -4241,6 +4502,7 @@ export default function App() {
     setActiveAccessorySlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
+    setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
     setFitpicPreview(null);
     cancelEditFitpic();
@@ -4267,12 +4529,19 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function dismissDashboardFilters() {
+    setDashboardFiltersOpen(false);
+    setDashboardFilterSearch("");
+  }
+
   function handleWardrobeEditorResizeStart(event, mode) {
     event.preventDefault();
+    const windowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
+    const startingWidth = windowState[windowStateKey]?.width ?? defaultWindowState[windowStateKey].width;
     const resizeState = {
       mode,
       startX: event.clientX,
-      startWidth: wardrobeEditorWidth
+      startWidth: startingWidth
     };
     inlineEditorResizeRef.current = resizeState;
 
@@ -4282,7 +4551,13 @@ export default function App() {
         ? resizeState.startWidth - deltaX
         : resizeState.startWidth + deltaX;
 
-      setWardrobeEditorWidth(Math.max(344, Math.min(520, Math.round(nextWidth))));
+      setWindowState((current) => ({
+        ...current,
+        [windowStateKey]: {
+          ...current[windowStateKey],
+          width: Math.max(344, Math.min(520, Math.round(nextWidth)))
+        }
+      }));
     }
 
     function handlePointerUp() {
@@ -4318,6 +4593,23 @@ export default function App() {
     });
   }
 
+  function openDashboardFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    setDashboardFiltersOpen((current) => {
+      const nextOpen = !current;
+
+      if (!nextOpen) {
+        setDashboardFilterSearch("");
+      }
+
+      return nextOpen;
+    });
+  }
+
   function closeWardrobeFilters(event) {
     if (event) {
       blurPointerActivatedControl(event);
@@ -4339,8 +4631,34 @@ export default function App() {
 
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
+    setSelectedSavedOutfitId(null);
     cancelEditSavedOutfit();
     setActivePanel(null);
+  }
+
+  function handleSavedOutfitClick(savedOutfit, event) {
+    if (isMobileViewport) {
+      loadAndCloseSavedOutfit(savedOutfit);
+      return;
+    }
+
+    if (event?.detail === 0) {
+      loadAndCloseSavedOutfit(savedOutfit);
+      return;
+    }
+
+    if (event?.detail <= 1) {
+      setSelectedSavedOutfitId(savedOutfit.id);
+    }
+  }
+
+  function handleSavedOutfitDoubleClick(savedOutfit, event) {
+    if (event) {
+      event.preventDefault();
+    }
+
+    setSelectedSavedOutfitId(null);
+    loadAndCloseSavedOutfit(savedOutfit);
   }
 
   function renderOutfitSlotPicker() {
@@ -4411,7 +4729,7 @@ export default function App() {
                     className={`picker-exclude-toggle ${isExcluded ? "is-active" : ""}`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      toggleExcluded(item.id);
+                      toggleExcluded(item.id, { rerollOnEquippedExclude: false });
                     }}
                     aria-label={isExcluded ? "Include item in generation" : "Exclude item from generation"}
                   >
@@ -4506,9 +4824,10 @@ export default function App() {
             {savedOutfits.map((savedOutfit) => {
               const savedOutfitKey = getOutfitKey(savedOutfit.outfit, savedOutfit.layering);
               const isSavedOutfitLiked = Boolean(likedOutfitKeys[savedOutfitKey]);
+              const isSelected = selectedSavedOutfitId === savedOutfit.id;
 
               return (
-                <article key={savedOutfit.id} className="saved-outfit-card">
+                <article key={savedOutfit.id} className={`saved-outfit-card ${isSelected ? "is-selected" : ""}`}>
                   {editingSavedOutfitId === savedOutfit.id ? (
                     <form
                       className="saved-outfit-form"
@@ -4551,7 +4870,8 @@ export default function App() {
                       <button
                         type="button"
                         className="saved-outfit-load"
-                        onClick={() => loadAndCloseSavedOutfit(savedOutfit)}
+                        onClick={(event) => handleSavedOutfitClick(savedOutfit, event)}
+                        onDoubleClick={(event) => handleSavedOutfitDoubleClick(savedOutfit, event)}
                       >
                         {renderSavedOutfitPreview(savedOutfit)}
                         <strong>{savedOutfit.name}</strong>
@@ -4687,74 +5007,56 @@ export default function App() {
         </div>
 
         <div className="wardrobe-toolbar wardrobe-toolbar-dashboard">
-          <div className="wardrobe-toolbar-leading">
-            <div className="wardrobe-search-field">
-              <input
-                type="search"
-                value={wardrobeSearch}
-                onPointerDown={() => {
-                  if (wardrobeFiltersOpen) {
-                    dismissWardrobeFilters();
-                  }
-                }}
-                onFocus={() => {
-                  if (wardrobeFiltersOpen) {
-                    dismissWardrobeFilters();
-                  }
-                }}
-                onChange={(event) => setWardrobeSearch(event.target.value)}
-                placeholder="Search wardrobe"
-              />
-            </div>
-            <div className={`wardrobe-filter-anchor ${wardrobeFiltersOpen ? "is-open" : ""}`}>
+          <div className="wardrobe-toolbar-leading wardrobe-toolbar-leading-dashboard">
+            <div className={`wardrobe-filter-anchor dashboard-filter-anchor ${dashboardFiltersOpen ? "is-open" : ""}`}>
               <button
                 type="button"
-                className={`secondary-button filter-button ${wardrobeFiltersOpen || hasActiveWardrobeFilters ? "is-active" : ""}`}
-                onClick={openWardrobeFilters}
-                aria-pressed={wardrobeFiltersOpen}
-                aria-expanded={wardrobeFiltersOpen}
+                className={`secondary-button filter-button ${dashboardFiltersOpen || hasActiveDashboardFilters ? "is-active" : ""}`}
+                onClick={openDashboardFilters}
+                aria-pressed={dashboardFiltersOpen}
+                aria-expanded={dashboardFiltersOpen}
                 title={
-                  hasActiveWardrobeFilters
-                    ? `${activeWardrobeFilterCount} active filter${activeWardrobeFilterCount === 1 ? "" : "s"}`
+                  hasActiveDashboardFilters
+                    ? `${activeDashboardFilterCount} active filter${activeDashboardFilterCount === 1 ? "" : "s"}`
                     : "No active filters"
                 }
               >
                 Filter
               </button>
 
-              <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`} aria-label="Wardrobe filters">
+              <div className={`wardrobe-controls ${dashboardFiltersOpen ? "is-open" : ""}`} aria-label="Dashboard filters">
                 <div className="wardrobe-controls-body">
                   <div className="wardrobe-filter-search">
                     <input
                       type="search"
-                      value={wardrobeFilterSearch}
-                      onChange={(event) => setWardrobeFilterSearch(event.target.value)}
+                      value={dashboardFilterSearch}
+                      onChange={(event) => setDashboardFilterSearch(event.target.value)}
                       placeholder="Search filter options"
                     />
                   </div>
-                  {wardrobeFilterPanelSections.map((section) => {
+                  {dashboardFilterPanelSections.map((section) => {
                     const selectedCount = section.kind === "multi"
-                      ? wardrobeFilters[section.key].length
-                      : wardrobeFilters[section.key]
+                      ? dashboardFilters[section.key].length
+                      : dashboardFilters[section.key]
                         ? 1
                         : 0;
-                    const groupMatchesSearch = !normalizedWardrobeFilterSearch
-                      || section.label.toLowerCase().includes(normalizedWardrobeFilterSearch);
+                    const groupMatchesSearch = !normalizedDashboardFilterSearch
+                      || section.label.toLowerCase().includes(normalizedDashboardFilterSearch);
                     const resolvedOptions = section.options.map((option) => (
                       typeof option === "string"
                         ? { label: option, value: option }
                         : option
                     ));
-                    const filteredOptions = normalizedWardrobeFilterSearch && !groupMatchesSearch
-                      ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedWardrobeFilterSearch))
+                    const filteredOptions = normalizedDashboardFilterSearch && !groupMatchesSearch
+                      ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedDashboardFilterSearch))
                       : resolvedOptions;
                     const noneLabel = `No ${section.label.toLowerCase()}`;
                     const showNoneOption = section.includeNone && (
-                      !normalizedWardrobeFilterSearch
+                      !normalizedDashboardFilterSearch
                       || groupMatchesSearch
-                      || noneLabel.includes(normalizedWardrobeFilterSearch)
+                      || noneLabel.includes(normalizedDashboardFilterSearch)
                     );
-                    const isOpen = normalizedWardrobeFilterSearch ? true : Boolean(wardrobeFilterSectionsOpen[section.key]);
+                    const isOpen = normalizedDashboardFilterSearch ? true : Boolean(dashboardFilterSectionsOpen[section.key]);
 
                     if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
                       return null;
@@ -4765,7 +5067,7 @@ export default function App() {
                         <button
                           type="button"
                           className="wardrobe-filter-group-toggle"
-                          onClick={() => toggleWardrobeFilterSection(section.key)}
+                          onClick={() => toggleDashboardFilterSection(section.key)}
                           aria-expanded={isOpen}
                         >
                           <span className="wardrobe-filter-group-copy">
@@ -4783,17 +5085,17 @@ export default function App() {
                             {showNoneOption ? (
                               <button
                                 type="button"
-                                className={`list-toggle ${wardrobeFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
-                                onClick={() => toggleWardrobeFilterValue(section.key, "__none__")}
-                                aria-pressed={wardrobeFilters[section.key].includes?.("__none__")}
+                                className={`list-toggle ${dashboardFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
+                                onClick={() => toggleDashboardFilterValue(section.key, "__none__")}
+                                aria-pressed={dashboardFilters[section.key].includes?.("__none__")}
                               >
                                 {noneLabel}
                               </button>
                             ) : null}
                             {filteredOptions.length ? filteredOptions.map((option) => {
                               const isSelected = section.kind === "multi"
-                                ? wardrobeFilters[section.key].includes(option.value)
-                                : wardrobeFilters[section.key] === option.value;
+                                ? dashboardFilters[section.key].includes(option.value)
+                                : dashboardFilters[section.key] === option.value;
 
                               return (
                                 <button
@@ -4802,10 +5104,10 @@ export default function App() {
                                   className={`list-toggle ${isSelected ? "is-active" : ""}`}
                                   onClick={() => (
                                     section.kind === "multi"
-                                      ? toggleWardrobeFilterValue(section.key, option.value)
-                                      : setWardrobeToggleFilter(
+                                      ? toggleDashboardFilterValue(section.key, option.value)
+                                      : setDashboardToggleFilter(
                                           section.key,
-                                          wardrobeFilters[section.key] === option.value ? "" : option.value
+                                          dashboardFilters[section.key] === option.value ? "" : option.value
                                         )
                                   )}
                                   aria-pressed={isSelected}
@@ -4823,16 +5125,10 @@ export default function App() {
                   })}
                 </div>
                 <div className="wardrobe-controls-footer">
-                  {wardrobeSearch || hasActiveWardrobeFilters ? (
+                  {hasActiveDashboardFilters ? (
                     <div className="active-filter-summary" aria-label="Active filters">
                       <div className="active-filter-chips">
-                        {wardrobeSearch ? (
-                          <span className="active-filter-chip">
-                            <span>Search</span>
-                            {wardrobeSearch}
-                          </span>
-                        ) : null}
-                        {activeWardrobeFilterChips.map((filter) => (
+                        {activeDashboardFilterChips.map((filter) => (
                           <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
                             <span>{filter.label}</span>
                             {filter.value}
@@ -4844,31 +5140,28 @@ export default function App() {
                   <button
                     type="button"
                     className="ghost-button"
-                    onClick={() => {
-                      clearWardrobeFilters();
-                      setWardrobeSearch("");
-                    }}
-                    disabled={!wardrobeSearch && !hasActiveWardrobeFilters}
+                    onClick={clearDashboardFilters}
+                    disabled={!hasActiveDashboardFilters}
                   >
-                    Clear search + filters
+                    Clear filters
                   </button>
                 </div>
               </div>
             </div>
             <div className="wardrobe-sort-field">
               <select
-                value={wardrobeSort}
+                value={dashboardSort}
                 onPointerDown={() => {
-                  if (wardrobeFiltersOpen) {
-                    dismissWardrobeFilters();
+                  if (dashboardFiltersOpen) {
+                    dismissDashboardFilters();
                   }
                 }}
                 onFocus={() => {
-                  if (wardrobeFiltersOpen) {
-                    dismissWardrobeFilters();
+                  if (dashboardFiltersOpen) {
+                    dismissDashboardFilters();
                   }
                 }}
-                onChange={(event) => setWardrobeSort(event.target.value)}
+                onChange={(event) => setDashboardSort(event.target.value)}
               >
                 <option value="">Default</option>
                 <option value="garmentType">Garment type</option>
@@ -4887,7 +5180,7 @@ export default function App() {
           </div>
           <div className="wardrobe-toolbar-context">
             <span className="wardrobe-results-count">
-              {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
+              {visibleDashboardItems.length} item{visibleDashboardItems.length === 1 ? "" : "s"}
             </span>
           </div>
         </div>
@@ -4899,7 +5192,7 @@ export default function App() {
           </div>
           <div className="wardrobe-stat-card">
             <span>Visible</span>
-            <strong>{visibleWardrobeItems.length}</strong>
+            <strong>{visibleDashboardItems.length}</strong>
           </div>
           <div className="wardrobe-stat-card">
             <span>Selected</span>
@@ -4907,26 +5200,26 @@ export default function App() {
           </div>
           <div className="wardrobe-stat-card">
             <span>Favorites</span>
-            <strong>{favoriteWardrobeItemCount}</strong>
+            <strong>{favoriteDashboardItemCount}</strong>
           </div>
           <div className="wardrobe-stat-card">
             <span>Paid value</span>
-            <strong>{formatCurrency(wardrobeWorth.totalValue)}</strong>
+            <strong>{formatCurrency(dashboardWorth.totalValue)}</strong>
           </div>
           <div className="wardrobe-stat-card">
             <span>Retail value</span>
-            <strong>{formatCurrency(wardrobeWorth.totalRetailValue)}</strong>
+            <strong>{formatCurrency(dashboardWorth.totalRetailValue)}</strong>
           </div>
         </div>
 
         <div className="wardrobe-worth-summary">
           <p className="eyebrow">Visible wardrobe worth</p>
-          <h2>{formatCurrency(wardrobeWorth.totalValue)} / {formatCurrency(wardrobeWorth.totalRetailValue)}</h2>
-          <span>{wardrobeWorth.totalCount} wardrobe pieces · paid / retail</span>
+          <h2>{formatCurrency(dashboardWorth.totalValue)} / {formatCurrency(dashboardWorth.totalRetailValue)}</h2>
+          <span>{dashboardWorth.totalCount} wardrobe pieces · paid / retail</span>
         </div>
 
         <div className="worth-chart">
-          {wardrobeWorth.rows.map((row) => (
+          {dashboardWorth.rows.map((row) => (
             <div key={row.category} className="worth-row">
               <div className="worth-row-header">
                 <strong>{row.category}</strong>
@@ -4936,13 +5229,13 @@ export default function App() {
                 <div className="worth-bar-track">
                   <div
                     className="worth-bar worth-bar-retail"
-                    style={{ width: `${Math.max((row.retailValue / wardrobeWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
+                    style={{ width: `${Math.max((row.retailValue / dashboardWorth.maxValue) * 100, row.retailValue ? 8 : 0)}%` }}
                   />
                 </div>
                 <div className="worth-bar-track">
                   <div
                     className="worth-bar"
-                    style={{ width: `${Math.max((row.value / wardrobeWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
+                    style={{ width: `${Math.max((row.value / dashboardWorth.maxValue) * 100, row.value ? 8 : 0)}%` }}
                   />
                 </div>
               </div>
@@ -5000,6 +5293,7 @@ export default function App() {
   }
 
   function startEditSavedOutfit(savedOutfit) {
+    setSelectedSavedOutfitId(savedOutfit.id);
     setEditingSavedOutfitId(savedOutfit.id);
     setSavedOutfitDraft({
       name: savedOutfit.name ?? "",
@@ -5048,6 +5342,10 @@ export default function App() {
 
     if (editingSavedOutfitId === savedOutfitId) {
       cancelEditSavedOutfit();
+    }
+
+    if (selectedSavedOutfitId === savedOutfitId) {
+      setSelectedSavedOutfitId(null);
     }
   }
 
@@ -5958,7 +6256,7 @@ export default function App() {
 
   function renderOutfitSlot(slot) {
     const item = itemsById[outfit[slot]];
-    const isActive = activeOutfitSlot === slot;
+    const isActive = activeOutfitSlot === slot || selectedOutfitSlot === slot;
     return (
       <div key={slot} className="outfit-slot-wrap">
         <article
@@ -5967,7 +6265,7 @@ export default function App() {
           <button
             type="button"
             className={`item-figure ${item ? "has-item" : "is-empty"}`}
-            onClick={(event) => handleOutfitItemPreviewClick(item, () => openOutfitSlotPicker(slot), event)}
+            onClick={(event) => handleOutfitItemPreviewClick(item, () => selectOutfitItem(slot), () => openOutfitSlotPicker(slot), event)}
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
@@ -6661,7 +6959,7 @@ export default function App() {
 
             <div
               className={`wardrobe-panel-body ${showInlineWardrobeEditor ? "has-side-editor" : ""}`}
-              style={{ "--wardrobe-editor-width": `${wardrobeEditorWidth}px` }}
+              style={{ "--wardrobe-editor-width": `${activeEditorWidth}px` }}
             >
               <div className="wardrobe-panel-scroll">
                 {renderWardrobeGrid()}
@@ -6727,7 +7025,7 @@ export default function App() {
           <aside
             ref={editorRef}
             className={`panel floating-item-editor ${isMobileViewport ? "is-mobile-fullscreen" : ""} ${activePanel === "wardrobe" ? "is-wardrobe-editor" : ""} ${editorReturnTarget === "outfit" ? "is-outfit-editor" : ""}`}
-            style={{ "--wardrobe-editor-width": `${wardrobeEditorWidth}px` }}
+            style={{ "--wardrobe-editor-width": `${activeEditorWidth}px` }}
           >
             {editorReturnTarget === "outfit" && !isMobileViewport ? (
               <div
@@ -6761,11 +7059,22 @@ export default function App() {
           onClose={closeWardrobePreview}
           actions={wardrobePreviewItem ? (
             <>
-              <button type="button" className="primary-button" onClick={equipWardrobePreviewItem} disabled={!resolveSlotForItem(wardrobePreviewItem)}>
-                Equip
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={equipWardrobePreviewItem}
+                disabled={!resolveSlotForItem(wardrobePreviewItem)}
+              >
+                {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
               </button>
-              <button type="button" className="ghost-button" onClick={toggleWardrobePreviewFavorite}>
-                {wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+              <button
+                type="button"
+                className={`ghost-button preview-overlay-favorite-button ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
+                onClick={toggleWardrobePreviewFavorite}
+                aria-label={wardrobePreviewItem.favorite ? "Remove from favorites" : "Add to favorites"}
+                title={wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+              >
+                <span aria-hidden="true">{wardrobePreviewItem.favorite ? "♥" : "♡"}</span>
               </button>
               <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
                 {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}

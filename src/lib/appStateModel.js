@@ -10,6 +10,28 @@ import {
 import { normalizeFitpics } from "./fitpics.js";
 import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./wardrobeLibrary.js";
 
+const MIN_EDITOR_WIDTH = 344;
+const MAX_EDITOR_WIDTH = 520;
+const DEFAULT_EDITOR_WIDTH = 396;
+
+export function normalizeEditorWindowState(windowStateLike, fallbackWidth = DEFAULT_EDITOR_WIDTH) {
+  const numericWidth = Number(windowStateLike?.width);
+  const normalizedFallbackWidth = Number.isFinite(fallbackWidth) ? fallbackWidth : DEFAULT_EDITOR_WIDTH;
+  const width = Number.isFinite(numericWidth)
+    ? Math.max(MIN_EDITOR_WIDTH, Math.min(MAX_EDITOR_WIDTH, Math.round(numericWidth)))
+    : normalizedFallbackWidth;
+
+  return { width };
+}
+
+export function normalizeWindowState(windowStateLike) {
+  return {
+    outfitEditor: normalizeEditorWindowState(windowStateLike?.outfitEditor),
+    wardrobeEditor: normalizeEditorWindowState(windowStateLike?.wardrobeEditor),
+    addImagesWindow: normalizeEditorWindowState(windowStateLike?.addImagesWindow)
+  };
+}
+
 export function createOutfitUuid() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
@@ -125,6 +147,7 @@ export function normalizeHydratedAppState(
     weatherData: appStateLike?.weatherData ?? null,
     fitpics: normalizeFitpics(appStateLike?.fitpics),
     wardrobeFilters: normalizeWardrobeFilters(appStateLike?.wardrobeFilters),
-    wardrobeSort: normalizeWardrobeSort(appStateLike?.wardrobeSort)
+    wardrobeSort: normalizeWardrobeSort(appStateLike?.wardrobeSort),
+    windowState: normalizeWindowState(appStateLike?.windowState)
   };
 }

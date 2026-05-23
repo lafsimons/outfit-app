@@ -1387,7 +1387,7 @@ button:disabled {
 }
 
 .outfit-slot.is-active {
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.16));
+  filter: none;
 }
 
 .outfit-slot-hover-actions {
@@ -1402,6 +1402,11 @@ button:disabled {
   transition: opacity 140ms ease;
 }
 
+.outfit-slot-headwear .outfit-slot-hover-actions {
+  top: -8px;
+  right: -8px;
+}
+
 .outfit-slot-hover-button {
   position: static;
   min-width: 0;
@@ -1414,6 +1419,7 @@ button:disabled {
   font-weight: 600;
   letter-spacing: 0.02em;
   text-transform: uppercase;
+  box-shadow: none;
 }
 
 .outfit-slot:hover .outfit-slot-hover-actions,
@@ -1421,6 +1427,11 @@ button:disabled {
 .outfit-slot:focus-within .outfit-slot-hover-actions {
   opacity: 1;
   pointer-events: auto;
+}
+
+.outfit-slot-hover-button:active,
+.outfit-slot-hover-button:focus:active {
+  box-shadow: none;
 }
 
 .outfit-slot-wrap {
@@ -1479,6 +1490,12 @@ button:disabled {
   padding: 0;
   background: transparent;
   border-radius: 0;
+  box-shadow: none;
+}
+
+.outfit-slot .item-figure:active,
+.outfit-slot .item-figure:focus:active {
+  box-shadow: none;
 }
 
 .outfit-slot .item-figure.is-empty {
@@ -1839,7 +1856,8 @@ button:disabled {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  width: min(300px, calc(100vw - 36px));
+  width: max-content;
+  max-width: calc(100vw - 36px);
   max-height: min(78vh, 560px);
 }
 
@@ -2149,17 +2167,19 @@ button:disabled {
 
 .wardrobe-manage-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-height: 0;
-  overflow: auto;
-  padding-right: 4px;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: 0;
 }
 
 .wardrobe-manage-section {
   display: grid;
   align-content: start;
   gap: 10px;
+  min-width: 0;
 }
 
 .wardrobe-stats-section {
@@ -2238,8 +2258,26 @@ button:disabled {
 }
 
 .wardrobe-manage-actions {
-  display: grid;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.wardrobe-manage-actions .ghost-button {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.wardrobe-manage-actions .wardrobe-manage-divider {
+  width: 1px;
+  height: 24px;
+  margin: 0 2px;
+  flex: 0 0 auto;
 }
 
 .active-filter-summary {
@@ -2407,6 +2445,11 @@ button:disabled {
   color: var(--text);
 }
 
+.saved-outfit-card.is-selected {
+  border-color: var(--border);
+  background: var(--soft);
+}
+
 .saved-outfits-page {
   display: grid;
   align-content: start;
@@ -2563,6 +2606,13 @@ button:disabled {
   width: 100%;
 }
 
+.preview-overlay-favorite-button {
+  min-width: 36px;
+  padding-inline: 8px;
+  font-size: 0.92rem;
+  line-height: 1;
+}
+
 .insights-stack {
   display: grid;
   gap: 16px;
@@ -2579,6 +2629,24 @@ button:disabled {
 
 .dashboard-panel {
   min-height: 0;
+}
+
+.wardrobe-toolbar-dashboard {
+  align-items: center;
+}
+
+.wardrobe-toolbar-leading-dashboard {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: 6px;
+}
+
+.dashboard-filter-anchor {
+  margin-right: 2px;
+}
+
+.wardrobe-toolbar-dashboard .wardrobe-sort-field {
+  flex: 0 0 auto;
 }
 
 .outfits-panel-tabs {
@@ -4151,6 +4219,11 @@ button:disabled {
 
   .wardrobe-manage-grid {
     grid-template-columns: 1fr;
+  }
+
+  .wardrobe-manage-actions {
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   .wardrobe-stats-grid {

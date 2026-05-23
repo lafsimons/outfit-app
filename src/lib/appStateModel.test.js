@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   backfillOutfitItemUuids,
+  normalizeEditorWindowState,
   normalizeOutfitUuid,
   normalizeHydratedAppState,
   normalizeGenerationLists,
+  normalizeWindowState,
   normalizeOutfitItemUuids,
   normalizeSavedOutfit,
   normalizeSavedOutfits
@@ -189,7 +191,12 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
         list: [],
         favorite: ""
       },
-      wardrobeSort: "newest"
+      wardrobeSort: "newest",
+      windowState: {
+        outfitEditor: { width: 396 },
+        wardrobeEditor: { width: 396 },
+        addImagesWindow: { width: 396 }
+      }
     }
   );
 });
@@ -264,6 +271,21 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     favorite: ""
   });
   assert.equal(hydrated.wardrobeSort, "newest");
+  assert.deepEqual(hydrated.windowState, {
+    outfitEditor: { width: 396 },
+    wardrobeEditor: { width: 396 },
+    addImagesWindow: { width: 396 }
+  });
+});
+
+test("editor window state clamps widths and backfills missing contexts", () => {
+  assert.deepEqual(normalizeEditorWindowState({ width: 900 }), { width: 520 });
+  assert.deepEqual(normalizeEditorWindowState({ width: 12 }), { width: 344 });
+  assert.deepEqual(normalizeWindowState({ wardrobeEditor: { width: 420 } }), {
+    outfitEditor: { width: 396 },
+    wardrobeEditor: { width: 420 },
+    addImagesWindow: { width: 396 }
+  });
 });
 
 test("hydrated app-state normalizes fitpics additively for legacy and metadata-rich records", () => {
