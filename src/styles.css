@@ -4000,27 +4000,57 @@ button:disabled {
     flex-direction: column;
   }
 
-  .wardrobe-toolbar-leading {
-    flex-wrap: wrap;
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) {
+    gap: 10px;
   }
 
-  .wardrobe-toolbar-context {
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-toolbar-leading {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    flex: none;
+  }
+
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-search-field,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions {
+    grid-column: 1 / -1;
+  }
+
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-search-field,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-filter-anchor,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-sort-field {
+    min-width: 0;
+    width: 100%;
+    flex: none;
+  }
+
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-filter-anchor > button,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-sort-field select,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-manage-anchor > button,
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions > button {
+    width: 100%;
+  }
+
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    align-items: stretch;
+  }
+
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-toolbar-context {
     margin-left: 0;
     width: 100%;
     justify-content: flex-start;
+    align-items: flex-start;
+    gap: 8px;
   }
 
-  .wardrobe-filter-anchor {
-    flex: 1 1 100%;
-  }
-
-  .wardrobe-search-field,
-  .wardrobe-sort-field {
-    flex: 1 1 100%;
-  }
-
-  .wardrobe-results-count {
+  .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-results-count {
+    width: 100%;
     align-self: flex-start;
+    white-space: normal;
   }
 
   .floating-item-editor {
