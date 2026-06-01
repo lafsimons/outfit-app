@@ -13,7 +13,7 @@ import {
 } from "./repositories/backupRepository";
 import { APP_ID, SUPPORTED_BACKUP_SOURCES, SUPPORTED_BACKUP_VERSIONS } from "./lib/appIdentity";
 import { load, save as saveAppState } from "./repositories/appStateRepository";
-import { loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
+import { exportLibraryCsv, loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
   applyMappedStyleWeightDefaults,
   defaultItemList,
@@ -2961,6 +2961,23 @@ export default function App() {
 
     link.href = url;
     link.download = `${APP_ID}-backup-${date}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleExportLibraryCsv() {
+    const csv = await exportLibraryCsv();
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8"
+    });
+    const date = new Date().toISOString().slice(0, 10);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `outfit-library-export-${date}.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -6906,6 +6923,9 @@ export default function App() {
                             <div className="wardrobe-manage-actions">
                               <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
                                 Export Wardrobe Image
+                              </button>
+                              <button type="button" className="ghost-button" onClick={handleExportLibraryCsv}>
+                                Export Library CSV
                               </button>
                               <button type="button" className="ghost-button" onClick={handleExportBackup}>
                                 Export Backup

@@ -5,6 +5,7 @@ import { INDEXED_DB_NAME } from "./appIdentity.js";
 import {
   backfillLocalSyncMetadata,
   exportBackup,
+  exportLibraryCsv,
   getOrCreateDeviceId,
   getSyncMetadata,
   loadAppState,
@@ -712,6 +713,59 @@ test("backup export output remains unchanged when sync metadata exists", async (
   assert.equal("syncState" in backup, false);
   assert.equal("recentOutfits" in backup.appState, false);
   assert.equal(backup.appState.savedOutfits[0].outfitUuid, "outfit-uuid-1");
+});
+
+test("library CSV export includes all stored items regardless of list", async () => {
+  await saveItem({
+    id: "item_1",
+    itemUuid: "item-uuid-1",
+    name: "Wardrobe item",
+    garmentType: "Top",
+    list: "Wardrobe",
+    favorite: true,
+    quantity: 1,
+    styleTags: ["Casual"],
+    climateTags: ["Cold"],
+    imageUrl: "/images/item-1.png",
+    sourceImageWidth: 1200,
+    sourceImageHeight: 1600
+  });
+  await saveItem({
+    id: "item_2",
+    itemUuid: "item-uuid-2",
+    name: "Sold item",
+    garmentType: "Bottom",
+    list: "Sold",
+    favorite: false,
+    quantity: 1,
+    styleTags: [],
+    climateTags: [],
+    imageUrl: "/images/item-2.png"
+  });
+  await saveItem({
+    id: "item_3",
+    itemUuid: "item-uuid-3",
+    name: "Wishlist item",
+    garmentType: "Footwear",
+    list: "Wishlist",
+    favorite: false,
+    quantity: 1,
+    styleTags: ["Formal"],
+    climateTags: ["Rain"],
+    imageUrl: "/images/item-3.png"
+  });
+
+  const csv = await exportLibraryCsv();
+  const rows = csv.split("\n");
+
+  assert.equal(rows.length, 4);
+  assert.equal(
+    rows[0],
+    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight"
+  );
+  assert.equal(rows.some((row) => row.includes("Wardrobe item") && row.includes(",Wardrobe,true,")), true);
+  assert.equal(rows.some((row) => row.includes("Sold item") && row.includes(",Sold,false,")), true);
+  assert.equal(rows.some((row) => row.includes("Wishlist item") && row.includes(",Wishlist,false,")), true);
 });
 
 test("backup import clears and rebuilds sync metadata", async () => {

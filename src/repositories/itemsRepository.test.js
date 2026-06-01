@@ -7,4 +7,5 @@ test("itemsRepository re-exports storage item persistence", () => {
   assert.equal(itemsRepository.loadAll, storage.loadItems);
   assert.equal(itemsRepository.save, storage.saveItem);
   assert.equal(itemsRepository.remove, storage.deleteItem);
+  assert.equal(itemsRepository.exportLibraryCsv, storage.exportLibraryCsv);
 });

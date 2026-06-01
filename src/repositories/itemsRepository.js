@@ -1,1 +1,6 @@
-export { loadItems as loadAll, saveItem as save, deleteItem as remove } from "../lib/storage.js";
+export {
+  loadItems as loadAll,
+  saveItem as save,
+  deleteItem as remove,
+  exportLibraryCsv
+} from "../lib/storage.js";

@@ -1,6 +1,7 @@
 import defaultWardrobe from "../data/defaultWardrobe.js";
 import defaultAppState from "../data/defaultAppState.js";
 import { BACKUP_SOURCE, BACKUP_VERSION, INDEXED_DB_NAME } from "./appIdentity.js";
+import { serializeLibraryCsv } from "./libraryExport.js";
 
 const DB_NAME = INDEXED_DB_NAME;
 const DB_VERSION = 3;
@@ -643,6 +644,11 @@ export async function exportBackup() {
     items,
     appState: stripLocalOnlyAppState(appState)
   };
+}
+
+export async function exportLibraryCsv() {
+  const items = await loadItems();
+  return serializeLibraryCsv(items);
 }
 
 export async function replaceWithBackup(backup) {
