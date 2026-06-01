@@ -390,14 +390,24 @@ test("prepareBackupImport normalizes persisted wardrobe filters in app-state", a
 
   assert.deepEqual(prepared.appState.wardrobeFilters, {
     brand: [],
+    brandExcluded: [],
     type: [],
+    typeExcluded: [],
     garmentType: ["Footwear"],
+    garmentTypeExcluded: [],
     color: [],
+    colorExcluded: [],
     style: ["Casual"],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: [],
     laundry: "",
     weight: [],
+    weightExcluded: [],
     status: ["Wardrobe"],
+    statusExcluded: [],
     collections: [],
+    collectionsExcluded: [],
     favorite: "yes"
   });
   assert.deepEqual(prepared.backup.appState.wardrobeFilters, prepared.appState.wardrobeFilters);

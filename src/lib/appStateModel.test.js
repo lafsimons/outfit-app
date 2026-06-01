@@ -182,14 +182,24 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       fitpics: [],
       wardrobeFilters: {
         brand: [],
+        brandExcluded: [],
         type: [],
+        typeExcluded: [],
         garmentType: [],
+        garmentTypeExcluded: [],
         color: [],
+        colorExcluded: [],
         style: [],
+        styleExcluded: [],
+        climate: [],
+        climateExcluded: [],
         laundry: "",
         weight: [],
+        weightExcluded: [],
         status: [],
+        statusExcluded: [],
         collections: [],
+        collectionsExcluded: [],
         favorite: ""
       },
       wardrobeSort: "newest",
@@ -262,14 +272,24 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   assert.deepEqual(hydrated.outfitFilters, { style: ["Casual", "Casual"], climate: ["Rain"] });
   assert.deepEqual(hydrated.wardrobeFilters, {
     brand: ["Our Legacy"],
+    brandExcluded: [],
     type: [],
+    typeExcluded: [],
     garmentType: [],
+    garmentTypeExcluded: [],
     color: [],
+    colorExcluded: [],
     style: [],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: [],
     laundry: "",
     weight: [],
+    weightExcluded: [],
     status: ["Wardrobe"],
+    statusExcluded: [],
     collections: [],
+    collectionsExcluded: [],
     favorite: ""
   });
   assert.equal(hydrated.wardrobeSort, "newest");
@@ -339,14 +359,24 @@ test("hydrated app-state wardrobe filter normalization preserves backward compat
 
   assert.deepEqual(hydrated.wardrobeFilters, {
     brand: [],
+    brandExcluded: [],
     type: [],
+    typeExcluded: [],
     garmentType: [],
+    garmentTypeExcluded: [],
     color: [],
+    colorExcluded: [],
     style: [],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: [],
     laundry: "",
     weight: [],
+    weightExcluded: [],
     status: [],
+    statusExcluded: [],
     collections: [],
+    collectionsExcluded: [],
     favorite: ""
   });
 });
