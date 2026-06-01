@@ -129,6 +129,10 @@ import {
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
 import {
+  getWardrobeSpreadExportImageUrl,
+  getWardrobeSpreadExportRenderConfig
+} from "./lib/wardrobeSpreadExport";
+import {
   addTagToItemTags,
   hasMeaningfulItemChange,
   removeSelectedItems,
@@ -3124,12 +3128,8 @@ export default function App() {
     }
 
     const shuffledItems = [...exportItems].sort(() => Math.random() - 0.5);
-    const cellSize = 190;
-    const columns = Math.max(1, Math.ceil(Math.sqrt(shuffledItems.length * 1.18)));
-    const rows = Math.ceil(shuffledItems.length / columns);
-    const padding = 44;
-    const canvasWidth = columns * cellSize + padding * 2;
-    const canvasHeight = rows * cellSize + padding * 2;
+    const { cellSize, columns, padding, canvasWidth, canvasHeight, exportScale, pixelWidth, pixelHeight } =
+      getWardrobeSpreadExportRenderConfig(shuffledItems.length);
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
 
@@ -3138,18 +3138,28 @@ export default function App() {
       return;
     }
 
-    canvas.width = canvasWidth * 2;
-    canvas.height = canvasHeight * 2;
-    context.scale(2, 2);
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    context.scale(exportScale, exportScale);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
     context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f7f7";
     context.fillRect(0, 0, canvasWidth, canvasHeight);
 
     try {
       const loadedItems = await Promise.all(
-        shuffledItems.map(async (item) => ({
-          item,
-          image: await loadImage(resolveImageUrl(item.imageUrl))
-        }))
+        shuffledItems.map(async (item) => {
+          const exportImageUrl = resolveImageUrl(getWardrobeSpreadExportImageUrl(item));
+
+          if (!exportImageUrl) {
+            throw new Error("Missing export image.");
+          }
+
+          return {
+            item,
+            image: await loadImage(exportImageUrl)
+          };
+        })
       );
 
       loadedItems.forEach(({ item, image }, index) => {
