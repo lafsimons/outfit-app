@@ -2953,6 +2953,57 @@ button:disabled {
   font-size: 0.74rem;
 }
 
+.wardrobe-export-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.wardrobe-export-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wardrobe-export-preset {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-align: left;
+}
+
+.wardrobe-export-preset.is-active {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.wardrobe-export-preset strong {
+  font-size: 0.74rem;
+}
+
+.wardrobe-export-preset span {
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.wardrobe-export-section {
+  display: grid;
+  gap: 8px;
+}
+
+.wardrobe-export-section .eyebrow {
+  margin-bottom: 0;
+}
+
+@media (max-width: 520px) {
+  .wardrobe-export-presets {
+    grid-template-columns: 1fr;
+  }
+}
+
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
