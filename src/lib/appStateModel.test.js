@@ -188,7 +188,8 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
         style: [],
         laundry: "",
         weight: [],
-        list: [],
+        status: [],
+        collections: [],
         favorite: ""
       },
       wardrobeSort: "newest",
@@ -267,7 +268,8 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     style: [],
     laundry: "",
     weight: [],
-    list: ["Wardrobe"],
+    status: ["Wardrobe"],
+    collections: [],
     favorite: ""
   });
   assert.equal(hydrated.wardrobeSort, "newest");
@@ -343,7 +345,8 @@ test("hydrated app-state wardrobe filter normalization preserves backward compat
     style: [],
     laundry: "",
     weight: [],
-    list: [],
+    status: [],
+    collections: [],
     favorite: ""
   });
 });

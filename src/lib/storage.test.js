@@ -715,15 +715,16 @@ test("backup export output remains unchanged when sync metadata exists", async (
   assert.equal(backup.appState.savedOutfits[0].outfitUuid, "outfit-uuid-1");
 });
 
-test("library CSV export includes all stored items regardless of list", async () => {
+test("library CSV export includes status and collections for all stored items", async () => {
   await saveItem({
     id: "item_1",
     itemUuid: "item-uuid-1",
     name: "Wardrobe item",
     garmentType: "Top",
-    list: "Wardrobe",
+    status: "Wardrobe",
     favorite: true,
     quantity: 1,
+    collections: ["Travel"],
     styleTags: ["Casual"],
     climateTags: ["Cold"],
     imageUrl: "/images/item-1.png",
@@ -735,7 +736,7 @@ test("library CSV export includes all stored items regardless of list", async ()
     itemUuid: "item-uuid-2",
     name: "Sold item",
     garmentType: "Bottom",
-    list: "Sold",
+    status: "Sold",
     favorite: false,
     quantity: 1,
     styleTags: [],
@@ -747,9 +748,10 @@ test("library CSV export includes all stored items regardless of list", async ()
     itemUuid: "item-uuid-3",
     name: "Wishlist item",
     garmentType: "Footwear",
-    list: "Wishlist",
+    status: "Wishlist",
     favorite: false,
     quantity: 1,
+    collections: ["Summer", "Travel"],
     styleTags: ["Formal"],
     climateTags: ["Rain"],
     imageUrl: "/images/item-3.png"
@@ -761,11 +763,13 @@ test("library CSV export includes all stored items regardless of list", async ()
   assert.equal(rows.length, 4);
   assert.equal(
     rows[0],
-    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight"
+    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,collections,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight"
   );
   assert.equal(rows.some((row) => row.includes("Wardrobe item") && row.includes(",Wardrobe,true,")), true);
+  assert.equal(rows.some((row) => row.includes("Wardrobe item") && row.includes(",Travel,")), true);
   assert.equal(rows.some((row) => row.includes("Sold item") && row.includes(",Sold,false,")), true);
   assert.equal(rows.some((row) => row.includes("Wishlist item") && row.includes(",Wishlist,false,")), true);
+  assert.equal(rows.some((row) => row.includes("Wishlist item") && row.includes(",Summer|Travel,")), true);
 });
 
 test("backup import clears and rebuilds sync metadata", async () => {

@@ -7,6 +7,7 @@ import {
   itemNeedsDescriptionMigration,
   itemNeedsImportMetadataMigration,
   itemNeedsItemUuidMigration,
+  normalizeCollections,
   normalizeItem
 } from "./itemModel.js";
 
@@ -51,10 +52,12 @@ const baseEmptyForm = {
   accessorySlot: "",
   color: "",
   weight: "",
+  status: "Wardrobe",
   list: "Wardrobe",
   quantity: 1,
   styleTags: [],
-  climateTags: []
+  climateTags: [],
+  collections: []
 };
 
 test("createUniqueItemId preserves existing id semantics with numeric suffixes", () => {
@@ -101,7 +104,9 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.brand, "Man-tle");
   assert.equal(normalized.type, "Cap");
   assert.equal(normalized.color, "Beige");
+  assert.equal(normalized.status, "Wardrobe");
   assert.equal(normalized.list, "Wardrobe");
+  assert.deepEqual(normalized.collections, []);
   assert.equal(normalized.createdAt, "2024-01-02T03:04:05.000Z");
   assert.equal(normalized.updatedAt, "2024-01-03T03:04:05.000Z");
   assert.equal(normalized.importedAt, "2024-01-02T03:04:05.000Z");
@@ -116,12 +121,12 @@ test("normalizeItem preserves timestamps and applies default metadata correction
   assert.equal(normalized.relinkStatus, "unknown");
 });
 
-test("normalizeItem does not let metadata corrections override an explicit incoming list", () => {
+test("normalizeItem does not let metadata corrections override an explicit incoming status", () => {
   const normalized = normalizeItem(
     {
       id: "bottom_trousers_taiga_takahashi_lot_204_engineer_trousers_34_brown",
       imageUrl: "/images/bottom_204_brown.png",
-      list: "Incoming"
+      status: "Incoming"
     },
     {
       emptyForm: baseEmptyForm,
@@ -134,7 +139,36 @@ test("normalizeItem does not let metadata corrections override an explicit incom
   );
 
   assert.equal(normalized.name, "Lot.204 Engineer Trousers");
+  assert.equal(normalized.status, "Incoming");
   assert.equal(normalized.list, "Incoming");
+});
+
+test("normalizeItem migrates legacy list into status and normalizes collections", () => {
+  const normalized = normalizeItem(
+    {
+      id: "legacy_status_item",
+      imageUrl: "/images/bottom_204_brown.png",
+      list: "Wishlist",
+      collections: ["Travel", "Travel", "  Summer  ", ""]
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(normalized.status, "Wishlist");
+  assert.equal(normalized.list, "Wishlist");
+  assert.deepEqual(normalized.collections, ["Travel", "Summer"]);
+});
+
+test("normalizeCollections defaults to an empty list and preserves first-seen order", () => {
+  assert.deepEqual(normalizeCollections(undefined), []);
+  assert.deepEqual(normalizeCollections(["Travel", "Travel", "  Summer  ", "", "Workwear"]), ["Travel", "Summer", "Workwear"]);
 });
 
 test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl without claiming original preservation", () => {
@@ -453,19 +487,21 @@ test("getWardrobePreviewMetadata returns basic display fields without empty plac
       type: "Shirt",
       color: "Blue",
       size: "M",
-      list: "Wardrobe",
+      status: "Wardrobe",
       value: "120",
       retailValue: "",
-      quantity: 2
+      quantity: 2,
+      collections: ["Travel", "Workwear"]
     }),
     [
       { label: "Garment", value: "Top" },
       { label: "Type", value: "Shirt" },
       { label: "Color", value: "Blue" },
       { label: "Size", value: "M" },
-      { label: "List", value: "Wardrobe" },
+      { label: "Status", value: "Wardrobe" },
       { label: "Paid", value: "120 €" },
-      { label: "Quantity", value: "2" }
+      { label: "Quantity", value: "2" },
+      { label: "Collections", value: "Travel, Workwear" }
     ]
   );
 });

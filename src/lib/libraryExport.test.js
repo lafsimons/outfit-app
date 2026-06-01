@@ -13,11 +13,12 @@ test("createLibraryExportRow maps library item metadata to export columns", () =
       garmentType: "Outerwear",
       type: "Jacket",
       color: "Olive",
-      list: "Wardrobe",
+      status: "Wardrobe",
       favorite: true,
       size: "M",
       weight: "Medium",
       quantity: 2,
+      collections: ["Travel", "Workwear"],
       styleTags: ["Casual", "Workwear"],
       climateTags: ["Rain", "Cold"],
       description: "Daily outer layer",
@@ -40,6 +41,7 @@ test("createLibraryExportRow maps library item metadata to export columns", () =
       size: "M",
       weight: "Medium",
       quantity: "2",
+      collections: "Travel|Workwear",
       styleTags: "Casual|Workwear",
       climateTags: "Rain|Cold",
       description: "Daily outer layer",
@@ -63,11 +65,12 @@ test("serializeLibraryCsv preserves empty values and blanks missing image dimens
         garmentType: "",
         type: "",
         color: "",
-        list: "",
+        status: "",
         favorite: false,
         size: "",
         weight: "",
         quantity: "",
+        collections: [],
         styleTags: [],
         climateTags: [],
         description: "",
@@ -78,7 +81,7 @@ test("serializeLibraryCsv preserves empty values and blanks missing image dimens
         sourceImageHeight: undefined
       }
     ]),
-    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight\nitem_2,,,,,,,,false,,,,,,,,,,,"
+    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,collections,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight\nitem_2,,,,,,,,false,,,,,,,,,,,,"
   );
 });
 
@@ -90,15 +93,16 @@ test("serializeLibraryCsv preserves UTF-8 content and escapes commas quotes and 
         itemUuid: "uuid-3",
         name: "Été Shirt",
         brand: "Lemaire",
-        garmentType: "Top",
-        type: "Shirt",
-        color: "Crème",
-        list: "Wishlist",
-        favorite: false,
-        size: "48",
-        weight: "Light",
-        quantity: 1,
-        styleTags: ["Casual", "Summer"],
+      garmentType: "Top",
+      type: "Shirt",
+      color: "Crème",
+      status: "Wishlist",
+      favorite: false,
+      size: "48",
+      weight: "Light",
+      quantity: 1,
+      collections: ["Summer"],
+      styleTags: ["Casual", "Summer"],
         climateTags: ["Warm"],
         description: "Soft, relaxed fit\nSays \"hello\"",
         createdAt: "2024-04-01T00:00:00.000Z",
@@ -106,6 +110,6 @@ test("serializeLibraryCsv preserves UTF-8 content and escapes commas quotes and 
         imageUrl: "/images/ete-shirt.png?version=2"
       }
     ]),
-    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight\nitem_3,uuid-3,Été Shirt,Lemaire,Top,Shirt,Crème,Wishlist,false,48,Light,1,Casual|Summer,Warm,\"Soft, relaxed fit\nSays \"\"hello\"\"\",2024-04-01T00:00:00.000Z,2024-04-02T00:00:00.000Z,ete-shirt.png,,"
+    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,collections,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight\nitem_3,uuid-3,Été Shirt,Lemaire,Top,Shirt,Crème,Wishlist,false,48,Light,1,Summer,Casual|Summer,Warm,\"Soft, relaxed fit\nSays \"\"hello\"\"\",2024-04-01T00:00:00.000Z,2024-04-02T00:00:00.000Z,ete-shirt.png,,"
   );
 });

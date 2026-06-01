@@ -17,7 +17,8 @@ const items = [
     garmentType: "Top",
     color: "Blue",
     weight: "Light",
-    list: "Wardrobe",
+    status: "Wardrobe",
+    collections: ["Travel", "Workwear"],
     description: "Airy cotton travel shirt",
     styleTags: ["Smart Casual"],
     climateTags: [],
@@ -34,7 +35,8 @@ const items = [
     garmentType: "Footwear",
     color: "Black",
     weight: "Heavy",
-    list: "Wardrobe",
+    status: "Wardrobe",
+    collections: ["Hiking"],
     description: "",
     styleTags: ["Casual"],
     climateTags: ["Rain"],
@@ -51,7 +53,8 @@ const items = [
     garmentType: "Headwear",
     color: "Beige",
     weight: "Light",
-    list: "Wishlist",
+    status: "Wishlist",
+    collections: ["Summer"],
     description: "Packable summer cap",
     styleTags: ["Casual", "Athleisure"],
     climateTags: [],
@@ -69,6 +72,7 @@ test("normalizeWardrobeFilters keeps backward-compatible strings and new multi-s
       type: ["Shirt", "Shirt", ""],
       style: "Casual",
       list: "Wardrobe",
+      collections: ["Travel", "Travel", ""],
       favorite: "yes"
     }),
     {
@@ -79,7 +83,8 @@ test("normalizeWardrobeFilters keeps backward-compatible strings and new multi-s
       style: ["Casual"],
       laundry: "",
       weight: [],
-      list: ["Wardrobe"],
+      status: ["Wardrobe"],
+      collections: ["Travel"],
       favorite: "yes"
     }
   );
@@ -96,7 +101,8 @@ test("filterWardrobeItems combines live search with multi-select filters", () =>
       style: ["Smart Casual", "Casual"],
       laundry: "hide",
       weight: [],
-      list: ["Wardrobe"],
+      status: ["Wardrobe"],
+      collections: ["Travel"],
       favorite: "",
       extra: "ignored"
     },
@@ -116,16 +122,40 @@ test("getWardrobeFilterOptions preserves selected options while deriving context
     style: [],
     laundry: "",
     weight: [],
-    list: ["Wardrobe"],
+    status: ["Wardrobe"],
+    collections: ["Travel", "Missing Collection"],
     favorite: ""
   }, {
-    itemListOptions: ["Wardrobe", "Wishlist"],
+    itemStatusOptions: ["Wardrobe", "Wishlist"],
     styleTagOptions: ["Casual", "Smart Casual", "Athleisure", "Formal"]
   });
 
   assert.ok(options.brand.includes("Missing Brand"));
-  assert.deepEqual(options.list, ["Wardrobe"]);
+  assert.deepEqual(options.status, ["Wardrobe"]);
+  assert.ok(options.collections.includes("Missing Collection"));
   assert.ok(options.type.includes("Shirt"));
+});
+
+test("filterWardrobeItems matches items by collection", () => {
+  const filtered = filterWardrobeItems(
+    items,
+    {
+      brand: [],
+      type: [],
+      garmentType: [],
+      color: [],
+      style: [],
+      laundry: "",
+      weight: [],
+      status: [],
+      collections: ["Hiking"],
+      favorite: ""
+    },
+    {},
+    ""
+  );
+
+  assert.deepEqual(filtered.map((item) => item.id), ["beta-boots"]);
 });
 
 test("sortWardrobeItems keeps existing wardrobe sort semantics", () => {

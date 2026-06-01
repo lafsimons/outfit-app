@@ -1,9 +1,9 @@
 import { getItemStyleTags } from "./generation.js";
-import { getItemSortTimestamp, getNumericValue } from "./itemModel.js";
-import { normalizeList } from "./typeDefaults.js";
+import { getItemSortTimestamp, getNumericValue, normalizeCollections } from "./itemModel.js";
+import { normalizeStatus } from "./typeDefaults.js";
 
 export const DEFAULT_WARDROBE_SORT = "newest";
-export const wardrobeMultiValueFilterKeys = ["brand", "type", "garmentType", "color", "style", "weight", "list"];
+export const wardrobeMultiValueFilterKeys = ["brand", "type", "garmentType", "color", "style", "weight", "status", "collections"];
 
 export const emptyWardrobeFilters = {
   brand: [],
@@ -13,7 +13,8 @@ export const emptyWardrobeFilters = {
   style: [],
   laundry: "",
   weight: [],
-  list: [],
+  status: [],
+  collections: [],
   favorite: ""
 };
 
@@ -50,8 +51,8 @@ function normalizeLegacyOrMultiValue(value, normalizeValue = (entry) => entry) {
   return normalizedValue ? [normalizedValue] : [];
 }
 
-function normalizeListFilterValue(value) {
-  return value === "__none__" ? value : normalizeList(value);
+function normalizeStatusFilterValue(value) {
+  return value === "__none__" ? value : normalizeStatus(value);
 }
 
 export function normalizeWardrobeFilters(filters) {
@@ -67,7 +68,8 @@ export function normalizeWardrobeFilters(filters) {
     style: normalizeLegacyOrMultiValue(filters.style),
     laundry: normalizeFilterToken(filters.laundry),
     weight: normalizeLegacyOrMultiValue(filters.weight),
-    list: normalizeLegacyOrMultiValue(filters.list, normalizeListFilterValue),
+    status: normalizeLegacyOrMultiValue(filters.status ?? filters.list, normalizeStatusFilterValue),
+    collections: normalizeLegacyOrMultiValue(filters.collections),
     favorite: normalizeFilterToken(filters.favorite)
   };
 }
@@ -116,7 +118,12 @@ export function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
     (ignored.has("color") || matchesSelectedMetadataValues(item.color, normalizedFilters.color)) &&
     (ignored.has("style") || !normalizedFilters.style.length || normalizedFilters.style.some((style) => itemStyles.includes(style))) &&
     (ignored.has("weight") || matchesSelectedMetadataValues(item.weight, normalizedFilters.weight)) &&
-    (ignored.has("list") || !normalizedFilters.list.length || normalizedFilters.list.includes(normalizeList(item.list))) &&
+    (ignored.has("status") || !normalizedFilters.status.length || normalizedFilters.status.includes(normalizeStatus(item.status ?? item.list))) &&
+    (
+      ignored.has("collections")
+      || !normalizedFilters.collections.length
+      || normalizedFilters.collections.some((collection) => normalizeCollections(item.collections).includes(collection))
+    ) &&
     (ignored.has("favorite") ||
       !normalizedFilters.favorite ||
       (normalizedFilters.favorite === "yes" ? Boolean(item.favorite) : !item.favorite))
@@ -139,8 +146,9 @@ export function getWardrobeSearchText(item) {
     item.garmentType,
     item.color,
     item.weight,
-    normalizeList(item.list),
+    normalizeStatus(item.status ?? item.list),
     item.description,
+    ...normalizeCollections(item.collections),
     ...(Array.isArray(item.styleTags) ? item.styleTags : []),
     ...(Array.isArray(item.climateTags) ? item.climateTags : [])
   ].join(" "));
@@ -157,13 +165,15 @@ export function matchesWardrobeSearch(item, searchQuery, precomputedSearchText =
   return normalizedQuery.split(" ").every((term) => searchableText.includes(term));
 }
 
-export function getWardrobeFilterOptions(items, filters, { itemListOptions = [], styleTagOptions = [] } = {}) {
+export function getWardrobeFilterOptions(items, filters, { itemStatusOptions = [], styleTagOptions = [] } = {}) {
   const normalizedFilters = normalizeWardrobeFilters(filters);
   const getItemsForKey = (key) => items.filter((item) => matchesWardrobeFilters(item, normalizedFilters, [key]));
   const mergeSelected = (options, selectedValues) =>
     [...new Set([...options, ...selectedValues])].sort((left, right) => left.localeCompare(right));
   const getUniqueValues = (sourceItems, key) =>
     [...new Set(sourceItems.map((item) => normalizeFilterToken(item[key])).filter(Boolean))].sort((left, right) => left.localeCompare(right));
+  const getUniqueCollections = (sourceItems) =>
+    [...new Set(sourceItems.flatMap((item) => normalizeCollections(item.collections)))].sort((left, right) => left.localeCompare(right));
 
   return {
     brand: mergeSelected(getUniqueValues(getItemsForKey("brand"), "brand"), normalizedFilters.brand),
@@ -175,10 +185,11 @@ export function getWardrobeFilterOptions(items, filters, { itemListOptions = [],
       normalizedFilters.style
     ),
     weight: mergeSelected(getUniqueValues(getItemsForKey("weight"), "weight"), normalizedFilters.weight),
-    list: mergeSelected(
-      itemListOptions.filter((list) => getItemsForKey("list").some((item) => normalizeList(item.list) === list)),
-      normalizedFilters.list
-    )
+    status: mergeSelected(
+      itemStatusOptions.filter((status) => getItemsForKey("status").some((item) => normalizeStatus(item.status ?? item.list) === status)),
+      normalizedFilters.status
+    ),
+    collections: mergeSelected(getUniqueCollections(getItemsForKey("collections")), normalizedFilters.collections)
   };
 }
 

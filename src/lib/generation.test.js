@@ -241,6 +241,12 @@ test("unknown preserved list values inherit Wardrobe generation inclusion unless
   );
 });
 
+test("generation excludes Selling and Sold statuses by default", () => {
+  assert.equal(isEligibleForGeneration({ id: "selling_status", status: "Selling" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "sold_status", status: "Sold" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "wardrobe_status", status: "Wardrobe" }, {}, defaultGenerationLists), true);
+});
+
 function getFormalStructureCounts(outfit, layering = true) {
   const slots = layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
   return slots.reduce(

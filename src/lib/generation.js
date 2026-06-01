@@ -2,7 +2,7 @@ import {
   defaultItemList,
   getTypeMatchKeys,
   itemLists,
-  normalizeList,
+  normalizeStatus,
   normalizeTagList,
   normalizeType,
   normalizeWeight,
@@ -259,7 +259,7 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
     return false;
   }
 
-  const list = normalizeList(item.list);
+  const list = normalizeStatus(item.status ?? item.list);
 
   if (Object.hasOwn(generationLists, list)) {
     return generationLists[list] !== false;

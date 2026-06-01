@@ -39,7 +39,8 @@ const defaultAppState = {
     style: [],
     laundry: "",
     weight: [],
-    list: [],
+    status: [],
+    collections: [],
     favorite: ""
   },
   wardrobeSort: "newest",

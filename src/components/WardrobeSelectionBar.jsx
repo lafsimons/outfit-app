@@ -104,7 +104,7 @@ export default function WardrobeSelectionBar({
                   onClick={() => setActiveAction("list")}
                   disabled={!selectedCount}
                 >
-                  List
+                  Status
                 </button>
               </div>
 
@@ -163,7 +163,7 @@ export default function WardrobeSelectionBar({
                   {activeAction === "list" ? (
                     <div className="wardrobe-bulk-group">
                       <label className="wardrobe-bulk-tag-control">
-                        <span>Assign list</span>
+                        <span>Assign status</span>
                         <select value={bulkListDraft} onChange={(event) => setBulkListDraft(event.target.value)}>
                           {itemListOptions.map((list) => (
                             <option key={list} value={list}>{list}</option>

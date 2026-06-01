@@ -16,17 +16,17 @@ import { APP_ID, SUPPORTED_BACKUP_SOURCES, SUPPORTED_BACKUP_VERSIONS } from "./l
 import { load, save as saveAppState } from "./repositories/appStateRepository";
 import { exportLibraryCsv, loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
-  applyMappedStyleWeightDefaults,
   defaultItemList,
+  applyMappedStyleWeightDefaults,
   defaultTypeSuggestions,
   emptyForm,
-  getItemListOptions,
+  getItemStatusOptions,
   getTypeMatchKeys,
   hasTypeDefaults,
   itemLists,
   layerTypes,
+  normalizeStatus,
   normalizeItemType,
-  normalizeList,
   normalizeTagList,
   normalizeType,
   normalizeWeight,
@@ -57,7 +57,6 @@ import {
   getOutfitKey,
   getPool,
   getGuidedBreakdownDisplayEntries,
-  hasActiveOutfitFilters,
   isEligibleForGeneration,
   isNonStackableTopType,
   normalizeGenerationMode,
@@ -97,6 +96,7 @@ import {
   itemNeedsTagMigration,
   itemNeedsTimestampMigration,
   itemNeedsWeightMigration,
+  normalizeCollections,
   normalizeItem,
   normalizeItemColor,
   normalizeItemUuid,
@@ -235,7 +235,8 @@ const defaultWardrobeFilterSectionsOpen = {
   color: false,
   style: false,
   weight: false,
-  list: false,
+  status: false,
+  collections: false,
   favorite: false,
   laundry: false
 };
@@ -246,7 +247,7 @@ const advancedTrackedFields = [
   "brand",
   "size",
   "weight",
-  "list",
+  "status",
   "quantity",
   "value",
   "retailValue",
@@ -259,7 +260,7 @@ const advancedTrackedFields = [
 ];
 const stylingEditorFields = ["styleTags", "climateTags"];
 const advancedEditorFields = advancedTrackedFields.filter(
-  (field) => !["name", "description", "brand", "list", "favorite", "garmentType", ...stylingEditorFields].includes(field)
+  (field) => !["name", "description", "brand", "status", "favorite", "garmentType", ...stylingEditorFields].includes(field)
 );
 
 function normalizeStoredItem(item, fallbackCreatedAt) {
@@ -322,6 +323,14 @@ function createEmptyBulkMetadataDraft() {
     climateTagsToAdd: [],
     climateTagsToRemove: []
   };
+}
+
+function addCollectionToList(currentCollections, nextCollection) {
+  return normalizeCollections([...(Array.isArray(currentCollections) ? currentCollections : []), nextCollection]);
+}
+
+function removeCollectionFromList(currentCollections, collectionToRemove) {
+  return normalizeCollections(currentCollections).filter((collection) => collection !== collectionToRemove);
 }
 
 function toggleBulkTagAssignment(currentDraft, addKey, removeKey, tag) {
@@ -1224,6 +1233,7 @@ export default function App() {
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
+  const [generationCollections, setGenerationCollections] = useState([]);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
@@ -1256,6 +1266,7 @@ export default function App() {
   const [editorStylingOpen, setEditorStylingOpen] = useState(false);
   const [windowState, setWindowState] = useState(defaultWindowState);
   const [draft, setDraft] = useState(emptyForm);
+  const [draftCollectionInput, setDraftCollectionInput] = useState("");
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
@@ -1397,8 +1408,11 @@ export default function App() {
       wardrobePreviewItem.type?.trim() || null,
       wardrobePreviewItem.size?.trim() || null,
       valueLabel,
-      wardrobePreviewItem.list?.trim() || null,
+      normalizeStatus(wardrobePreviewItem.status ?? wardrobePreviewItem.list),
       quantityLabel,
+      normalizeCollections(wardrobePreviewItem.collections).length
+        ? normalizeCollections(wardrobePreviewItem.collections).join(", ")
+        : null,
       excluded[wardrobePreviewItem.id] ? "Excluded from generation" : null
     ]
       .filter(Boolean)
@@ -1552,6 +1566,14 @@ export default function App() {
   const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
     0
+  ) + generationCollections.length;
+  const generationSourceItems = useMemo(
+    () => (
+      generationCollections.length
+        ? items.filter((item) => generationCollections.some((collection) => normalizeCollections(item.collections).includes(collection)))
+        : items
+    ),
+    [generationCollections, items]
   );
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
@@ -1719,21 +1741,26 @@ export default function App() {
   const selectedStyleTagCount = normalizeTagList(draft.styleTags, styleTagOptions).length;
   const selectedClimateTagCount = normalizeTagList(draft.climateTags, editableClimateTagOptions).length;
   const itemListOptions = useMemo(
-    () => getItemListOptions([
-      ...items.map((item) => item.list),
+    () => getItemStatusOptions([
+      ...items.map((item) => item.status ?? item.list),
       ...Object.keys(generationLists ?? {}),
-      draft.list,
-      ...(wardrobeFilters.list ?? [])
+      draft.status,
+      ...(wardrobeFilters.status ?? [])
     ]),
-    [draft.list, generationLists, items, wardrobeFilters.list]
+    [draft.status, generationLists, items, wardrobeFilters.status]
   );
   const dashboardItemListOptions = useMemo(
-    () => getItemListOptions([
-      ...items.map((item) => item.list),
+    () => getItemStatusOptions([
+      ...items.map((item) => item.status ?? item.list),
       ...Object.keys(generationLists ?? {}),
-      ...(dashboardFilters.list ?? [])
+      ...(dashboardFilters.status ?? [])
     ]),
-    [dashboardFilters.list, generationLists, items]
+    [dashboardFilters.status, generationLists, items]
+  );
+  const collectionOptions = useMemo(
+    () =>
+      [...new Set(items.flatMap((item) => normalizeCollections(item.collections)))].sort((left, right) => left.localeCompare(right)),
+    [items]
   );
   const wardrobeSearchTextById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
@@ -1742,7 +1769,7 @@ export default function App() {
   const wardrobeFilterOptions = useMemo(
     () =>
       getWardrobeFilterOptions(items, wardrobeFilters, {
-        itemListOptions,
+        itemStatusOptions: itemListOptions,
         styleTagOptions
       }),
     [itemListOptions, items, wardrobeFilters]
@@ -1750,7 +1777,7 @@ export default function App() {
   const dashboardFilterOptions = useMemo(
     () =>
       getWardrobeFilterOptions(items, dashboardFilters, {
-        itemListOptions: dashboardItemListOptions,
+        itemStatusOptions: dashboardItemListOptions,
         styleTagOptions
       }),
     [dashboardItemListOptions, items, dashboardFilters]
@@ -1789,7 +1816,8 @@ export default function App() {
       ["Color", wardrobeFilters.color],
       ["Style", wardrobeFilters.style],
       ["Weight", wardrobeFilters.weight],
-      ["List", wardrobeFilters.list]
+      ["Status", wardrobeFilters.status],
+      ["Collections", wardrobeFilters.collections]
     ].flatMap(([label, values]) =>
       values.map((value) => [label, value])
     ),
@@ -1820,7 +1848,8 @@ export default function App() {
       ["Color", dashboardFilters.color],
       ["Style", dashboardFilters.style],
       ["Weight", dashboardFilters.weight],
-      ["List", dashboardFilters.list]
+      ["Status", dashboardFilters.status],
+      ["Collections", dashboardFilters.collections]
     ].flatMap(([label, values]) =>
       values.map((value) => [label, value])
     ),
@@ -1851,7 +1880,8 @@ export default function App() {
       { label: "Color", key: "color", options: wardrobeFilterOptions.color, includeNone: true, kind: "multi" },
       { label: "Style", key: "style", options: wardrobeFilterOptions.style, includeNone: false, kind: "multi" },
       { label: "Weight", key: "weight", options: wardrobeFilterOptions.weight, includeNone: true, kind: "multi" },
-      { label: "List", key: "list", options: wardrobeFilterOptions.list, includeNone: false, kind: "multi" },
+      { label: "Status", key: "status", options: wardrobeFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: wardrobeFilterOptions.collections, includeNone: false, kind: "multi" },
       {
         label: "Favorite",
         key: "favorite",
@@ -1883,7 +1913,8 @@ export default function App() {
       { label: "Color", key: "color", options: dashboardFilterOptions.color, includeNone: true, kind: "multi" },
       { label: "Style", key: "style", options: dashboardFilterOptions.style, includeNone: false, kind: "multi" },
       { label: "Weight", key: "weight", options: dashboardFilterOptions.weight, includeNone: true, kind: "multi" },
-      { label: "List", key: "list", options: dashboardFilterOptions.list, includeNone: false, kind: "multi" },
+      { label: "Status", key: "status", options: dashboardFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: dashboardFilterOptions.collections, includeNone: false, kind: "multi" },
       {
         label: "Favorite",
         key: "favorite",
@@ -1974,10 +2005,10 @@ export default function App() {
     return true;
   }
 
-  async function moveSelectedItemsToList(list) {
+  async function moveSelectedItemsToList(status) {
     await persistBulkSelectionUpdate((item) => ({
       ...item,
-      list
+      status
     }));
   }
 
@@ -2055,7 +2086,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       });
 
       return nextExcluded;
@@ -2507,11 +2538,11 @@ export default function App() {
         }
       });
 
-      const nextOutfit = buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const nextOutfit = buildNextOutfit(generationSourceItems, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       setGuidedDebugPayload([]);
       return nextOutfit;
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
+  }, [generationSourceItems, items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
 
   useEffect(() => {
     if (loading) {
@@ -2767,7 +2798,7 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setOutfit((current) => {
-      const result = buildNextOutfitWithDebug(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const result = buildNextOutfitWithDebug(generationSourceItems, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       const nextOutfit = result.outfit;
       setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
       if (generationMode === "guided") {
@@ -2811,11 +2842,11 @@ export default function App() {
   }
 
   function getSlotOptions(slot) {
-    return getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
+    return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
   }
 
   function getSlotPickerOptions(slot) {
-    let pool = getPool(items, slot, {}, generationLists, layering);
+    let pool = getPool(generationSourceItems, slot, {}, generationLists, layering);
 
     if (layering && (slot === "TopInner" || slot === "TopOuter")) {
       const otherTopSlot = getOtherTopSlot(slot);
@@ -3292,7 +3323,7 @@ export default function App() {
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
-    return getEligibleSlotPool(items, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
+    return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
       .filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]);
   }
 
@@ -3667,6 +3698,7 @@ export default function App() {
     setEditorStylingOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
+    setDraftCollectionInput("");
   }
 
   function startEdit(item, options = {}) {
@@ -3696,6 +3728,7 @@ export default function App() {
     setEditorStylingOpen(false);
     setEditingId(item.id);
     setDraft(normalizedItem);
+    setDraftCollectionInput("");
   }
 
   function cancelEdit(options = {}) {
@@ -3712,6 +3745,7 @@ export default function App() {
     setEditorAdvancedOpen(false);
     setEditorStylingOpen(false);
     setDraft(emptyForm);
+    setDraftCollectionInput("");
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
@@ -3750,7 +3784,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       });
 
       return nextExcluded;
@@ -3841,8 +3875,17 @@ export default function App() {
     });
   }
 
+  function toggleGenerationCollection(collection) {
+    setGenerationCollections((current) => (
+      current.includes(collection)
+        ? current.filter((entry) => entry !== collection)
+        : [...current, collection]
+    ));
+  }
+
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
+    setGenerationCollections([]);
   }
 
   async function refreshWeather(locationOverride = weatherLocationDraft) {
@@ -3931,6 +3974,27 @@ export default function App() {
 
   function setAdvancedField(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function addDraftCollection(nextCollection = draftCollectionInput) {
+    const normalizedCollection = typeof nextCollection === "string" ? nextCollection.trim() : "";
+
+    if (!normalizedCollection) {
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      collections: addCollectionToList(current.collections, normalizedCollection)
+    }));
+    setDraftCollectionInput("");
+  }
+
+  function removeDraftCollection(collectionToRemove) {
+    setDraft((current) => ({
+      ...current,
+      collections: removeCollectionFromList(current.collections, collectionToRemove)
+    }));
   }
 
   function resetAdvancedField(field) {
@@ -4038,7 +4102,9 @@ export default function App() {
       value: normalizedValue,
       retailValue: normalizedRetailValue,
       size: trimmedSize,
-      list: normalizeList(draft.list),
+      status: normalizeStatus(draft.status),
+      list: normalizeStatus(draft.status),
+      collections: normalizeCollections(draft.collections),
       quantity: normalizedQuantity,
       styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
       climateTags: normalizeTagList(draft.climateTags, editableClimateTagOptions)
@@ -6115,8 +6181,8 @@ export default function App() {
 
         <div className="editor-list-favorite-row">
           <label>
-            {renderAdvancedLabel("List", "list")}
-            <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
+            {renderAdvancedLabel("Status", "status")}
+            <select value={draft.status} onChange={(event) => setAdvancedField("status", event.target.value)}>
               {itemListOptions.map((list) => (
                 <option key={list} value={list}>
                   {list}
@@ -6148,6 +6214,47 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        <label className="editor-span-2">
+          Collections
+          <div className="editor-advanced-panel editor-styling-panel">
+            <div className="metadata-tag-options">
+              {normalizeCollections(draft.collections).map((collection) => (
+                <button
+                  key={collection}
+                  type="button"
+                  className="list-toggle is-active"
+                  onClick={() => removeDraftCollection(collection)}
+                  aria-label={`Remove ${collection} collection`}
+                >
+                  {collection} ×
+                </button>
+              ))}
+            </div>
+            <div className="editor-list-favorite-row">
+              <input
+                list="item-collection-suggestions"
+                value={draftCollectionInput}
+                onChange={(event) => setDraftCollectionInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addDraftCollection();
+                  }
+                }}
+                placeholder="Add collection"
+              />
+              <button type="button" className="secondary-button" onClick={() => addDraftCollection()}>
+                Add
+              </button>
+            </div>
+          </div>
+        </label>
+        <datalist id="item-collection-suggestions">
+          {collectionOptions.map((collection) => (
+            <option key={collection} value={collection} />
+          ))}
+        </datalist>
 
         <label>
           {renderAdvancedLabel("Brand", "brand")}
@@ -6614,7 +6721,7 @@ export default function App() {
                 >
                   <span>Outfit filters</span>
                   <span>
-                    {hasActiveOutfitFilters(outfitFilters)
+                    {activeOutfitFilterCount > 0
                       ? `${activeOutfitFilterCount} active`
                       : "None"}
                   </span>
@@ -6645,6 +6752,28 @@ export default function App() {
                           </div>
                         </section>
                       ))}
+                      {collectionOptions.length ? (
+                        <section className="outfit-filter-group">
+                          <p className="eyebrow">collections</p>
+                          <div className="outfit-filter-options">
+                            {collectionOptions.map((collection) => {
+                              const isSelected = generationCollections.includes(collection);
+
+                              return (
+                                <button
+                                  key={collection}
+                                  type="button"
+                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
+                                  onClick={() => toggleGenerationCollection(collection)}
+                                  aria-pressed={isSelected}
+                                >
+                                  {collection}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ) : null}
                     </div>
 
                     <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
@@ -6665,7 +6794,7 @@ export default function App() {
                   onClick={() => setGenerationListsOpen((current) => !current)}
                   aria-expanded={generationListsOpen}
                 >
-                  <span>Lists</span>
+                  <span>Status</span>
                   <span>{generationListsSummary}</span>
                 </button>
 
