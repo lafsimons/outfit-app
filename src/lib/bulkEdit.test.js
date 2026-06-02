@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  addCollectionToItem,
   addTagToItemTags,
+  clearItemCollections,
   hasMeaningfulItemChange,
+  removeCollectionFromItem,
   removeSelectedItems,
   removeTagFromItemTags,
+  setItemStatus,
   updateSelectedItems
 } from "./bulkEdit.js";
 import { editableClimateTagOptions } from "./generation.js";
@@ -34,23 +38,79 @@ test("updateSelectedItems only updates selected entries", () => {
 test("updateSelectedItems supports bulk moves across known lifecycle lists without touching other items", () => {
   ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"].forEach((targetList) => {
     const items = [
-      { id: "a", list: "Wardrobe" },
-      { id: "b", list: "Wishlist" },
-      { id: "c", list: "Wardrobe" }
+      { id: "a", status: "Wardrobe", list: "Wardrobe", name: "A" },
+      { id: "b", status: "Wishlist", list: "Wishlist", name: "B" },
+      { id: "c", status: "Wardrobe", list: "Wardrobe", name: "C" }
     ];
 
     const result = updateSelectedItems(items, ["b", "c"], (item) => ({
-      ...item,
-      list: targetList
+      ...setItemStatus(item, targetList)
     }));
 
     assert.deepEqual(result.nextItems, [
-      { id: "a", list: "Wardrobe" },
-      { id: "b", list: targetList },
-      { id: "c", list: targetList }
+      { id: "a", status: "Wardrobe", list: "Wardrobe", name: "A" },
+      { id: "b", status: targetList, list: targetList, name: "B" },
+      { id: "c", status: targetList, list: targetList, name: "C" }
     ]);
     assert.deepEqual(result.changedIds, ["b", "c"]);
   });
+});
+
+test("bulk collection helpers add, remove, and clear collections without changing unrelated fields", () => {
+  const baseItem = {
+    id: "item_1",
+    status: "Wardrobe",
+    list: "Wardrobe",
+    collections: ["Travel", "Workwear"],
+    name: "Field Jacket",
+    favorite: true
+  };
+
+  assert.deepEqual(
+    addCollectionToItem(baseItem, "Summer"),
+    {
+      ...baseItem,
+      collections: ["Travel", "Workwear", "Summer"]
+    }
+  );
+
+  assert.deepEqual(
+    removeCollectionFromItem(baseItem, "Travel"),
+    {
+      ...baseItem,
+      collections: ["Workwear"]
+    }
+  );
+
+  assert.deepEqual(
+    clearItemCollections(baseItem),
+    {
+      ...baseItem,
+      collections: []
+    }
+  );
+});
+
+test("bulk status helper keeps legacy list mirror synchronized", () => {
+  assert.deepEqual(
+    setItemStatus(
+      {
+        id: "item_2",
+        status: "Wishlist",
+        list: "Wishlist",
+        collections: ["Travel"],
+        description: "Keep me"
+      },
+      "Sold"
+    ),
+    {
+      id: "item_2",
+      status: "Sold",
+      list: "Sold",
+      collections: ["Travel"],
+      description: "Keep me"
+    }
+  );
 });
 
 test("removeSelectedItems removes only selected entries", () => {

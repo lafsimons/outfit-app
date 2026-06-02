@@ -1,4 +1,5 @@
-import { normalizeTagList } from "./typeDefaults.js";
+import { normalizeCollections } from "./itemModel.js";
+import { normalizeStatus, normalizeTagList } from "./typeDefaults.js";
 
 function omitUpdatedAt(item) {
   const { updatedAt, ...rest } = item ?? {};
@@ -44,6 +45,37 @@ export function removeSelectedItems(items, selectedIds) {
   return {
     nextItems: items.filter((item) => !selectedIdSet.has(item.id)),
     removedIds
+  };
+}
+
+export function setItemStatus(item, status) {
+  const normalizedStatus = normalizeStatus(status);
+
+  return {
+    ...item,
+    status: normalizedStatus,
+    list: normalizedStatus
+  };
+}
+
+export function addCollectionToItem(item, collection) {
+  return {
+    ...item,
+    collections: normalizeCollections([...(Array.isArray(item?.collections) ? item.collections : []), collection])
+  };
+}
+
+export function removeCollectionFromItem(item, collection) {
+  return {
+    ...item,
+    collections: normalizeCollections(item?.collections).filter((existingCollection) => existingCollection !== collection)
+  };
+}
+
+export function clearItemCollections(item) {
+  return {
+    ...item,
+    collections: []
   };
 }
 

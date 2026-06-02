@@ -1,6 +1,6 @@
 import {
   normalizeItemType,
-  normalizeList,
+  normalizeStatus,
   normalizeTagList,
   normalizeWeight,
   styleTagOptions
@@ -18,9 +18,29 @@ export const garmentTypes = [
   "Accessory"
 ];
 
+export function normalizeCollections(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return value.reduce((normalized, entry) => {
+    const collection = typeof entry === "string" ? entry.trim() : "";
+
+    if (!collection || seen.has(collection)) {
+      return normalized;
+    }
+
+    seen.add(collection);
+    normalized.push(collection);
+    return normalized;
+  }, []);
+}
+
 export function isWishlistItem(item) {
   const searchableMetadata = `${item.id ?? ""} ${item.name ?? ""}`.toLowerCase();
-  return normalizeList(item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
+  return normalizeStatus(item.status ?? item.list) === "Wishlist" || searchableMetadata.includes("wishlist");
 }
 
 export function itemNeedsStyleWeightMappingMigration(originalItem, nextItem, areEditorValuesEqual) {
@@ -349,6 +369,8 @@ export function normalizeItem(
   const originalPreserved = item.originalPreserved === true;
   const itemUuid = normalizeItemUuid(item.itemUuid, createUuid);
   const importMetadata = normalizeImportMetadataFields(item, createdAt);
+  const status = normalizeStatus(item.status ?? item.list ?? correction?.status ?? correction?.list);
+  const collections = normalizeCollections(item.collections);
 
   const normalizedItem = {
     ...emptyForm,
@@ -376,7 +398,9 @@ export function normalizeItem(
     climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
     type: normalizeItemType(correction?.type ?? item.type ?? ""),
     color: normalizeItemColor(correction?.color ?? item.color ?? ""),
-    list: normalizeList(item.list ?? correction?.list),
+    status,
+    list: status,
+    collections,
     ...importMetadata,
     itemUuid,
     createdAt,
@@ -487,10 +511,11 @@ export function getWardrobePreviewMetadata(item) {
     ["Type", item?.type?.trim?.() ?? item?.type ?? ""],
     ["Color", item?.color?.trim?.() ?? item?.color ?? ""],
     ["Size", item?.size?.trim?.() ?? item?.size ?? ""],
-    ["List", normalizeList(item?.list)],
+    ["Status", normalizeStatus(item?.status ?? item?.list)],
     ["Paid", item?.value === "" || item?.value === null || item?.value === undefined ? "" : formatCurrency(item.value)],
     ["Retail", item?.retailValue === "" || item?.retailValue === null || item?.retailValue === undefined ? "" : formatCurrency(item.retailValue)],
-    ["Quantity", quantity > 1 ? String(quantity) : ""]
+    ["Quantity", quantity > 1 ? String(quantity) : ""],
+    ["Collections", normalizeCollections(item?.collections).join(", ")]
   ];
 
   return entries

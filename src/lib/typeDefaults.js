@@ -1,7 +1,9 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
 export const weightOptions = ["Light", "Medium", "Heavy"];
-export const defaultItemList = "Wardrobe";
-export const itemLists = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"];
+export const defaultItemStatus = "Wardrobe";
+export const itemStatuses = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"];
+export const defaultItemList = defaultItemStatus;
+export const itemLists = itemStatuses;
 export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
 
 export const emptyForm = {
@@ -45,13 +47,15 @@ export const emptyForm = {
   accessorySlot: "",
   color: "",
   weight: "",
-  list: defaultItemList,
+  status: defaultItemStatus,
+  list: defaultItemStatus,
   quantity: 1,
   styleTags: [],
-  climateTags: []
+  climateTags: [],
+  collections: []
 };
 
-export const typeDerivedFields = ["garmentType", "layerType", "accessorySlot", "weight", "size", "list", "styleTags"];
+export const typeDerivedFields = ["garmentType", "layerType", "accessorySlot", "weight", "size", "status", "list", "styleTags"];
 
 export const defaultTypeSuggestions = [
   "Bag",
@@ -200,36 +204,48 @@ export const typeDefaultsByKey = {
   jumpsuit: { garmentType: "Dresses/Jumpsuits" }
 };
 
-export function normalizeList(list) {
-  if (typeof list !== "string") {
-    return defaultItemList;
+export function normalizeStatus(status) {
+  if (typeof status !== "string") {
+    return defaultItemStatus;
   }
 
-  const trimmed = list.trim();
+  const trimmed = status.trim();
 
   if (!trimmed) {
-    return defaultItemList;
+    return defaultItemStatus;
   }
 
-  return itemLists.includes(trimmed) ? trimmed : trimmed;
+  return itemStatuses.includes(trimmed) ? trimmed : trimmed;
 }
 
-export function getItemListOptions(values = []) {
+export function normalizeList(list) {
+  return normalizeStatus(list);
+}
+
+export function getItemStatusOptions(values = []) {
   const unknownLists = [...new Set(
     values
       .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .filter((value) => value && !itemLists.includes(value))
+      .filter((value) => value && !itemStatuses.includes(value))
   )].sort((a, b) => a.localeCompare(b));
 
-  return [...itemLists, ...unknownLists];
+  return [...itemStatuses, ...unknownLists];
 }
 
-export function matchesListFilter(itemList, filterValue) {
+export function getItemListOptions(values = []) {
+  return getItemStatusOptions(values);
+}
+
+export function matchesStatusFilter(itemStatus, filterValue) {
   if (!filterValue) {
     return true;
   }
 
-  return normalizeList(itemList) === filterValue;
+  return normalizeStatus(itemStatus) === filterValue;
+}
+
+export function matchesListFilter(itemList, filterValue) {
+  return matchesStatusFilter(itemList, filterValue);
 }
 
 export function normalizeItemType(type) {

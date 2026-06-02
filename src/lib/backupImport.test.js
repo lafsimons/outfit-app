@@ -193,6 +193,7 @@ test("prepareBackupImport preserves custom user metadata while migrating importe
   assert.equal(prepared.backup.items[0].itemUuid, "stable-item-uuid");
   assert.equal(prepared.backup.items[0].color, "Navy");
   assert.deepEqual(prepared.backup.items[0].climateTags, ["Rain"]);
+  assert.equal(prepared.backup.items[0].status, "Wishlist");
   assert.equal(prepared.backup.items[0].list, "Wishlist");
   assert.equal(prepared.backup.items[0].favorite, true);
   assert.equal(prepared.backup.items[0].quantity, 3);
@@ -218,7 +219,9 @@ test("prepareBackupImport preserves unknown future list values from backups", as
   });
 
   assert.equal(prepared.backup.items[0].list, "ArchivedLater");
+  assert.equal(prepared.backup.items[0].status, "ArchivedLater");
   assert.equal(prepared.items[0].list, "ArchivedLater");
+  assert.equal(prepared.items[0].status, "ArchivedLater");
 });
 
 test("prepareBackupImport preserves supported lifecycle list values from backups", async () => {
@@ -237,7 +240,9 @@ test("prepareBackupImport preserves supported lifecycle list values from backups
   });
 
   assert.equal(prepared.backup.items[0].list, "Selling");
+  assert.equal(prepared.backup.items[0].status, "Selling");
   assert.equal(prepared.items[0].list, "Selling");
+  assert.equal(prepared.items[0].status, "Selling");
 });
 
 test("prepareBackupImport persists current app-state migration versions after import", async () => {
@@ -385,13 +390,24 @@ test("prepareBackupImport normalizes persisted wardrobe filters in app-state", a
 
   assert.deepEqual(prepared.appState.wardrobeFilters, {
     brand: [],
+    brandExcluded: [],
     type: [],
+    typeExcluded: [],
     garmentType: ["Footwear"],
+    garmentTypeExcluded: [],
     color: [],
+    colorExcluded: [],
     style: ["Casual"],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: [],
     laundry: "",
     weight: [],
-    list: ["Wardrobe"],
+    weightExcluded: [],
+    status: ["Wardrobe"],
+    statusExcluded: [],
+    collections: [],
+    collectionsExcluded: [],
     favorite: "yes"
   });
   assert.deepEqual(prepared.backup.appState.wardrobeFilters, prepared.appState.wardrobeFilters);

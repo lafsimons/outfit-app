@@ -12,6 +12,7 @@ import {
   getOutfitDominantStyle,
   getPool,
   isEligibleForGeneration,
+  normalizeOutfitFilters,
   pickNextItemForGeneration,
   rememberRecentOutfit,
   summarizeGuidedDebugPayload,
@@ -241,6 +242,33 @@ test("unknown preserved list values inherit Wardrobe generation inclusion unless
   );
 });
 
+test("generation excludes Selling and Sold statuses by default", () => {
+  assert.equal(isEligibleForGeneration({ id: "selling_status", status: "Selling" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "sold_status", status: "Sold" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "wardrobe_status", status: "Wardrobe" }, {}, defaultGenerationLists), true);
+});
+
+test("normalizeOutfitFilters preserves include and exclude outfit filter groups", () => {
+  assert.deepEqual(
+    normalizeOutfitFilters({
+      style: ["Formal", "Unknown"],
+      styleExcluded: ["Casual", "Nope"],
+      climate: ["Cold", "Bad"],
+      climateExcluded: ["Rain", "Nope"],
+      collections: ["Travel", "", "Travel", "Workwear"],
+      collectionsExcluded: ["Summer", " ", "Summer"]
+    }),
+    {
+      style: ["Formal"],
+      styleExcluded: ["Casual"],
+      climate: ["Cold"],
+      climateExcluded: ["Rain"],
+      collections: ["Travel", "Workwear"],
+      collectionsExcluded: ["Summer"]
+    }
+  );
+});
+
 function getFormalStructureCounts(outfit, layering = true) {
   const slots = layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
   return slots.reduce(
@@ -317,6 +345,26 @@ test("explicit athleisure filter stays athletic and excludes wool shirt", () => 
       ["Sneakers"].includes(shoes?.type)
     );
   });
+});
+
+test("outfit filter exclusion removes excluded style and climate candidates from the eligible pool", () => {
+  assert(!eligiblePoolIds("TopInner", {
+    style: [],
+    styleExcluded: ["Formal"],
+    climate: [],
+    climateExcluded: [],
+    collections: [],
+    collectionsExcluded: []
+  }).includes("top_formal_shirt"));
+
+  assert(!eligiblePoolIds("Footwear", {
+    style: [],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: ["Hot"],
+    collections: [],
+    collectionsExcluded: []
+  }).includes("shoe_slides"));
 });
 
 test("explicit formal filter stays formal instead of collapsing into smart casual", () => {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import PreviewOverlay from "./components/PreviewOverlay";
+import WardrobeExportDialog from "./components/WardrobeExportDialog";
 import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
 import {
   backfillLocalSyncMetadata,
@@ -15,17 +16,17 @@ import { APP_ID, SUPPORTED_BACKUP_SOURCES, SUPPORTED_BACKUP_VERSIONS } from "./l
 import { load, save as saveAppState } from "./repositories/appStateRepository";
 import { exportLibraryCsv, loadAll as loadItems, remove as deleteItem, save as saveItem } from "./repositories/itemsRepository";
 import {
-  applyMappedStyleWeightDefaults,
   defaultItemList,
+  applyMappedStyleWeightDefaults,
   defaultTypeSuggestions,
   emptyForm,
-  getItemListOptions,
+  getItemStatusOptions,
   getTypeMatchKeys,
   hasTypeDefaults,
   itemLists,
   layerTypes,
+  normalizeStatus,
   normalizeItemType,
-  normalizeList,
   normalizeTagList,
   normalizeType,
   normalizeWeight,
@@ -56,7 +57,6 @@ import {
   getOutfitKey,
   getPool,
   getGuidedBreakdownDisplayEntries,
-  hasActiveOutfitFilters,
   isEligibleForGeneration,
   isNonStackableTopType,
   normalizeGenerationMode,
@@ -96,6 +96,7 @@ import {
   itemNeedsTagMigration,
   itemNeedsTimestampMigration,
   itemNeedsWeightMigration,
+  normalizeCollections,
   normalizeItem,
   normalizeItemColor,
   normalizeItemUuid,
@@ -120,19 +121,39 @@ import {
   DEFAULT_WARDROBE_SORT,
   emptyWardrobeFilters,
   filterWardrobeItems,
+  getExcludedFilterKey,
   getWardrobeFilterOptions,
   getWardrobeSearchText,
   matchesWardrobeFilters,
   normalizeWardrobeFilters,
   normalizeWardrobeSort,
   sortWardrobeItems,
+  wardrobeExcludedMultiValueFilterKeys,
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
 import {
+  WARDROBE_SPREAD_LABEL_FONT_SIZE,
+  WARDROBE_SPREAD_LABEL_GAP,
+  WARDROBE_SPREAD_LABEL_LINE_HEIGHT,
+  WARDROBE_SPREAD_LABEL_SIDE_PADDING,
+  WARDROBE_SPREAD_LABEL_TOP_GAP,
+  createWardrobeSpreadExportOptions,
+  getWardrobeSpreadExportImageUrl,
+  getWardrobeSpreadExportLabelRowCount,
+  getWardrobeSpreadExportLabelRows,
+  getWardrobeSpreadExportOrderedItems,
+  normalizeWardrobeSpreadExportOptions,
+  getWardrobeSpreadExportRenderConfig
+} from "./lib/wardrobeSpreadExport";
+import {
+  addCollectionToItem,
   addTagToItemTags,
+  clearItemCollections,
   hasMeaningfulItemChange,
+  removeCollectionFromItem,
   removeSelectedItems,
   removeTagFromItemTags,
+  setItemStatus,
   updateSelectedItems
 } from "./lib/bulkEdit";
 import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
@@ -219,8 +240,10 @@ const defaultWardrobeFilterSectionsOpen = {
   type: false,
   color: false,
   style: false,
+  climate: false,
   weight: false,
-  list: false,
+  status: false,
+  collections: false,
   favorite: false,
   laundry: false
 };
@@ -231,7 +254,7 @@ const advancedTrackedFields = [
   "brand",
   "size",
   "weight",
-  "list",
+  "status",
   "quantity",
   "value",
   "retailValue",
@@ -244,7 +267,7 @@ const advancedTrackedFields = [
 ];
 const stylingEditorFields = ["styleTags", "climateTags"];
 const advancedEditorFields = advancedTrackedFields.filter(
-  (field) => !["name", "description", "brand", "list", "favorite", "garmentType", ...stylingEditorFields].includes(field)
+  (field) => !["name", "description", "brand", "status", "favorite", "garmentType", ...stylingEditorFields].includes(field)
 );
 
 function normalizeStoredItem(item, fallbackCreatedAt) {
@@ -282,6 +305,8 @@ function getEditorWindowStateKey(editingId, editorReturnTarget) {
 
 function createEmptyBulkMetadataDraft() {
   return {
+    statusMode: "keep",
+    statusValue: defaultItemList,
     typeMode: "keep",
     typeValue: "",
     colorMode: "keep",
@@ -302,10 +327,60 @@ function createEmptyBulkMetadataDraft() {
     valueValue: "",
     retailValueMode: "keep",
     retailValueValue: "",
+    collectionsMode: "keep",
+    collectionsValue: "",
     styleTagsToAdd: [],
     styleTagsToRemove: [],
     climateTagsToAdd: [],
     climateTagsToRemove: []
+  };
+}
+
+function addCollectionToList(currentCollections, nextCollection) {
+  return normalizeCollections([...(Array.isArray(currentCollections) ? currentCollections : []), nextCollection]);
+}
+
+function removeCollectionFromList(currentCollections, collectionToRemove) {
+  return normalizeCollections(currentCollections).filter((collection) => collection !== collectionToRemove);
+}
+
+function getIncludedFilterValues(filters, key) {
+  return Array.isArray(filters?.[key]) ? filters[key] : [];
+}
+
+function getExcludedFilterValues(filters, key) {
+  return Array.isArray(filters?.[getExcludedFilterKey(key)]) ? filters[getExcludedFilterKey(key)] : [];
+}
+
+function getSelectedFilterValueCount(filters, key) {
+  return getIncludedFilterValues(filters, key).length + getExcludedFilterValues(filters, key).length;
+}
+
+function toggleMultiFilterValueState(currentFilters, key, value, shouldExclude = false) {
+  const excludedKey = getExcludedFilterKey(key);
+  const includedValues = getIncludedFilterValues(currentFilters, key);
+  const excludedValues = getExcludedFilterValues(currentFilters, key);
+
+  if (shouldExclude) {
+    const isExcluded = excludedValues.includes(value);
+
+    return {
+      ...currentFilters,
+      [key]: includedValues.filter((selectedValue) => selectedValue !== value),
+      [excludedKey]: isExcluded
+        ? excludedValues.filter((selectedValue) => selectedValue !== value)
+        : [...excludedValues, value]
+    };
+  }
+
+  const isIncluded = includedValues.includes(value);
+
+  return {
+    ...currentFilters,
+    [key]: isIncluded
+      ? includedValues.filter((selectedValue) => selectedValue !== value)
+      : [...includedValues, value],
+    [excludedKey]: excludedValues.filter((selectedValue) => selectedValue !== value)
   };
 }
 
@@ -1233,6 +1308,7 @@ export default function App() {
   const [selectedWardrobeItemIds, setSelectedWardrobeItemIds] = useState([]);
   const [wardrobeSelectionAnchorId, setWardrobeSelectionAnchorId] = useState(null);
   const [bulkListDraft, setBulkListDraft] = useState(defaultItemList);
+  const [bulkCollectionDraft, setBulkCollectionDraft] = useState("");
   const [bulkMetadataEditorOpen, setBulkMetadataEditorOpen] = useState(false);
   const [bulkMetadataDraft, setBulkMetadataDraft] = useState(createEmptyBulkMetadataDraft);
   const [editingId, setEditingId] = useState(null);
@@ -1241,10 +1317,12 @@ export default function App() {
   const [editorStylingOpen, setEditorStylingOpen] = useState(false);
   const [windowState, setWindowState] = useState(defaultWindowState);
   const [draft, setDraft] = useState(emptyForm);
+  const [draftCollectionInput, setDraftCollectionInput] = useState("");
   const [imageUploadError, setImageUploadError] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [wardrobeExportOptions, setWardrobeExportOptions] = useState(null);
   const [wardrobeSearch, setWardrobeSearch] = useState("");
   const [wardrobeFilterSearch, setWardrobeFilterSearch] = useState("");
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
@@ -1381,8 +1459,11 @@ export default function App() {
       wardrobePreviewItem.type?.trim() || null,
       wardrobePreviewItem.size?.trim() || null,
       valueLabel,
-      wardrobePreviewItem.list?.trim() || null,
+      normalizeStatus(wardrobePreviewItem.status ?? wardrobePreviewItem.list),
       quantityLabel,
+      normalizeCollections(wardrobePreviewItem.collections).length
+        ? normalizeCollections(wardrobePreviewItem.collections).join(", ")
+        : null,
       excluded[wardrobePreviewItem.id] ? "Excluded from generation" : null
     ]
       .filter(Boolean)
@@ -1536,6 +1617,24 @@ export default function App() {
   const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
     0
+  );
+  const generationSourceItems = useMemo(
+    () => items.filter((item) => {
+      const itemCollections = normalizeCollections(item.collections);
+      const includedCollections = outfitFilters.collections ?? [];
+      const excludedCollections = outfitFilters.collectionsExcluded ?? [];
+
+      if (includedCollections.length && !includedCollections.some((collection) => itemCollections.includes(collection))) {
+        return false;
+      }
+
+      if (excludedCollections.length && excludedCollections.some((collection) => itemCollections.includes(collection))) {
+        return false;
+      }
+
+      return true;
+    }),
+    [items, outfitFilters.collections, outfitFilters.collectionsExcluded]
   );
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
@@ -1703,21 +1802,26 @@ export default function App() {
   const selectedStyleTagCount = normalizeTagList(draft.styleTags, styleTagOptions).length;
   const selectedClimateTagCount = normalizeTagList(draft.climateTags, editableClimateTagOptions).length;
   const itemListOptions = useMemo(
-    () => getItemListOptions([
-      ...items.map((item) => item.list),
+    () => getItemStatusOptions([
+      ...items.map((item) => item.status ?? item.list),
       ...Object.keys(generationLists ?? {}),
-      draft.list,
-      ...(wardrobeFilters.list ?? [])
+      draft.status,
+      ...(wardrobeFilters.status ?? [])
     ]),
-    [draft.list, generationLists, items, wardrobeFilters.list]
+    [draft.status, generationLists, items, wardrobeFilters.status]
   );
   const dashboardItemListOptions = useMemo(
-    () => getItemListOptions([
-      ...items.map((item) => item.list),
+    () => getItemStatusOptions([
+      ...items.map((item) => item.status ?? item.list),
       ...Object.keys(generationLists ?? {}),
-      ...(dashboardFilters.list ?? [])
+      ...(dashboardFilters.status ?? [])
     ]),
-    [dashboardFilters.list, generationLists, items]
+    [dashboardFilters.status, generationLists, items]
+  );
+  const collectionOptions = useMemo(
+    () =>
+      [...new Set(items.flatMap((item) => normalizeCollections(item.collections)))].sort((left, right) => left.localeCompare(right)),
+    [items]
   );
   const wardrobeSearchTextById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
@@ -1726,27 +1830,43 @@ export default function App() {
   const wardrobeFilterOptions = useMemo(
     () =>
       getWardrobeFilterOptions(items, wardrobeFilters, {
-        itemListOptions,
-        styleTagOptions
+        itemStatusOptions: itemListOptions,
+        styleTagOptions,
+        climateFilterOptions: climateTagOptions
       }),
     [itemListOptions, items, wardrobeFilters]
   );
   const dashboardFilterOptions = useMemo(
     () =>
       getWardrobeFilterOptions(items, dashboardFilters, {
-        itemListOptions: dashboardItemListOptions,
-        styleTagOptions
+        itemStatusOptions: dashboardItemListOptions,
+        styleTagOptions,
+        climateFilterOptions: climateTagOptions
       }),
     [dashboardItemListOptions, items, dashboardFilters]
   );
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.entries(wardrobeFilters).reduce(
-    (count, [key, value]) => count + (wardrobeMultiValueFilterKeys.includes(key) ? value.length : value ? 1 : 0),
+    (count, [key, value]) =>
+      count + (
+        wardrobeMultiValueFilterKeys.includes(key) || wardrobeExcludedMultiValueFilterKeys.includes(key)
+          ? value.length
+          : value
+            ? 1
+            : 0
+      ),
     0
   );
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
   const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
-    (count, [key, value]) => count + (wardrobeMultiValueFilterKeys.includes(key) ? value.length : value ? 1 : 0),
+    (count, [key, value]) =>
+      count + (
+        wardrobeMultiValueFilterKeys.includes(key) || wardrobeExcludedMultiValueFilterKeys.includes(key)
+          ? value.length
+          : value
+            ? 1
+            : 0
+      ),
     0
   );
   const hasActiveDashboardFilters = activeDashboardFilterCount > 0;
@@ -1765,68 +1885,44 @@ export default function App() {
 
     return `${includedGenerationLists.length} included`;
   }, [includedGenerationLists]);
-  const activeWardrobeFilterChips = [
+  const buildActiveFilterChips = (filters) => [
     ...[
-      ["Brand", wardrobeFilters.brand],
-      ["Type", wardrobeFilters.type],
-      ["Garment", wardrobeFilters.garmentType],
-      ["Color", wardrobeFilters.color],
-      ["Style", wardrobeFilters.style],
-      ["Weight", wardrobeFilters.weight],
-      ["List", wardrobeFilters.list]
-    ].flatMap(([label, values]) =>
-      values.map((value) => [label, value])
-    ),
-    ["Exclude", wardrobeFilters.laundry],
-    ["Favorite", wardrobeFilters.favorite]
-  ]
-    .filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
-    .map(([label, value]) => ({
-      label,
-      value:
-        value === "__none__"
-          ? `No ${label.toLowerCase()}`
-          : label === "Favorite"
-            ? value === "yes"
-              ? "Yes"
-              : "No"
-            : label === "Exclude"
-              ? value === "show"
-                ? "Show excluded"
-                : "Hide excluded"
-              : value
-    }));
-  const activeDashboardFilterChips = [
-    ...[
-      ["Brand", dashboardFilters.brand],
-      ["Type", dashboardFilters.type],
-      ["Garment", dashboardFilters.garmentType],
-      ["Color", dashboardFilters.color],
-      ["Style", dashboardFilters.style],
-      ["Weight", dashboardFilters.weight],
-      ["List", dashboardFilters.list]
-    ].flatMap(([label, values]) =>
-      values.map((value) => [label, value])
-    ),
-    ["Exclude", dashboardFilters.laundry],
-    ["Favorite", dashboardFilters.favorite]
-  ]
-    .filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
-    .map(([label, value]) => ({
-      label,
-      value:
-        value === "__none__"
-          ? `No ${label.toLowerCase()}`
-          : label === "Favorite"
-            ? value === "yes"
-              ? "Yes"
-              : "No"
-            : label === "Exclude"
-              ? value === "show"
-                ? "Show excluded"
-                : "Hide excluded"
-            : value
-    }));
+      ["Brand", "brand"],
+      ["Type", "type"],
+      ["Garment", "garmentType"],
+      ["Color", "color"],
+      ["Style", "style"],
+      ["Climate", "climate"],
+      ["Weight", "weight"],
+      ["Status", "status"],
+      ["Collections", "collections"]
+    ].flatMap(([label, key]) => [
+      ...getIncludedFilterValues(filters, key).map((value) => ({ label, value, excluded: false })),
+      ...getExcludedFilterValues(filters, key).map((value) => ({ label, value, excluded: true }))
+    ]),
+    ...(filters.laundry ? [{ label: "Exclude", value: filters.laundry, excluded: false }] : []),
+    ...(filters.favorite ? [{ label: "Favorite", value: filters.favorite, excluded: false }] : [])
+  ].map((filter) => ({
+    ...filter,
+    value:
+      filter.label === "Favorite"
+        ? filter.value === "yes"
+          ? "Yes"
+          : "No"
+        : filter.label === "Exclude"
+          ? filter.value === "show"
+            ? "Show excluded"
+            : "Hide excluded"
+          : filter.value === "__none__"
+            ? filter.excluded
+              ? `Has ${filter.label.toLowerCase()}`
+              : `No ${filter.label.toLowerCase()}`
+            : filter.excluded
+              ? `Not ${filter.value}`
+              : filter.value
+  }));
+  const activeWardrobeFilterChips = buildActiveFilterChips(wardrobeFilters);
+  const activeDashboardFilterChips = buildActiveFilterChips(dashboardFilters);
   const wardrobeFilterPanelSections = useMemo(
     () => [
       { label: "Brand", key: "brand", options: wardrobeFilterOptions.brand, includeNone: true, kind: "multi" },
@@ -1834,8 +1930,10 @@ export default function App() {
       { label: "Type", key: "type", options: wardrobeFilterOptions.type, includeNone: true, kind: "multi" },
       { label: "Color", key: "color", options: wardrobeFilterOptions.color, includeNone: true, kind: "multi" },
       { label: "Style", key: "style", options: wardrobeFilterOptions.style, includeNone: false, kind: "multi" },
+      { label: "Climate", key: "climate", options: wardrobeFilterOptions.climate, includeNone: true, kind: "multi" },
       { label: "Weight", key: "weight", options: wardrobeFilterOptions.weight, includeNone: true, kind: "multi" },
-      { label: "List", key: "list", options: wardrobeFilterOptions.list, includeNone: false, kind: "multi" },
+      { label: "Status", key: "status", options: wardrobeFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: wardrobeFilterOptions.collections, includeNone: false, kind: "multi" },
       {
         label: "Favorite",
         key: "favorite",
@@ -1866,8 +1964,10 @@ export default function App() {
       { label: "Type", key: "type", options: dashboardFilterOptions.type, includeNone: true, kind: "multi" },
       { label: "Color", key: "color", options: dashboardFilterOptions.color, includeNone: true, kind: "multi" },
       { label: "Style", key: "style", options: dashboardFilterOptions.style, includeNone: false, kind: "multi" },
+      { label: "Climate", key: "climate", options: dashboardFilterOptions.climate, includeNone: true, kind: "multi" },
       { label: "Weight", key: "weight", options: dashboardFilterOptions.weight, includeNone: true, kind: "multi" },
-      { label: "List", key: "list", options: dashboardFilterOptions.list, includeNone: false, kind: "multi" },
+      { label: "Status", key: "status", options: dashboardFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: dashboardFilterOptions.collections, includeNone: false, kind: "multi" },
       {
         label: "Favorite",
         key: "favorite",
@@ -1915,6 +2015,7 @@ export default function App() {
   function clearWardrobeSelection() {
     setSelectedWardrobeItemIds([]);
     setWardrobeSelectionAnchorId(null);
+    setBulkCollectionDraft("");
     setBulkMetadataEditorOpen(false);
     setBulkMetadataDraft(createEmptyBulkMetadataDraft());
   }
@@ -1958,14 +2059,83 @@ export default function App() {
     return true;
   }
 
-  async function moveSelectedItemsToList(list) {
-    await persistBulkSelectionUpdate((item) => ({
-      ...item,
-      list
-    }));
+  async function moveSelectedItemsToList(status) {
+    const normalizedStatus = normalizeStatus(status);
+    const confirmed = await requestConfirmation({
+      title: `Set status for ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}?`,
+      message: `Set status to ${normalizedStatus} for the selected items.`,
+      confirmLabel: "Set status"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    await persistBulkSelectionUpdate((item) => setItemStatus(item, normalizedStatus));
   }
 
-  function openBulkMetadataEditor() {
+  async function addCollectionToSelectedItems(collection) {
+    const normalizedCollection = collection.trim();
+    if (!normalizedCollection) {
+      return;
+    }
+
+    const confirmed = await requestConfirmation({
+      title: `Add collection to ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}?`,
+      message: `Add ${normalizedCollection} to the selected items.`,
+      confirmLabel: "Add collection"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const didUpdate = await persistBulkSelectionUpdate((item) => addCollectionToItem(item, normalizedCollection));
+    if (didUpdate) {
+      setBulkCollectionDraft("");
+    }
+  }
+
+  async function removeCollectionFromSelectedItems(collection) {
+    const normalizedCollection = collection.trim();
+    if (!normalizedCollection) {
+      return;
+    }
+
+    const confirmed = await requestConfirmation({
+      title: `Remove collection from ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}?`,
+      message: `Remove ${normalizedCollection} from the selected items.`,
+      confirmLabel: "Remove collection"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const didUpdate = await persistBulkSelectionUpdate((item) => removeCollectionFromItem(item, normalizedCollection));
+    if (didUpdate) {
+      setBulkCollectionDraft("");
+    }
+  }
+
+  async function clearSelectedItemCollections() {
+    const confirmed = await requestConfirmation({
+      title: `Clear collections for ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}?`,
+      message: "Remove all collections from the selected items.",
+      confirmLabel: "Clear collections"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const didUpdate = await persistBulkSelectionUpdate((item) => clearItemCollections(item));
+    if (didUpdate) {
+      setBulkCollectionDraft("");
+    }
+  }
+
+  function openBulkMetadataEditor(nextDraftOverrides = {}) {
     if (selectedWardrobeItems.length < 2) {
       return;
     }
@@ -1980,7 +2150,10 @@ export default function App() {
     setEditorReturnTarget(null);
     setEditorAdvancedOpen(false);
     setDraft(emptyForm);
-    setBulkMetadataDraft(createEmptyBulkMetadataDraft());
+    setBulkMetadataDraft({
+      ...createEmptyBulkMetadataDraft(),
+      ...nextDraftOverrides
+    });
     setBulkMetadataEditorOpen(true);
   }
 
@@ -2039,7 +2212,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       });
 
       return nextExcluded;
@@ -2077,8 +2250,46 @@ export default function App() {
   async function applyBulkMetadataChanges(event) {
     event.preventDefault();
 
+    const normalizedBulkCollectionValue = bulkMetadataDraft.collectionsValue.trim();
+    const normalizedBulkStatusValue = normalizeStatus(bulkMetadataDraft.statusValue);
+    const collectionActionRequiresValue = ["add", "remove"].includes(bulkMetadataDraft.collectionsMode);
+
+    if (collectionActionRequiresValue && !normalizedBulkCollectionValue) {
+      return;
+    }
+
+    const summaryParts = [];
+
+    if (bulkMetadataDraft.statusMode === "set") {
+      summaryParts.push(`set status to ${normalizedBulkStatusValue}`);
+    }
+
+    if (bulkMetadataDraft.collectionsMode === "add") {
+      summaryParts.push(`add collection ${normalizedBulkCollectionValue}`);
+    } else if (bulkMetadataDraft.collectionsMode === "remove") {
+      summaryParts.push(`remove collection ${normalizedBulkCollectionValue}`);
+    } else if (bulkMetadataDraft.collectionsMode === "clear") {
+      summaryParts.push("clear collections");
+    }
+
+    const confirmed = await requestConfirmation({
+      title: `Apply changes to ${selectedWardrobeItemCount} selected item${selectedWardrobeItemCount === 1 ? "" : "s"}?`,
+      message: summaryParts.length
+        ? `Apply these changes: ${summaryParts.join(", ")}.`
+        : "Apply the selected bulk metadata changes.",
+      confirmLabel: "Apply changes"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
     const didUpdate = await persistBulkSelectionUpdate((item) => {
       let nextItem = { ...item };
+
+      if (bulkMetadataDraft.statusMode === "set") {
+        nextItem = setItemStatus(nextItem, normalizedBulkStatusValue);
+      }
 
       if (bulkMetadataDraft.typeMode === "set") {
         nextItem = applyTypeDefaultsToDraft(nextItem, bulkMetadataDraft.typeValue);
@@ -2118,6 +2329,14 @@ export default function App() {
       bulkMetadataDraft.climateTagsToRemove.forEach((tag) => {
         nextItem.climateTags = removeTagFromItemTags(nextItem.climateTags, tag, editableClimateTagOptions);
       });
+
+      if (bulkMetadataDraft.collectionsMode === "add") {
+        nextItem = addCollectionToItem(nextItem, normalizedBulkCollectionValue);
+      } else if (bulkMetadataDraft.collectionsMode === "remove") {
+        nextItem = removeCollectionFromItem(nextItem, normalizedBulkCollectionValue);
+      } else if (bulkMetadataDraft.collectionsMode === "clear") {
+        nextItem = clearItemCollections(nextItem);
+      }
 
       return nextItem;
     });
@@ -2491,11 +2710,11 @@ export default function App() {
         }
       });
 
-      const nextOutfit = buildNextOutfit(items, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const nextOutfit = buildNextOutfit(generationSourceItems, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       setGuidedDebugPayload([]);
       return nextOutfit;
     });
-  }, [items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
+  }, [generationSourceItems, items, itemsById, locked, layering, excluded, generationLists, generationMode, outfitFilters, weatherData, outfitAffinity, recentOutfits, loading]);
 
   useEffect(() => {
     if (loading) {
@@ -2751,7 +2970,7 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setOutfit((current) => {
-      const result = buildNextOutfitWithDebug(items, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const result = buildNextOutfitWithDebug(generationSourceItems, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       const nextOutfit = result.outfit;
       setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
       if (generationMode === "guided") {
@@ -2795,11 +3014,11 @@ export default function App() {
   }
 
   function getSlotOptions(slot) {
-    return getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
+    return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
   }
 
   function getSlotPickerOptions(slot) {
-    let pool = getPool(items, slot, {}, generationLists, layering);
+    let pool = getPool(generationSourceItems, slot, {}, generationLists, layering);
 
     if (layering && (slot === "TopInner" || slot === "TopOuter")) {
       const otherTopSlot = getOtherTopSlot(slot);
@@ -3115,21 +3334,52 @@ export default function App() {
     }
   }
 
-  async function handleExportWardrobeImage() {
-    const exportItems = visibleWardrobeItems.filter((item) => !excluded[item.id]);
+  function truncateCanvasText(context, text, maxWidth) {
+    const normalizedText = String(text || "").trim();
+
+    if (!normalizedText || context.measureText(normalizedText).width <= maxWidth) {
+      return normalizedText;
+    }
+
+    const ellipsis = "...";
+    let truncatedText = normalizedText;
+
+    while (truncatedText.length > 0) {
+      truncatedText = truncatedText.slice(0, -1).trimEnd();
+
+      if (context.measureText(`${truncatedText}${ellipsis}`).width <= maxWidth) {
+        return `${truncatedText}${ellipsis}`;
+      }
+    }
+
+    return ellipsis;
+  }
+
+  function openWardrobeExportDialog() {
+    setWardrobeExportOptions(createWardrobeSpreadExportOptions("compact"));
+  }
+
+  async function handleExportWardrobeImage(options = createWardrobeSpreadExportOptions("compact")) {
+    const normalizedOptions = normalizeWardrobeSpreadExportOptions(options);
+    const exportItems = getWardrobeSpreadExportOrderedItems(visibleWardrobeItems, normalizedOptions);
 
     if (!exportItems.length) {
       window.alert("There are no filtered wardrobe pieces to export.");
       return;
     }
 
-    const shuffledItems = [...exportItems].sort(() => Math.random() - 0.5);
-    const cellSize = 190;
-    const columns = Math.max(1, Math.ceil(Math.sqrt(shuffledItems.length * 1.18)));
-    const rows = Math.ceil(shuffledItems.length / columns);
-    const padding = 44;
-    const canvasWidth = columns * cellSize + padding * 2;
-    const canvasHeight = rows * cellSize + padding * 2;
+    const labelRowCount = getWardrobeSpreadExportLabelRowCount(normalizedOptions);
+    const {
+      cellHeight,
+      cellSize,
+      columns,
+      padding,
+      canvasWidth,
+      canvasHeight,
+      exportScale,
+      pixelWidth,
+      pixelHeight
+    } = getWardrobeSpreadExportRenderConfig(exportItems.length, { labelRowCount });
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
 
@@ -3138,36 +3388,76 @@ export default function App() {
       return;
     }
 
-    canvas.width = canvasWidth * 2;
-    canvas.height = canvasHeight * 2;
-    context.scale(2, 2);
-    context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "#f7f7f7";
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    context.scale(exportScale, exportScale);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const documentStyles = getComputedStyle(document.documentElement);
+    const exportBackgroundColor = documentStyles.getPropertyValue("--bg").trim() || "#f7f7f7";
+    const exportTextColor = documentStyles.getPropertyValue("--text").trim() || "#111";
+    const exportMutedTextColor = documentStyles.getPropertyValue("--muted-strong").trim() || "rgba(17, 17, 17, 0.75)";
+    const exportFontFamily = documentStyles.getPropertyValue("font-family").trim() || "monospace";
+    context.fillStyle = exportBackgroundColor;
     context.fillRect(0, 0, canvasWidth, canvasHeight);
 
     try {
       const loadedItems = await Promise.all(
-        shuffledItems.map(async (item) => ({
-          item,
-          image: await loadImage(resolveImageUrl(item.imageUrl))
-        }))
+        exportItems.map(async (item) => {
+          const exportImageUrl = resolveImageUrl(getWardrobeSpreadExportImageUrl(item));
+
+          if (!exportImageUrl) {
+            throw new Error("Missing export image.");
+          }
+
+          return {
+            item,
+            image: await loadImage(exportImageUrl)
+          };
+        })
       );
 
       loadedItems.forEach(({ item, image }, index) => {
         const column = index % columns;
         const row = Math.floor(index / columns);
         const cellLeft = padding + column * cellSize;
-        const cellTop = padding + row * cellSize;
+        const cellTop = padding + row * cellHeight;
         const maxImageSize = cellSize * 0.78;
         const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
         const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
         const frameWidth = sourceRect.width * baseScale;
         const frameHeight = sourceRect.height * baseScale;
-        const jitterX = (Math.random() - 0.5) * cellSize * 0.22;
-        const jitterY = (Math.random() - 0.5) * cellSize * 0.22;
+        const jitterX = normalizedOptions.shuffleItems ? (Math.random() - 0.5) * cellSize * 0.22 : 0;
+        const jitterY = normalizedOptions.shuffleItems ? (Math.random() - 0.5) * cellSize * 0.22 : 0;
         const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
         const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
+        const labelRows = getWardrobeSpreadExportLabelRows(item, normalizedOptions);
 
         drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
+
+        if (!labelRows.length) {
+          return;
+        }
+
+        context.textAlign = "center";
+        context.textBaseline = "top";
+        context.font = `500 ${WARDROBE_SPREAD_LABEL_FONT_SIZE}px ${exportFontFamily}`;
+
+        labelRows.forEach(({ key, text }, labelIndex) => {
+          if (!text) {
+            return;
+          }
+
+          const textY = cellTop
+            + cellSize
+            + WARDROBE_SPREAD_LABEL_TOP_GAP
+            + labelIndex * (WARDROBE_SPREAD_LABEL_LINE_HEIGHT + WARDROBE_SPREAD_LABEL_GAP);
+          const textWidth = cellSize - WARDROBE_SPREAD_LABEL_SIDE_PADDING * 2;
+          const displayText = truncateCanvasText(context, text, textWidth);
+
+          context.fillStyle = key === "name" ? exportTextColor : exportMutedTextColor;
+          context.fillText(displayText, cellLeft + cellSize / 2, textY, textWidth);
+        });
       });
 
       const link = document.createElement("a");
@@ -3179,6 +3469,12 @@ export default function App() {
     } catch {
       window.alert("The wardrobe image could not be exported.");
     }
+  }
+
+  async function handleConfirmWardrobeExport() {
+    const nextOptions = wardrobeExportOptions ? { ...wardrobeExportOptions } : createWardrobeSpreadExportOptions("compact");
+    setWardrobeExportOptions(null);
+    await handleExportWardrobeImage(nextOptions);
   }
 
   async function handleResetToDefault() {
@@ -3199,7 +3495,7 @@ export default function App() {
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
-    return getEligibleSlotPool(items, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
+    return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
       .filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]);
   }
 
@@ -3574,6 +3870,7 @@ export default function App() {
     setEditorStylingOpen(false);
     setEditingId("new");
     setDraft(emptyForm);
+    setDraftCollectionInput("");
   }
 
   function startEdit(item, options = {}) {
@@ -3603,6 +3900,7 @@ export default function App() {
     setEditorStylingOpen(false);
     setEditingId(item.id);
     setDraft(normalizedItem);
+    setDraftCollectionInput("");
   }
 
   function cancelEdit(options = {}) {
@@ -3619,6 +3917,7 @@ export default function App() {
     setEditorAdvancedOpen(false);
     setEditorStylingOpen(false);
     setDraft(emptyForm);
+    setDraftCollectionInput("");
     setImageUploadError("");
     setImageProcessing(false);
     setItemImageDragActive(false);
@@ -3657,7 +3956,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(items, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
       });
 
       return nextExcluded;
@@ -3693,31 +3992,19 @@ export default function App() {
   }
 
   function toggleWardrobeFilterValue(key, value) {
-    setWardrobeFilters((current) => {
-      const selectedValues = current[key] ?? [];
-      const isSelected = selectedValues.includes(value);
+    setWardrobeFilters((current) => toggleMultiFilterValueState(current, key, value));
+  }
 
-      return {
-        ...current,
-        [key]: isSelected
-          ? selectedValues.filter((selectedValue) => selectedValue !== value)
-          : [...selectedValues, value]
-      };
-    });
+  function toggleWardrobeFilterValueWithMode(key, value, shouldExclude = false) {
+    setWardrobeFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
   }
 
   function toggleDashboardFilterValue(key, value) {
-    setDashboardFilters((current) => {
-      const selectedValues = current[key] ?? [];
-      const isSelected = selectedValues.includes(value);
+    setDashboardFilters((current) => toggleMultiFilterValueState(current, key, value));
+  }
 
-      return {
-        ...current,
-        [key]: isSelected
-          ? selectedValues.filter((selectedValue) => selectedValue !== value)
-          : [...selectedValues, value]
-      };
-    });
+  function toggleDashboardFilterValueWithMode(key, value, shouldExclude = false) {
+    setDashboardFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
   }
 
   function setWardrobeToggleFilter(key, value) {
@@ -3734,18 +4021,8 @@ export default function App() {
     }));
   }
 
-  function toggleOutfitFilter(group, value) {
-    setOutfitFilters((current) => {
-      const selectedValues = current[group] ?? [];
-      const isSelected = selectedValues.includes(value);
-
-      return {
-        ...current,
-        [group]: isSelected
-          ? selectedValues.filter((selectedValue) => selectedValue !== value)
-          : [...selectedValues, value]
-      };
-    });
+  function toggleOutfitFilter(group, value, shouldExclude = false) {
+    setOutfitFilters((current) => toggleMultiFilterValueState(current, group, value, shouldExclude));
   }
 
   function clearOutfitFilters() {
@@ -3838,6 +4115,27 @@ export default function App() {
 
   function setAdvancedField(field, value) {
     setDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function addDraftCollection(nextCollection = draftCollectionInput) {
+    const normalizedCollection = typeof nextCollection === "string" ? nextCollection.trim() : "";
+
+    if (!normalizedCollection) {
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      collections: addCollectionToList(current.collections, normalizedCollection)
+    }));
+    setDraftCollectionInput("");
+  }
+
+  function removeDraftCollection(collectionToRemove) {
+    setDraft((current) => ({
+      ...current,
+      collections: removeCollectionFromList(current.collections, collectionToRemove)
+    }));
   }
 
   function resetAdvancedField(field) {
@@ -3945,7 +4243,9 @@ export default function App() {
       value: normalizedValue,
       retailValue: normalizedRetailValue,
       size: trimmedSize,
-      list: normalizeList(draft.list),
+      status: normalizeStatus(draft.status),
+      list: normalizeStatus(draft.status),
+      collections: normalizeCollections(draft.collections),
       quantity: normalizedQuantity,
       styleTags: normalizeTagList(draft.styleTags, styleTagOptions),
       climateTags: normalizeTagList(draft.climateTags, editableClimateTagOptions)
@@ -5068,7 +5368,7 @@ export default function App() {
                   </div>
                   {dashboardFilterPanelSections.map((section) => {
                     const selectedCount = section.kind === "multi"
-                      ? dashboardFilters[section.key].length
+                      ? getSelectedFilterValueCount(dashboardFilters, section.key)
                       : dashboardFilters[section.key]
                         ? 1
                         : 0;
@@ -5117,31 +5417,54 @@ export default function App() {
                             {showNoneOption ? (
                               <button
                                 type="button"
-                                className={`list-toggle ${dashboardFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
-                                onClick={() => toggleDashboardFilterValue(section.key, "__none__")}
-                                aria-pressed={dashboardFilters[section.key].includes?.("__none__")}
+                                className={`list-toggle ${
+                                  getIncludedFilterValues(dashboardFilters, section.key).includes("__none__")
+                                    ? "is-active"
+                                    : getExcludedFilterValues(dashboardFilters, section.key).includes("__none__")
+                                      ? "is-active is-muted is-excluded"
+                                      : ""
+                                }`}
+                                onClick={(event) => toggleDashboardFilterValueWithMode(section.key, "__none__", event.shiftKey)}
+                                aria-pressed={
+                                  getIncludedFilterValues(dashboardFilters, section.key).includes("__none__")
+                                  || getExcludedFilterValues(dashboardFilters, section.key).includes("__none__")
+                                }
                               >
                                 {noneLabel}
                               </button>
                             ) : null}
                             {filteredOptions.length ? filteredOptions.map((option) => {
+                              const isIncluded = section.kind === "multi"
+                                ? getIncludedFilterValues(dashboardFilters, section.key).includes(option.value)
+                                : false;
+                              const isExcluded = section.kind === "multi"
+                                ? getExcludedFilterValues(dashboardFilters, section.key).includes(option.value)
+                                : dashboardFilters[section.key] === option.value;
                               const isSelected = section.kind === "multi"
-                                ? dashboardFilters[section.key].includes(option.value)
+                                ? isIncluded || isExcluded
                                 : dashboardFilters[section.key] === option.value;
 
                               return (
                                 <button
                                   key={option.value}
                                   type="button"
-                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                  onClick={() => (
-                                    section.kind === "multi"
-                                      ? toggleDashboardFilterValue(section.key, option.value)
-                                      : setDashboardToggleFilter(
-                                          section.key,
-                                          dashboardFilters[section.key] === option.value ? "" : option.value
-                                        )
-                                  )}
+                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                  onMouseDown={(event) => {
+                                    if (section.kind === "multi") {
+                                      event.preventDefault();
+                                    }
+                                  }}
+                                  onClick={(event) => {
+                                    if (section.kind === "multi") {
+                                      toggleDashboardFilterValueWithMode(section.key, option.value, event.shiftKey);
+                                      return;
+                                    }
+
+                                    setDashboardToggleFilter(
+                                      section.key,
+                                      dashboardFilters[section.key] === option.value ? "" : option.value
+                                    );
+                                  }}
                                   aria-pressed={isSelected}
                                 >
                                   {option.label}
@@ -5161,7 +5484,7 @@ export default function App() {
                     <div className="active-filter-summary" aria-label="Active filters">
                       <div className="active-filter-chips">
                         {activeDashboardFilterChips.map((filter) => (
-                          <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
+                          <span key={`${filter.label}-${filter.value}-${filter.excluded ? "excluded" : "included"}`} className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}>
                             <span>{filter.label}</span>
                             {filter.value}
                           </span>
@@ -5616,6 +5939,48 @@ export default function App() {
 
       <div className="editor-advanced-panel bulk-metadata-grid">
         <label>
+          <span className="editor-label-row"><span>Status</span></span>
+          <select value={bulkMetadataDraft.statusMode} onChange={(event) => setBulkMetadataFieldMode("status", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="set">Set value</option>
+          </select>
+          {bulkMetadataDraft.statusMode === "set" ? (
+            <select value={bulkMetadataDraft.statusValue} onChange={(event) => setBulkMetadataFieldValue("status", event.target.value)}>
+              {itemListOptions.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+          ) : null}
+        </label>
+
+        <label className="bulk-metadata-span-2">
+          <span className="editor-label-row"><span>Collections</span></span>
+          <select value={bulkMetadataDraft.collectionsMode} onChange={(event) => setBulkMetadataFieldMode("collections", event.target.value)}>
+            <option value="keep">Keep existing</option>
+            <option value="add">Add collection</option>
+            <option value="remove">Remove collection</option>
+            <option value="clear">Clear all</option>
+          </select>
+          {["add", "remove"].includes(bulkMetadataDraft.collectionsMode) ? (
+            <>
+              <input
+                list="bulk-editor-collection-suggestions"
+                value={bulkMetadataDraft.collectionsValue}
+                onChange={(event) => setBulkMetadataFieldValue("collections", event.target.value)}
+                placeholder="Summer, Travel, Workwear..."
+              />
+              <datalist id="bulk-editor-collection-suggestions">
+                {collectionOptions.map((collection) => (
+                  <option key={collection} value={collection} />
+                ))}
+              </datalist>
+            </>
+          ) : null}
+        </label>
+
+        <label>
           <span className="editor-label-row"><span>Type</span></span>
           <select value={bulkMetadataDraft.typeMode} onChange={(event) => setBulkMetadataFieldMode("type", event.target.value)}>
             <option value="keep">Keep existing</option>
@@ -6022,8 +6387,8 @@ export default function App() {
 
         <div className="editor-list-favorite-row">
           <label>
-            {renderAdvancedLabel("List", "list")}
-            <select value={draft.list} onChange={(event) => setAdvancedField("list", event.target.value)}>
+            {renderAdvancedLabel("Status", "status")}
+            <select value={draft.status} onChange={(event) => setAdvancedField("status", event.target.value)}>
               {itemListOptions.map((list) => (
                 <option key={list} value={list}>
                   {list}
@@ -6055,6 +6420,47 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        <label className="editor-span-2">
+          Collections
+          <div className="editor-advanced-panel editor-styling-panel">
+            <div className="metadata-tag-options">
+              {normalizeCollections(draft.collections).map((collection) => (
+                <button
+                  key={collection}
+                  type="button"
+                  className="list-toggle is-active"
+                  onClick={() => removeDraftCollection(collection)}
+                  aria-label={`Remove ${collection} collection`}
+                >
+                  {collection} ×
+                </button>
+              ))}
+            </div>
+            <div className="editor-list-favorite-row">
+              <input
+                list="item-collection-suggestions"
+                value={draftCollectionInput}
+                onChange={(event) => setDraftCollectionInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addDraftCollection();
+                  }
+                }}
+                placeholder="Add collection"
+              />
+              <button type="button" className="secondary-button" onClick={() => addDraftCollection()}>
+                Add
+              </button>
+            </div>
+          </div>
+        </label>
+        <datalist id="item-collection-suggestions">
+          {collectionOptions.map((collection) => (
+            <option key={collection} value={collection} />
+          ))}
+        </datalist>
 
         <label>
           {renderAdvancedLabel("Brand", "brand")}
@@ -6521,7 +6927,7 @@ export default function App() {
                 >
                   <span>Outfit filters</span>
                   <span>
-                    {hasActiveOutfitFilters(outfitFilters)
+                    {activeOutfitFilterCount > 0
                       ? `${activeOutfitFilterCount} active`
                       : "None"}
                   </span>
@@ -6535,14 +6941,17 @@ export default function App() {
                           <p className="eyebrow">{group}</p>
                           <div className="outfit-filter-options">
                             {options.map((option) => {
-                              const isSelected = outfitFilters[group]?.includes(option);
+                              const isIncluded = getIncludedFilterValues(outfitFilters, group).includes(option);
+                              const isExcluded = getExcludedFilterValues(outfitFilters, group).includes(option);
+                              const isSelected = isIncluded || isExcluded;
 
                               return (
                                 <button
                                   key={option}
                                   type="button"
-                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                  onClick={() => toggleOutfitFilter(group, option)}
+                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => toggleOutfitFilter(group, option, event.shiftKey)}
                                   aria-pressed={isSelected}
                                 >
                                   {option}
@@ -6552,6 +6961,31 @@ export default function App() {
                           </div>
                         </section>
                       ))}
+                      {collectionOptions.length ? (
+                        <section className="outfit-filter-group">
+                          <p className="eyebrow">collections</p>
+                          <div className="outfit-filter-options">
+                            {collectionOptions.map((collection) => {
+                              const isIncluded = getIncludedFilterValues(outfitFilters, "collections").includes(collection);
+                              const isExcluded = getExcludedFilterValues(outfitFilters, "collections").includes(collection);
+                              const isSelected = isIncluded || isExcluded;
+
+                              return (
+                                <button
+                                  key={collection}
+                                  type="button"
+                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => toggleOutfitFilter("collections", collection, event.shiftKey)}
+                                  aria-pressed={isSelected}
+                                >
+                                  {collection}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ) : null}
                     </div>
 
                     <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
@@ -6572,7 +7006,7 @@ export default function App() {
                   onClick={() => setGenerationListsOpen((current) => !current)}
                   aria-expanded={generationListsOpen}
                 >
-                  <span>Lists</span>
+                  <span>Status</span>
                   <span>{generationListsSummary}</span>
                 </button>
 
@@ -6752,7 +7186,7 @@ export default function App() {
                         </div>
                         {wardrobeFilterPanelSections.map((section) => {
                           const selectedCount = section.kind === "multi"
-                            ? wardrobeFilters[section.key].length
+                            ? getSelectedFilterValueCount(wardrobeFilters, section.key)
                             : wardrobeFilters[section.key]
                               ? 1
                               : 0;
@@ -6801,31 +7235,54 @@ export default function App() {
                                   {showNoneOption ? (
                                     <button
                                       type="button"
-                                      className={`list-toggle ${wardrobeFilters[section.key].includes?.("__none__") ? "is-active" : ""}`}
-                                      onClick={() => toggleWardrobeFilterValue(section.key, "__none__")}
-                                      aria-pressed={wardrobeFilters[section.key].includes?.("__none__")}
+                                      className={`list-toggle ${
+                                        getIncludedFilterValues(wardrobeFilters, section.key).includes("__none__")
+                                          ? "is-active"
+                                          : getExcludedFilterValues(wardrobeFilters, section.key).includes("__none__")
+                                            ? "is-active is-muted is-excluded"
+                                            : ""
+                                      }`}
+                                      onClick={(event) => toggleWardrobeFilterValueWithMode(section.key, "__none__", event.shiftKey)}
+                                      aria-pressed={
+                                        getIncludedFilterValues(wardrobeFilters, section.key).includes("__none__")
+                                        || getExcludedFilterValues(wardrobeFilters, section.key).includes("__none__")
+                                      }
                                     >
                                       {noneLabel}
                                     </button>
                                   ) : null}
                                   {filteredOptions.length ? filteredOptions.map((option) => {
+                                    const isIncluded = section.kind === "multi"
+                                      ? getIncludedFilterValues(wardrobeFilters, section.key).includes(option.value)
+                                      : false;
+                                    const isExcluded = section.kind === "multi"
+                                      ? getExcludedFilterValues(wardrobeFilters, section.key).includes(option.value)
+                                      : false;
                                     const isSelected = section.kind === "multi"
-                                      ? wardrobeFilters[section.key].includes(option.value)
+                                      ? isIncluded || isExcluded
                                       : wardrobeFilters[section.key] === option.value;
 
                                     return (
                                       <button
                                         key={option.value}
                                         type="button"
-                                        className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                        onClick={() => (
-                                          section.kind === "multi"
-                                            ? toggleWardrobeFilterValue(section.key, option.value)
-                                            : setWardrobeToggleFilter(
-                                                section.key,
-                                                wardrobeFilters[section.key] === option.value ? "" : option.value
-                                              )
-                                        )}
+                                        className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                        onMouseDown={(event) => {
+                                          if (section.kind === "multi") {
+                                            event.preventDefault();
+                                          }
+                                        }}
+                                        onClick={(event) => {
+                                          if (section.kind === "multi") {
+                                            toggleWardrobeFilterValueWithMode(section.key, option.value, event.shiftKey);
+                                            return;
+                                          }
+
+                                          setWardrobeToggleFilter(
+                                            section.key,
+                                            wardrobeFilters[section.key] === option.value ? "" : option.value
+                                          );
+                                        }}
                                         aria-pressed={isSelected}
                                       >
                                         {option.label}
@@ -6851,7 +7308,7 @@ export default function App() {
                                 </span>
                               ) : null}
                               {activeWardrobeFilterChips.map((filter) => (
-                                <span key={`${filter.label}-${filter.value}`} className="active-filter-chip">
+                                <span key={`${filter.label}-${filter.value}-${filter.excluded ? "excluded" : "included"}`} className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}>
                                   <span>{filter.label}</span>
                                   {filter.value}
                                 </span>
@@ -6921,7 +7378,7 @@ export default function App() {
                         <div className="wardrobe-manage-grid">
                           <section className="wardrobe-manage-section">
                             <div className="wardrobe-manage-actions">
-                              <button type="button" className="ghost-button" onClick={handleExportWardrobeImage}>
+                              <button type="button" className="ghost-button" onClick={openWardrobeExportDialog}>
                                 Export Wardrobe Image
                               </button>
                               <button type="button" className="ghost-button" onClick={handleExportLibraryCsv}>
@@ -6963,14 +7420,20 @@ export default function App() {
                     <WardrobeSelectionBar
                       inline
                       selectedCount={selectedWardrobeItemCount}
+                      bulkCollectionDraft={bulkCollectionDraft}
                       bulkListDraft={bulkListDraft}
-                      setBulkListDraft={setBulkListDraft}
+                      collectionOptions={collectionOptions}
                       itemListOptions={itemListOptions}
+                      setBulkCollectionDraft={setBulkCollectionDraft}
+                      setBulkListDraft={setBulkListDraft}
                       favoriteActionLabel={bulkFavoriteActionLabel}
                       excludeActionLabel={bulkExcludeActionLabel}
                       onEdit={editSelectedWardrobeItems}
                       onClear={clearWardrobeSelection}
                       onMoveToList={moveSelectedItemsToList}
+                      onAddCollection={addCollectionToSelectedItems}
+                      onRemoveCollection={removeCollectionFromSelectedItems}
+                      onClearCollections={clearSelectedItemCollections}
                       onFavoriteToggle={() => setSelectedItemsFavoriteState(!areAllSelectedWardrobeItemsFavorite)}
                       onExcludeToggle={() => setSelectedItemsExcludedState(!areAllSelectedWardrobeItemsExcluded)}
                       onDelete={handleBulkDeleteSelected}
@@ -7087,6 +7550,14 @@ export default function App() {
           confirmLabel={confirmation?.confirmLabel ?? "Confirm"}
           onCancel={confirmation?.onCancel}
           onConfirm={confirmation?.onConfirm}
+        />
+
+        <WardrobeExportDialog
+          open={Boolean(wardrobeExportOptions)}
+          options={wardrobeExportOptions ?? createWardrobeSpreadExportOptions("compact")}
+          onChange={setWardrobeExportOptions}
+          onCancel={() => setWardrobeExportOptions(null)}
+          onConfirm={handleConfirmWardrobeExport}
         />
 
         {workspaceDock}

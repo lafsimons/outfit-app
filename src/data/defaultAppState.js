@@ -33,20 +33,34 @@ const defaultAppState = {
   generationMode: "guided",
   wardrobeFilters: {
     brand: [],
+    brandExcluded: [],
     type: [],
+    typeExcluded: [],
     garmentType: [],
+    garmentTypeExcluded: [],
     color: [],
+    colorExcluded: [],
     style: [],
+    styleExcluded: [],
+    climate: [],
+    climateExcluded: [],
     laundry: "",
     weight: [],
-    list: [],
+    weightExcluded: [],
+    status: [],
+    statusExcluded: [],
+    collections: [],
+    collectionsExcluded: [],
     favorite: ""
   },
   wardrobeSort: "newest",
   outfitFilters: {
     style: [],
+    styleExcluded: [],
     climate: [],
-    color: []
+    climateExcluded: [],
+    collections: [],
+    collectionsExcluded: []
   },
   fitpics: [],
   windowState: {

@@ -2,7 +2,7 @@ import {
   defaultItemList,
   getTypeMatchKeys,
   itemLists,
-  normalizeList,
+  normalizeStatus,
   normalizeTagList,
   normalizeType,
   normalizeWeight,
@@ -28,7 +28,11 @@ export const outfitFilterOptions = {
 };
 export const emptyOutfitFilters = {
   style: [],
-  climate: []
+  styleExcluded: [],
+  climate: [],
+  climateExcluded: [],
+  collections: [],
+  collectionsExcluded: []
 };
 export const generationModes = ["guided", "random"];
 export const defaultGenerationMode = "guided";
@@ -259,7 +263,7 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
     return false;
   }
 
-  const list = normalizeList(item.list);
+  const list = normalizeStatus(item.status ?? item.list);
 
   if (Object.hasOwn(generationLists, list)) {
     return generationLists[list] !== false;
@@ -419,7 +423,13 @@ export function getItemClimateTags(item) {
 }
 
 export function hasActiveOutfitFilters(outfitFilters) {
-  return Object.keys(outfitFilterOptions).some((group) => {
+  return [
+    ...Object.keys(outfitFilterOptions),
+    "styleExcluded",
+    "climateExcluded",
+    "collections",
+    "collectionsExcluded"
+  ].some((group) => {
     const values = outfitFilters?.[group];
     return Array.isArray(values) && values.length > 0;
   });
@@ -432,6 +442,14 @@ export function normalizeGenerationMode(mode) {
 function getGenerationClimatePreferences(outfitFilters, weatherData) {
   if (Array.isArray(outfitFilters?.climate) && outfitFilters.climate.length) {
     return outfitFilters.climate;
+  }
+
+  return [];
+}
+
+function getExcludedGenerationClimatePreferences(outfitFilters) {
+  if (Array.isArray(outfitFilters?.climateExcluded) && outfitFilters.climateExcluded.length) {
+    return outfitFilters.climateExcluded;
   }
 
   return [];
@@ -1130,9 +1148,13 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
 
 function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}, context = {}) {
   const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
+  const excludedClimatePreferences = getExcludedGenerationClimatePreferences(outfitFilters);
   const selectedStyles = outfitFilters.style ?? [];
+  const excludedStyles = outfitFilters.styleExcluded ?? [];
   const typeMatches = getTypeMatchKeys(item.type);
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
+  const itemStyles = getItemStyleTags(item);
+  const itemClimateTags = getItemClimateTags(item);
   const existingTopInner = itemsById[outfit.TopInner];
   const existingTopOuter = itemsById[outfit.TopOuter];
   const existingBottom = itemsById[outfit.Bottom];
@@ -1147,6 +1169,14 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
     existingTopInner.garmentType === "Top" &&
     existingTopInnerMatches.has("shirt") &&
     getItemStyleTags(existingTopInner).some((style) => style === "Smart Casual" || style === "Formal");
+
+  if (excludedStyles.length && itemStyles.some((style) => excludedStyles.includes(style))) {
+    return false;
+  }
+
+  if (excludedClimatePreferences.length && itemClimateTags.some((climate) => excludedClimatePreferences.includes(climate))) {
+    return false;
+  }
 
   if (climatePreferences.includes("Hot")) {
     if (slot === "TopOuter" && item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") return false;
@@ -2051,14 +2081,25 @@ export function summarizeGuidedDebugPayload(guidedDebugPayload = []) {
 }
 
 export function normalizeOutfitFilters(outfitFilters) {
-  return Object.fromEntries(
-    Object.entries(outfitFilterOptions).map(([group, options]) => [
-      group,
-      Array.isArray(outfitFilters?.[group])
-        ? outfitFilters[group].filter((value) => options.includes(value))
-        : []
-    ])
+  const normalizeOptionGroup = (group, options) => (
+    Array.isArray(outfitFilters?.[group])
+      ? outfitFilters[group].filter((value) => options.includes(value))
+      : []
   );
+  const normalizeCollectionsGroup = (group) => (
+    Array.isArray(outfitFilters?.[group])
+      ? [...new Set(outfitFilters[group].filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))]
+      : []
+  );
+
+  return {
+    style: normalizeOptionGroup("style", styleTagOptions),
+    styleExcluded: normalizeOptionGroup("styleExcluded", styleTagOptions),
+    climate: normalizeOptionGroup("climate", climateTagOptions),
+    climateExcluded: normalizeOptionGroup("climateExcluded", climateTagOptions),
+    collections: normalizeCollectionsGroup("collections"),
+    collectionsExcluded: normalizeCollectionsGroup("collectionsExcluded")
+  };
 }
 
 export function normalizeLikedOutfitKeys(value) {

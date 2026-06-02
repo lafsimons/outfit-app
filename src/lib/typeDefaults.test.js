@@ -2,12 +2,23 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getItemStatusOptions,
   getItemListOptions,
+  matchesStatusFilter,
+  normalizeStatus,
   matchesListFilter,
   normalizeList
 } from "./typeDefaults.js";
 
-test("normalizeList defaults missing values to Wardrobe and accepts Incoming", () => {
+test("normalizeStatus defaults missing values to Wardrobe and accepts Incoming", () => {
+  assert.equal(normalizeStatus(undefined), "Wardrobe");
+  assert.equal(normalizeStatus(""), "Wardrobe");
+  ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"].forEach((status) => {
+    assert.equal(normalizeStatus(status), status);
+  });
+});
+
+test("normalizeList remains a compatibility alias for status normalization", () => {
   assert.equal(normalizeList(undefined), "Wardrobe");
   assert.equal(normalizeList(""), "Wardrobe");
   ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"].forEach((list) => {
@@ -25,6 +36,22 @@ test("getItemListOptions keeps known list order and appends unknown values once"
     getItemListOptions(["Wishlist", "Incoming", "ArchivedLater", "ArchivedLater", "Zeta"]),
     ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "ArchivedLater", "Zeta"]
   );
+});
+
+test("getItemStatusOptions keeps known status order and appends unknown values once", () => {
+  assert.deepEqual(
+    getItemStatusOptions(["Wishlist", "Incoming", "ArchivedLater", "ArchivedLater", "Zeta"]),
+    ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "ArchivedLater", "Zeta"]
+  );
+});
+
+test("matchesStatusFilter respects incoming and preserved unknown status values", () => {
+  assert.equal(matchesStatusFilter("Incoming", "Incoming"), true);
+  assert.equal(matchesStatusFilter("Selling", "Selling"), true);
+  assert.equal(matchesStatusFilter("Sold", "Sold"), true);
+  assert.equal(matchesStatusFilter("ArchivedLater", "ArchivedLater"), true);
+  assert.equal(matchesStatusFilter("ArchivedLater", "Incoming"), false);
+  assert.equal(matchesStatusFilter("ArchivedLater", ""), true);
 });
 
 test("matchesListFilter respects incoming and preserved unknown list values", () => {

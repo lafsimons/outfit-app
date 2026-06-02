@@ -1951,6 +1951,10 @@ button:disabled {
 .wardrobe-selection-actions {
   position: relative;
   z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .wardrobe-selection-more {
@@ -2050,6 +2054,36 @@ button:disabled {
   flex-wrap: wrap;
   gap: 5px;
   align-items: flex-start;
+}
+
+.wardrobe-bulk-actions {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.wardrobe-bulk-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.wardrobe-bulk-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wardrobe-bulk-collection-group {
+  display: grid;
+  width: 100%;
+}
+
+.wardrobe-bulk-collection-actions {
+  width: 100%;
 }
 
 .wardrobe-bulk-tag-control {
@@ -2319,6 +2353,22 @@ button:disabled {
 
 .active-filter-chip span {
   color: var(--muted);
+}
+
+.active-filter-chip.is-excluded {
+  border-style: dashed;
+  border-color: rgba(168, 54, 54, 0.38);
+  background: rgba(168, 54, 54, 0.08);
+}
+
+.list-toggle.is-excluded {
+  border-style: dashed;
+}
+
+.list-toggle.is-active.is-excluded {
+  border-color: rgba(168, 54, 54, 0.7);
+  background: rgba(168, 54, 54, 0.12);
+  color: #7d1f1f;
 }
 
 .wardrobe-controls label {
@@ -2951,6 +3001,57 @@ button:disabled {
   margin: 0;
   color: var(--muted-strong);
   font-size: 0.74rem;
+}
+
+.wardrobe-export-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.wardrobe-export-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.wardrobe-export-preset {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-align: left;
+}
+
+.wardrobe-export-preset.is-active {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.wardrobe-export-preset strong {
+  font-size: 0.74rem;
+}
+
+.wardrobe-export-preset span {
+  color: var(--muted);
+  font-size: 0.67rem;
+  line-height: 1.35;
+}
+
+.wardrobe-export-section {
+  display: grid;
+  gap: 8px;
+}
+
+.wardrobe-export-section .eyebrow {
+  margin-bottom: 0;
+}
+
+@media (max-width: 520px) {
+  .wardrobe-export-presets {
+    grid-template-columns: 1fr;
+  }
 }
 
 .confirm-actions {
