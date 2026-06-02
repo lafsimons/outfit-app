@@ -248,6 +248,35 @@ test("generation excludes Selling and Sold statuses by default", () => {
   assert.equal(isEligibleForGeneration({ id: "wardrobe_status", status: "Wardrobe" }, {}, defaultGenerationLists), true);
 });
 
+test("generation status exclusion blocks explicitly excluded statuses", () => {
+  assert.equal(
+    isEligibleForGeneration(
+      { id: "wardrobe_status", status: "Wardrobe" },
+      {},
+      { ...defaultGenerationLists, Wardrobe: "exclude" }
+    ),
+    false
+  );
+
+  assert.equal(
+    isEligibleForGeneration(
+      { id: "wishlist_status", status: "Wishlist" },
+      {},
+      { ...defaultGenerationLists, Wishlist: "exclude" }
+    ),
+    false
+  );
+
+  assert.equal(
+    isEligibleForGeneration(
+      { id: "wishlist_included", status: "Wishlist" },
+      {},
+      { ...defaultGenerationLists, Wishlist: true }
+    ),
+    true
+  );
+});
+
 test("normalizeOutfitFilters preserves include and exclude outfit filter groups", () => {
   assert.deepEqual(
     normalizeOutfitFilters({

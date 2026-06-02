@@ -20,6 +20,10 @@ export const defaultGenerationLists = {
   Selling: false,
   Sold: false
 };
+
+function isGenerationListExplicitlyExcluded(value) {
+  return value === "exclude";
+}
 export const climateTagOptions = ["Cold", "Warm", "Hot", "Snow", "Rain", "Transitional"];
 export const editableClimateTagOptions = ["Rain", "Snow"];
 export const outfitFilterOptions = {
@@ -266,11 +270,15 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
   const list = normalizeStatus(item.status ?? item.list);
 
   if (Object.hasOwn(generationLists, list)) {
-    return generationLists[list] !== false;
+    return generationLists[list] === true;
   }
 
   if (!itemLists.includes(list)) {
-    return generationLists[defaultItemList] !== false;
+    if (isGenerationListExplicitlyExcluded(generationLists[defaultItemList])) {
+      return false;
+    }
+
+    return generationLists[defaultItemList] === true;
   }
 
   return true;

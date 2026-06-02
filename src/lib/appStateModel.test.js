@@ -143,6 +143,15 @@ test("generation list default merging preserves current behavior", () => {
     Sold: false,
     ArchivedLater: false
   });
+
+  assert.deepEqual(normalizeGenerationLists({ Wishlist: "exclude" }), {
+    Interested: false,
+    Wishlist: "exclude",
+    Incoming: false,
+    Wardrobe: true,
+    Selling: false,
+    Sold: false
+  });
 });
 
 test("hydrated app-state missing fields normalize to current defaults", () => {

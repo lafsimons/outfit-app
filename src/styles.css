@@ -614,9 +614,16 @@ button:disabled {
 .controls-generation-list-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  width: 100%;
   font-size: 0.74rem;
   font-weight: 600;
+}
+
+.controls-generation-list-mark {
+  min-width: 1ch;
+  text-align: right;
 }
 
 .controls-generation-list-option input {

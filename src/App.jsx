@@ -4088,11 +4088,7 @@ export default function App() {
 
   function toggleGenerationList(list) {
     setGenerationLists((current) => {
-      const currentValue = Object.hasOwn(current, list)
-        ? current[list]
-        : !itemLists.includes(list)
-          ? current[defaultItemList] !== false
-          : list === defaultItemList;
+      const currentValue = getGenerationListState(list, current);
 
       return {
         ...current,
@@ -4101,16 +4097,43 @@ export default function App() {
     });
   }
 
-  function isGenerationListEnabled(list) {
-    if (Object.hasOwn(generationLists, list)) {
-      return generationLists[list];
+  function toggleGenerationListWithMode(list, shouldExclude = false) {
+    setGenerationLists((current) => {
+      const nextState = getNextGenerationListState(getGenerationListState(list, current), shouldExclude);
+
+      return {
+        ...current,
+        [list]: nextState
+      };
+    });
+  }
+
+  function getNextGenerationListState(currentValue, shouldExclude = false) {
+    if (shouldExclude) {
+      return currentValue === "exclude" ? false : "exclude";
+    }
+
+    return currentValue === true ? false : true;
+  }
+
+  function getGenerationListState(list, listState = generationLists) {
+    if (Object.hasOwn(listState, list)) {
+      return listState[list];
     }
 
     if (!itemLists.includes(list)) {
-      return generationLists[defaultItemList] !== false;
+      return listState[defaultItemList];
     }
 
     return list === defaultItemList;
+  }
+
+  function isGenerationListEnabled(list) {
+    return getGenerationListState(list) === true;
+  }
+
+  function isGenerationListExcluded(list) {
+    return getGenerationListState(list) === "exclude";
   }
 
   function setAdvancedField(field, value) {
@@ -7014,16 +7037,22 @@ export default function App() {
                   <div className="controls-generation-lists-panel">
                     {itemListOptions.map((list) => {
                       const isSelected = isGenerationListEnabled(list);
+                      const isExcluded = isGenerationListExcluded(list);
 
                       return (
-                        <label key={list} className="controls-generation-list-option">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleGenerationList(list)}
-                          />
+                        <button
+                          key={list}
+                          type="button"
+                          className={`list-toggle controls-generation-list-option ${isSelected ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={(event) => toggleGenerationListWithMode(list, event.shiftKey)}
+                          aria-pressed={isSelected || isExcluded}
+                        >
                           <span>{list}</span>
-                        </label>
+                          <span className="controls-generation-list-mark" aria-hidden="true">
+                            {isSelected ? "✓" : isExcluded ? "X" : ""}
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
