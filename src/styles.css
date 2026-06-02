@@ -659,6 +659,13 @@ button:disabled {
   padding-bottom: 3px;
 }
 
+.controls-window button:focus-visible,
+.controls-window input:focus-visible,
+.controls-window select:focus-visible,
+.controls-window textarea:focus-visible {
+  box-shadow: none;
+}
+
 .outfit-filters-clear-button {
   padding: 4px 7px;
   font-size: 0.68rem;
@@ -1721,6 +1728,13 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.wardrobe-filter-anchor button:focus-visible,
+.wardrobe-filter-anchor input:focus-visible,
+.wardrobe-filter-anchor select:focus-visible,
+.wardrobe-filter-anchor textarea:focus-visible {
+  box-shadow: none;
+}
+
 .wardrobe-manage-anchor {
   position: relative;
   display: inline-flex;
@@ -2727,6 +2741,10 @@ button:disabled {
   border-color: var(--text);
   background: var(--soft);
   color: var(--text);
+}
+
+.outfits-panel-tab:focus-visible {
+  box-shadow: none;
 }
 
 .wardrobe-worth-summary {
