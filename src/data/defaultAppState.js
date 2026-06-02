@@ -56,8 +56,11 @@ const defaultAppState = {
   wardrobeSort: "newest",
   outfitFilters: {
     style: [],
+    styleExcluded: [],
     climate: [],
-    color: []
+    climateExcluded: [],
+    collections: [],
+    collectionsExcluded: []
   },
   fitpics: [],
   windowState: {

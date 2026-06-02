@@ -1284,7 +1284,6 @@ export default function App() {
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
-  const [generationCollections, setGenerationCollections] = useState([]);
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
@@ -1618,14 +1617,24 @@ export default function App() {
   const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
     (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
     0
-  ) + generationCollections.length;
+  );
   const generationSourceItems = useMemo(
-    () => (
-      generationCollections.length
-        ? items.filter((item) => generationCollections.some((collection) => normalizeCollections(item.collections).includes(collection)))
-        : items
-    ),
-    [generationCollections, items]
+    () => items.filter((item) => {
+      const itemCollections = normalizeCollections(item.collections);
+      const includedCollections = outfitFilters.collections ?? [];
+      const excludedCollections = outfitFilters.collectionsExcluded ?? [];
+
+      if (includedCollections.length && !includedCollections.some((collection) => itemCollections.includes(collection))) {
+        return false;
+      }
+
+      if (excludedCollections.length && excludedCollections.some((collection) => itemCollections.includes(collection))) {
+        return false;
+      }
+
+      return true;
+    }),
+    [items, outfitFilters.collections, outfitFilters.collectionsExcluded]
   );
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
@@ -4012,31 +4021,12 @@ export default function App() {
     }));
   }
 
-  function toggleOutfitFilter(group, value) {
-    setOutfitFilters((current) => {
-      const selectedValues = current[group] ?? [];
-      const isSelected = selectedValues.includes(value);
-
-      return {
-        ...current,
-        [group]: isSelected
-          ? selectedValues.filter((selectedValue) => selectedValue !== value)
-          : [...selectedValues, value]
-      };
-    });
-  }
-
-  function toggleGenerationCollection(collection) {
-    setGenerationCollections((current) => (
-      current.includes(collection)
-        ? current.filter((entry) => entry !== collection)
-        : [...current, collection]
-    ));
+  function toggleOutfitFilter(group, value, shouldExclude = false) {
+    setOutfitFilters((current) => toggleMultiFilterValueState(current, group, value, shouldExclude));
   }
 
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
-    setGenerationCollections([]);
   }
 
   async function refreshWeather(locationOverride = weatherLocationDraft) {
@@ -6951,14 +6941,17 @@ export default function App() {
                           <p className="eyebrow">{group}</p>
                           <div className="outfit-filter-options">
                             {options.map((option) => {
-                              const isSelected = outfitFilters[group]?.includes(option);
+                              const isIncluded = getIncludedFilterValues(outfitFilters, group).includes(option);
+                              const isExcluded = getExcludedFilterValues(outfitFilters, group).includes(option);
+                              const isSelected = isIncluded || isExcluded;
 
                               return (
                                 <button
                                   key={option}
                                   type="button"
-                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                  onClick={() => toggleOutfitFilter(group, option)}
+                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => toggleOutfitFilter(group, option, event.shiftKey)}
                                   aria-pressed={isSelected}
                                 >
                                   {option}
@@ -6973,14 +6966,17 @@ export default function App() {
                           <p className="eyebrow">collections</p>
                           <div className="outfit-filter-options">
                             {collectionOptions.map((collection) => {
-                              const isSelected = generationCollections.includes(collection);
+                              const isIncluded = getIncludedFilterValues(outfitFilters, "collections").includes(collection);
+                              const isExcluded = getExcludedFilterValues(outfitFilters, "collections").includes(collection);
+                              const isSelected = isIncluded || isExcluded;
 
                               return (
                                 <button
                                   key={collection}
                                   type="button"
-                                  className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                                  onClick={() => toggleGenerationCollection(collection)}
+                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                  onMouseDown={(event) => event.preventDefault()}
+                                  onClick={(event) => toggleOutfitFilter("collections", collection, event.shiftKey)}
                                   aria-pressed={isSelected}
                                 >
                                   {collection}

@@ -84,30 +84,6 @@ export default function WardrobeSelectionBar({
           >
             Edit
           </button>
-          <button
-            type="button"
-            className={`ghost-button ${activeAction === "status" ? "is-active" : ""}`}
-            onMouseDown={preventPointerFocus}
-            onClick={() => {
-              setMenuOpen(false);
-              setActiveAction((current) => (current === "status" ? null : "status"));
-            }}
-            disabled={!selectedCount}
-          >
-            Status
-          </button>
-          <button
-            type="button"
-            className={`ghost-button ${activeAction === "collections" ? "is-active" : ""}`}
-            onMouseDown={preventPointerFocus}
-            onClick={() => {
-              setMenuOpen(false);
-              setActiveAction((current) => (current === "collections" ? null : "collections"));
-            }}
-            disabled={!selectedCount}
-          >
-            Collections
-          </button>
           <div className="wardrobe-selection-more">
             <button
               type="button"
@@ -132,8 +108,8 @@ export default function WardrobeSelectionBar({
                     className={`ghost-button wardrobe-selection-menu-button ${activeAction === "status" ? "is-active" : ""}`}
                     onMouseDown={preventPointerFocus}
                     onClick={() => {
-                      setActiveAction("status");
-                      setMenuOpen(false);
+                      setActiveAction((current) => (current === "status" ? null : "status"));
+                      setMenuOpen(true);
                     }}
                     disabled={!selectedCount}
                   >
@@ -144,14 +120,112 @@ export default function WardrobeSelectionBar({
                     className={`ghost-button wardrobe-selection-menu-button ${activeAction === "collections" ? "is-active" : ""}`}
                     onMouseDown={preventPointerFocus}
                     onClick={() => {
-                      setActiveAction("collections");
-                      setMenuOpen(false);
+                      setActiveAction((current) => (current === "collections" ? null : "collections"));
+                      setMenuOpen(true);
                     }}
                     disabled={!selectedCount}
                   >
                     Collections
                   </button>
                 </div>
+
+                {activeAction ? (
+                  <>
+                    <div className="wardrobe-selection-menu-separator" aria-hidden="true" />
+                    <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
+                      {activeAction === "status" ? (
+                        <>
+                          <p className="wardrobe-bulk-summary">{selectedCount} item{selectedCount === 1 ? "" : "s"} selected</p>
+                          <div className="wardrobe-bulk-group">
+                            <label className="wardrobe-bulk-tag-control">
+                              <span>Assign status</span>
+                              <select value={bulkListDraft} onChange={(event) => setBulkListDraft(event.target.value)}>
+                                {itemListOptions.map((list) => (
+                                  <option key={list} value={list}>{list}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onMouseDown={preventPointerFocus}
+                              onClick={() => {
+                                onMoveToList(bulkListDraft);
+                                setActiveAction(null);
+                                setMenuOpen(false);
+                              }}
+                              disabled={!selectedCount || !bulkListDraft}
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                      {activeAction === "collections" ? (
+                        <>
+                          <p className="wardrobe-bulk-summary">{selectedCount} item{selectedCount === 1 ? "" : "s"} selected</p>
+                          <div className="wardrobe-bulk-group wardrobe-bulk-collection-group">
+                            <label className="wardrobe-bulk-tag-control">
+                              <span>Collection</span>
+                              <input
+                                list="bulk-selection-collection-options"
+                                value={bulkCollectionDraft}
+                                onChange={(event) => setBulkCollectionDraft(event.target.value)}
+                                placeholder="Summer, Travel, Workwear..."
+                              />
+                            </label>
+                            <datalist id="bulk-selection-collection-options">
+                              {collectionOptions.map((collection) => (
+                                <option key={collection} value={collection} />
+                              ))}
+                            </datalist>
+                            <div className="wardrobe-bulk-group wardrobe-bulk-collection-actions">
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onMouseDown={preventPointerFocus}
+                                onClick={() => {
+                                  onAddCollection(bulkCollectionDraft);
+                                  setActiveAction(null);
+                                  setMenuOpen(false);
+                                }}
+                                disabled={!selectedCount || !bulkCollectionDraft.trim()}
+                              >
+                                Add
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onMouseDown={preventPointerFocus}
+                                onClick={() => {
+                                  onRemoveCollection(bulkCollectionDraft);
+                                  setActiveAction(null);
+                                  setMenuOpen(false);
+                                }}
+                                disabled={!selectedCount || !bulkCollectionDraft.trim()}
+                              >
+                                Remove
+                              </button>
+                              <button
+                                type="button"
+                                className="ghost-button"
+                                onMouseDown={preventPointerFocus}
+                                onClick={() => {
+                                  onClearCollections();
+                                  setActiveAction(null);
+                                  setMenuOpen(false);
+                                }}
+                                disabled={!selectedCount}
+                              >
+                                Clear All
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  </>
+                ) : null}
 
                 <div className="wardrobe-selection-menu-separator" aria-hidden="true" />
 
@@ -207,100 +281,6 @@ export default function WardrobeSelectionBar({
           </div>
         </div>
       </div>
-      {activeAction ? (
-        <div className="wardrobe-bulk-actions" aria-label="Selected item actions">
-          {activeAction === "status" ? (
-            <>
-              <p className="wardrobe-bulk-summary">{selectedCount} item{selectedCount === 1 ? "" : "s"} selected</p>
-              <div className="wardrobe-bulk-group">
-                <label className="wardrobe-bulk-tag-control">
-                  <span>Assign status</span>
-                  <select value={bulkListDraft} onChange={(event) => setBulkListDraft(event.target.value)}>
-                    {itemListOptions.map((list) => (
-                      <option key={list} value={list}>{list}</option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onMouseDown={preventPointerFocus}
-                  onClick={() => {
-                    onMoveToList(bulkListDraft);
-                    setActiveAction(null);
-                    setMenuOpen(false);
-                  }}
-                  disabled={!selectedCount || !bulkListDraft}
-                >
-                  Apply
-                </button>
-              </div>
-            </>
-          ) : null}
-          {activeAction === "collections" ? (
-            <>
-              <p className="wardrobe-bulk-summary">{selectedCount} item{selectedCount === 1 ? "" : "s"} selected</p>
-              <div className="wardrobe-bulk-group wardrobe-bulk-collection-group">
-                <label className="wardrobe-bulk-tag-control">
-                  <span>Collection</span>
-                  <input
-                    list="bulk-selection-collection-options"
-                    value={bulkCollectionDraft}
-                    onChange={(event) => setBulkCollectionDraft(event.target.value)}
-                    placeholder="Summer, Travel, Workwear..."
-                  />
-                </label>
-                <datalist id="bulk-selection-collection-options">
-                  {collectionOptions.map((collection) => (
-                    <option key={collection} value={collection} />
-                  ))}
-                </datalist>
-                <div className="wardrobe-bulk-group wardrobe-bulk-collection-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onMouseDown={preventPointerFocus}
-                    onClick={() => {
-                      onAddCollection(bulkCollectionDraft);
-                      setActiveAction(null);
-                      setMenuOpen(false);
-                    }}
-                    disabled={!selectedCount || !bulkCollectionDraft.trim()}
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onMouseDown={preventPointerFocus}
-                    onClick={() => {
-                      onRemoveCollection(bulkCollectionDraft);
-                      setActiveAction(null);
-                      setMenuOpen(false);
-                    }}
-                    disabled={!selectedCount || !bulkCollectionDraft.trim()}
-                  >
-                    Remove
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onMouseDown={preventPointerFocus}
-                    onClick={() => {
-                      onClearCollections();
-                      setActiveAction(null);
-                      setMenuOpen(false);
-                    }}
-                    disabled={!selectedCount}
-                  >
-                    Clear All
-                  </button>
-                </div>
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

@@ -2357,11 +2357,18 @@ button:disabled {
 
 .active-filter-chip.is-excluded {
   border-style: dashed;
-  background: color-mix(in srgb, var(--surface-solid) 82%, var(--soft) 18%);
+  border-color: rgba(168, 54, 54, 0.38);
+  background: rgba(168, 54, 54, 0.08);
 }
 
 .list-toggle.is-excluded {
   border-style: dashed;
+}
+
+.list-toggle.is-active.is-excluded {
+  border-color: rgba(168, 54, 54, 0.7);
+  background: rgba(168, 54, 54, 0.12);
+  color: #7d1f1f;
 }
 
 .wardrobe-controls label {

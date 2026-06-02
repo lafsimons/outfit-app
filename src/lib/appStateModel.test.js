@@ -175,7 +175,14 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
         Sold: false
       },
       generationMode: "guided",
-      outfitFilters: { style: [], climate: [] },
+      outfitFilters: {
+        style: [],
+        styleExcluded: [],
+        climate: [],
+        climateExcluded: [],
+        collections: [],
+        collectionsExcluded: []
+      },
       weatherSettings: { locationName: "", latitude: null, longitude: null },
       weatherLocationDraft: "",
       weatherData: null,
@@ -269,7 +276,14 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     ArchivedLater: false
   });
   assert.equal(hydrated.generationMode, "guided");
-  assert.deepEqual(hydrated.outfitFilters, { style: ["Casual", "Casual"], climate: ["Rain"] });
+  assert.deepEqual(hydrated.outfitFilters, {
+    style: ["Casual", "Casual"],
+    styleExcluded: [],
+    climate: ["Rain"],
+    climateExcluded: [],
+    collections: [],
+    collectionsExcluded: []
+  });
   assert.deepEqual(hydrated.wardrobeFilters, {
     brand: ["Our Legacy"],
     brandExcluded: [],
