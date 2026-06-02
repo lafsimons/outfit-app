@@ -3149,12 +3149,52 @@ button:disabled {
 }
 
 .wardrobe-item-preview-image {
+  position: relative;
   min-height: min(72vh, 720px);
   display: grid;
   place-items: center;
   padding: 20px;
   border-radius: var(--radius-panel);
   background: linear-gradient(180deg, var(--preview-start), var(--preview-end));
+}
+
+.preview-overlay-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.preview-overlay-nav:hover {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.preview-overlay-nav:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.preview-overlay-nav span {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.preview-overlay-nav-left {
+  left: 14px;
+}
+
+.preview-overlay-nav-right {
+  right: 14px;
 }
 
 .wardrobe-item-preview-image .managed-image,
@@ -4027,7 +4067,7 @@ button:disabled {
 
   .wardrobe-item-preview-image {
     min-height: 220px;
-    padding: 14px;
+    padding: 14px 52px;
   }
 
   .wardrobe-item-preview-image .managed-image,

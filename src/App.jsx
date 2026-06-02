@@ -173,6 +173,10 @@ import {
   normalizeImageScale,
   stripViteHash
 } from "./lib/imagePresentation";
+import {
+  getWardrobePreviewDirectionForKey,
+  getWardrobePreviewNavigation
+} from "./lib/wardrobePreviewNavigation";
 
 const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
   eager: true,
@@ -1121,6 +1125,15 @@ function normalizeWeatherSettings(settings) {
   };
 }
 
+function isEditableKeyboardTarget(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  const tagName = target.tagName;
+  return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT";
+}
+
 function getWeatherConditionLabel(code) {
   if (code === 0) return "Clear";
   if ([1, 2, 3].includes(code)) return "Cloudy";
@@ -1443,32 +1456,6 @@ export default function App() {
     activeElement.blur();
     pointerActivatedControlRef.current = null;
   }
-  const wardrobePreviewMeta = useMemo(() => {
-    if (!wardrobePreviewItem) {
-      return null;
-    }
-
-    const valueLabel = getNumericValue(wardrobePreviewItem.value) > 0
-      ? `Value ${formatCurrency(wardrobePreviewItem.value)}`
-      : null;
-    const quantityLabel = Number(wardrobePreviewItem.quantity) > 1
-      ? `Qty ${Math.round(Number(wardrobePreviewItem.quantity))}`
-      : null;
-
-    return [
-      wardrobePreviewItem.type?.trim() || null,
-      wardrobePreviewItem.size?.trim() || null,
-      valueLabel,
-      normalizeStatus(wardrobePreviewItem.status ?? wardrobePreviewItem.list),
-      quantityLabel,
-      normalizeCollections(wardrobePreviewItem.collections).length
-        ? normalizeCollections(wardrobePreviewItem.collections).join(", ")
-        : null,
-      excluded[wardrobePreviewItem.id] ? "Excluded from generation" : null
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }, [excluded, wardrobePreviewItem]);
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
 
   useEffect(() => {
@@ -2401,6 +2388,10 @@ export default function App() {
     () => visibleWardrobeItems.map((item) => item.id),
     [visibleWardrobeItems]
   );
+  const wardrobePreviewNavigation = useMemo(
+    () => getWardrobePreviewNavigation(visibleWardrobeItemIds, wardrobePreviewItemId),
+    [visibleWardrobeItemIds, wardrobePreviewItemId]
+  );
   const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
   const hasWardrobeSelection = selectedWardrobeItemCount > 0;
   const favoriteWardrobeItemCount = useMemo(
@@ -2449,6 +2440,50 @@ export default function App() {
 
     return { rows, totalValue, totalRetailValue, totalCount, maxValue };
   }, [visibleWardrobeItems]);
+  const wardrobePreviewPositionLabel = useMemo(() => {
+    if (wardrobePreviewNavigation.currentIndex < 0 || wardrobePreviewNavigation.totalCount <= 0) {
+      return null;
+    }
+
+    return `${wardrobePreviewNavigation.currentIndex + 1} of ${wardrobePreviewNavigation.totalCount}`;
+  }, [wardrobePreviewNavigation.currentIndex, wardrobePreviewNavigation.totalCount]);
+
+  useEffect(() => {
+    if (!wardrobePreviewItemId) {
+      return;
+    }
+
+    if (!visibleWardrobeItemIds.includes(wardrobePreviewItemId)) {
+      setWardrobePreviewItemId(null);
+    }
+  }, [visibleWardrobeItemIds, wardrobePreviewItemId]);
+  const wardrobePreviewMeta = useMemo(() => {
+    if (!wardrobePreviewItem) {
+      return null;
+    }
+
+    const valueLabel = getNumericValue(wardrobePreviewItem.value) > 0
+      ? `Value ${formatCurrency(wardrobePreviewItem.value)}`
+      : null;
+    const quantityLabel = Number(wardrobePreviewItem.quantity) > 1
+      ? `Qty ${Math.round(Number(wardrobePreviewItem.quantity))}`
+      : null;
+
+    return [
+      wardrobePreviewPositionLabel,
+      wardrobePreviewItem.type?.trim() || null,
+      wardrobePreviewItem.size?.trim() || null,
+      valueLabel,
+      normalizeStatus(wardrobePreviewItem.status ?? wardrobePreviewItem.list),
+      quantityLabel,
+      normalizeCollections(wardrobePreviewItem.collections).length
+        ? normalizeCollections(wardrobePreviewItem.collections).join(", ")
+        : null,
+      excluded[wardrobePreviewItem.id] ? "Excluded from generation" : null
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }, [excluded, wardrobePreviewItem, wardrobePreviewPositionLabel]);
   const dashboardWorth = useMemo(() => {
     const categories = garmentTypes;
     const byCategory = Object.fromEntries(
@@ -2858,6 +2893,23 @@ export default function App() {
 
   useEffect(() => {
     function handleDocumentKeyDown(event) {
+      if (wardrobePreviewItemId) {
+        const navigationDirection = getWardrobePreviewDirectionForKey(event);
+
+        if (navigationDirection && !isEditableKeyboardTarget(event.target)) {
+          const nextItemId = navigationDirection === "previous"
+            ? wardrobePreviewNavigation.previousItemId
+            : wardrobePreviewNavigation.nextItemId;
+
+          if (nextItemId) {
+            event.preventDefault();
+            blurRetainedPointerFocus();
+            setWardrobePreviewItemId(nextItemId);
+            return;
+          }
+        }
+      }
+
       if (event.key !== "Escape") {
         return;
       }
@@ -2949,6 +3001,8 @@ export default function App() {
     editingId,
     bulkMetadataEditorOpen,
     fitpicPreview,
+    wardrobePreviewNavigation.nextItemId,
+    wardrobePreviewNavigation.previousItemId,
     wardrobePreviewItemId,
     selectedWardrobeItemCount,
     wardrobeFiltersOpen,
@@ -3648,6 +3702,18 @@ export default function App() {
 
   function closeWardrobePreview() {
     setWardrobePreviewItemId(null);
+  }
+
+  function showPreviousWardrobePreviewItem() {
+    if (wardrobePreviewNavigation.previousItemId) {
+      setWardrobePreviewItemId(wardrobePreviewNavigation.previousItemId);
+    }
+  }
+
+  function showNextWardrobePreviewItem() {
+    if (wardrobePreviewNavigation.nextItemId) {
+      setWardrobePreviewItemId(wardrobePreviewNavigation.nextItemId);
+    }
   }
 
   function handleWardrobePreviewDoubleClick(item, event) {
@@ -7631,12 +7697,30 @@ export default function App() {
           {wardrobePreviewItem ? (
             <div className="wardrobe-item-preview-content">
               <div className="wardrobe-item-preview-image">
+                <button
+                  type="button"
+                  className="preview-overlay-nav preview-overlay-nav-left"
+                  onClick={showPreviousWardrobePreviewItem}
+                  aria-label="Previous visible wardrobe item"
+                  title="Previous item"
+                >
+                  <span aria-hidden="true">‹</span>
+                </button>
                 <ManagedItemImage
                   item={wardrobePreviewItem}
                   alt={buildDisplayName(wardrobePreviewItem)}
                   className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
                 />
+                <button
+                  type="button"
+                  className="preview-overlay-nav preview-overlay-nav-right"
+                  onClick={showNextWardrobePreviewItem}
+                  aria-label="Next visible wardrobe item"
+                  title="Next item"
+                >
+                  <span aria-hidden="true">›</span>
+                </button>
               </div>
               {wardrobePreviewItem.description?.trim() ? (
                 <div className="wardrobe-item-preview-copy">
