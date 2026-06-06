@@ -25,6 +25,10 @@ test("saved outfit default field filling preserves current behavior", () => {
       outfitUuid: "generated-outfit-uuid",
       name: "Saved outfit",
       description: "",
+      tags: [],
+      favorite: false,
+      createdAt: null,
+      updatedAt: null,
       outfit: {},
       outfitItemUuids: {},
       layering: false
@@ -45,6 +49,10 @@ test("saved outfit normalization preserves existing outfitUuid", () => {
       outfitUuid: "stable-outfit-uuid",
       name: "Saved outfit",
       description: "",
+      tags: [],
+      favorite: false,
+      createdAt: null,
+      updatedAt: null,
       outfit: {},
       outfitItemUuids: {},
       layering: false
@@ -66,8 +74,39 @@ test("saved outfit normalization preserves additive outfitItemUuids sidecars", (
       outfitUuid: "generated-outfit-uuid",
       name: "Saved outfit",
       description: "",
+      tags: [],
+      favorite: false,
+      createdAt: null,
+      updatedAt: null,
       outfit: { TopInner: "top_1" },
       outfitItemUuids: { TopInner: "uuid_top_1", Bottom: null },
+      layering: false
+    }
+  );
+});
+
+test("saved outfit normalization preserves tags favorite and timestamps", () => {
+  assert.deepEqual(
+    normalizeSavedOutfit({
+      id: "saved_1",
+      tags: [" Evening ", "evening", "Summer"],
+      favorite: 1,
+      createdAt: "2024-05-01T00:00:00.000Z",
+      updatedAt: "2024-05-02T00:00:00.000Z"
+    }, {
+      createOutfitUuid: () => "generated-outfit-uuid"
+    }),
+    {
+      id: "saved_1",
+      outfitUuid: "generated-outfit-uuid",
+      name: "Saved outfit",
+      description: "",
+      tags: ["Evening", "Summer"],
+      favorite: true,
+      createdAt: "2024-05-01T00:00:00.000Z",
+      updatedAt: "2024-05-02T00:00:00.000Z",
+      outfit: {},
+      outfitItemUuids: {},
       layering: false
     }
   );
@@ -349,8 +388,13 @@ test("hydrated app-state normalizes fitpics additively for legacy and metadata-r
         imageData: "data:image/png;base64,rich",
         createdAt: "2024-03-01T00:00:00.000Z",
         importedAt: "2024-03-02T00:00:00.000Z",
+        fitDate: "2024-03-03T00:00:00.000Z",
         sourceOriginalFilename: "rich.png",
         sourceFileExtension: "png",
+        linkedItemUuids: ["item-uuid-1"],
+        linkedItemIds: ["item_1"],
+        savedOutfitUuid: "outfit-uuid-1",
+        savedOutfitId: "saved_1",
         tags: ["  Spring ", "spring", ""],
         favorite: 1
       }
@@ -365,9 +409,15 @@ test("hydrated app-state normalizes fitpics additively for legacy and metadata-r
   assert.equal(hydrated.fitpics[0].fitpicUuid.length > 0, true);
   assert.equal(hydrated.fitpics[0].images.preview, "data:image/png;base64,legacy");
   assert.equal(hydrated.fitpics[0].importedAt, "2024-02-01T00:00:00.000Z");
+  assert.equal(hydrated.fitpics[0].fitDate, "2024-02-01T00:00:00.000Z");
   assert.equal(hydrated.fitpics[1].fitpicUuid, "fitpic-uuid-2");
   assert.deepEqual(hydrated.fitpics[1].tags, ["Spring"]);
   assert.equal(hydrated.fitpics[1].favorite, true);
+  assert.equal(hydrated.fitpics[1].fitDate, "2024-03-03T00:00:00.000Z");
+  assert.deepEqual(hydrated.fitpics[1].linkedItemUuids, ["item-uuid-1"]);
+  assert.deepEqual(hydrated.fitpics[1].linkedItemIds, ["item_1"]);
+  assert.equal(hydrated.fitpics[1].savedOutfitUuid, "outfit-uuid-1");
+  assert.equal(hydrated.fitpics[1].savedOutfitId, "saved_1");
   assert.equal(hydrated.fitpics[1].sourceFileExtension, "png");
 });
 
@@ -483,6 +533,10 @@ test("legacy id-only saved outfit hydration preserves outfits and backfills side
       outfitUuid: "generated-outfit-uuid",
       name: "Saved outfit",
       description: "",
+      tags: [],
+      favorite: false,
+      createdAt: null,
+      updatedAt: null,
       outfit: { TopInner: "top_1", Footwear: "shoe_1" },
       outfitItemUuids: { TopInner: "uuid_top_1", Footwear: "uuid_shoe_1" },
       layering: true

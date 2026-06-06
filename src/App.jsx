@@ -4666,12 +4666,18 @@ export default function App() {
         return current.filter((savedOutfit) => savedOutfit.id !== existingSavedOutfit.id);
       }
 
+      const timestamp = new Date().toISOString();
+
       return [
         normalizeSavedOutfit({
           id: `saved_outfit_${Date.now()}`,
           outfitUuid: createOutfitUuid(),
           name: createSavedOutfitName(current),
           description: "",
+          tags: [],
+          favorite: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
           outfit: { ...outfit },
           outfitItemUuids: syncOutfitItemUuids(outfit, outfitItemUuids, itemsById),
           layering
@@ -5755,6 +5761,7 @@ export default function App() {
 
     const trimmedName = savedOutfitDraft.name.trim();
     const trimmedDescription = savedOutfitDraft.description.trim();
+    const updatedAt = new Date().toISOString();
 
     setSavedOutfits((current) =>
       current.map((savedOutfit) =>
@@ -5762,7 +5769,8 @@ export default function App() {
           ? {
               ...savedOutfit,
               name: trimmedName || savedOutfit.name,
-              description: trimmedDescription
+              description: trimmedDescription,
+              updatedAt
             }
           : savedOutfit
       )

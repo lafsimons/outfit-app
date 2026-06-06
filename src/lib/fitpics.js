@@ -13,6 +13,11 @@ function normalizeStringField(value) {
   return typeof value === "string" ? value : "";
 }
 
+function normalizeOptionalTimestamp(value) {
+  const timestamp = normalizeTimestampLike(value);
+  return timestamp || null;
+}
+
 function normalizeBoolean(value) {
   return Boolean(value);
 }
@@ -41,6 +46,31 @@ function normalizeTagList(tags) {
     normalized.push(trimmed);
     return normalized;
   }, []);
+}
+
+function normalizeStringList(values) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return values.reduce((normalized, value) => {
+    const trimmed = normalizeStringField(value).trim();
+
+    if (!trimmed || seen.has(trimmed)) {
+      return normalized;
+    }
+
+    seen.add(trimmed);
+    normalized.push(trimmed);
+    return normalized;
+  }, []);
+}
+
+function normalizeNullableString(value) {
+  const trimmed = normalizeStringField(value).trim();
+  return trimmed || null;
 }
 
 function normalizeImages(images, imageData) {
@@ -83,6 +113,13 @@ export function normalizeFitpic(
   const createdAt = normalizeTimestampLike(fitpic?.createdAt) || fallbackTimestamp;
   const updatedAt = normalizeTimestampLike(fitpic?.updatedAt) || createdAt;
   const imageData = normalizeStringField(fitpic?.imageData) || normalizeStringField(fitpic?.images?.preview);
+  const importedAt = normalizeTimestampLike(fitpic?.importedAt) || createdAt;
+  const fitDate = normalizeOptionalTimestamp(fitpic?.fitDate)
+    ?? normalizeOptionalTimestamp(fitpic?.sourceCapturedAt)
+    ?? normalizeOptionalTimestamp(fitpic?.sourceOriginalCreatedAt)
+    ?? normalizeOptionalTimestamp(fitpic?.importedAt)
+    ?? normalizeOptionalTimestamp(fitpic?.createdAt)
+    ?? null;
   const name = normalizeStringField(fitpic?.name).trim()
     || normalizeStringField(fitpic?.title).trim()
     || getFitpicNameFromFilename(fitpic?.sourceOriginalFilename);
@@ -97,9 +134,14 @@ export function normalizeFitpic(
     favorite: normalizeBoolean(fitpic?.favorite),
     createdAt,
     updatedAt,
+    fitDate,
     imageData,
     images: normalizeImages(fitpic?.images, imageData),
-    ...normalizeImportMetadataFields(fitpic, normalizeTimestampLike(fitpic?.importedAt) || createdAt),
+    linkedItemUuids: normalizeStringList(fitpic?.linkedItemUuids),
+    linkedItemIds: normalizeStringList(fitpic?.linkedItemIds),
+    savedOutfitUuid: normalizeNullableString(fitpic?.savedOutfitUuid),
+    savedOutfitId: normalizeNullableString(fitpic?.savedOutfitId),
+    ...normalizeImportMetadataFields(fitpic, importedAt),
     ...normalizeExtendedImageMetadataFields(fitpic)
   };
 }
@@ -179,6 +221,9 @@ export async function replaceFitpicImageFromFile(
   }
 ) {
   const updatedAt = now();
+  const currentFitpic = normalizeFitpic(fitpic, {
+    fallbackTimestamp: normalizeTimestampLike(fitpic?.createdAt) || updatedAt
+  });
   const importMetadata = await readImageFileMetadata(file, {
     now: () => updatedAt,
     readFileAsDataUrl,
@@ -189,6 +234,7 @@ export async function replaceFitpicImageFromFile(
   return normalizeFitpic(
     {
       ...fitpic,
+      fitDate: currentFitpic.fitDate,
       ...importMetadata,
       imageData,
       images: {

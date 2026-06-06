@@ -309,6 +309,10 @@ test("prepareBackupImport preserves additive outfitItemUuids metadata and backfi
       savedOutfits: [
         {
           id: "saved_1",
+          tags: ["Evening"],
+          favorite: true,
+          createdAt: "2024-02-01T00:00:00.000Z",
+          updatedAt: "2024-02-02T00:00:00.000Z",
           outfit: { TopInner: "legacy_top", Bottom: "legacy_bottom" },
           outfitItemUuids: { Bottom: "stable-bottom-uuid" },
           layering: true
@@ -336,6 +340,10 @@ test("prepareBackupImport preserves additive outfitItemUuids metadata and backfi
     Bottom: "stable-bottom-uuid"
   });
   assert.equal(prepared.appState.savedOutfits[0].outfitUuid, "generated-outfit-uuid");
+  assert.deepEqual(prepared.appState.savedOutfits[0].tags, ["Evening"]);
+  assert.equal(prepared.appState.savedOutfits[0].favorite, true);
+  assert.equal(prepared.appState.savedOutfits[0].createdAt, "2024-02-01T00:00:00.000Z");
+  assert.equal(prepared.appState.savedOutfits[0].updatedAt, "2024-02-02T00:00:00.000Z");
   assert.equal(prepared.backup.appState.savedOutfits[0].outfitUuid, "generated-outfit-uuid");
 });
 
@@ -370,6 +378,35 @@ test("prepareBackupImport preserves an existing saved outfitUuid", async () => {
 
   assert.equal(prepared.appState.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
   assert.equal(prepared.backup.appState.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
+});
+
+test("prepareBackupImport preserves additive fitpic relationship fields and fitDate", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [],
+    appState: {
+      fitpics: [
+        {
+          id: "fitpic_1",
+          imageData: "data:image/png;base64,legacy",
+          createdAt: "2024-03-01T00:00:00.000Z",
+          fitDate: "2024-03-05T00:00:00.000Z",
+          linkedItemUuids: ["item-uuid-1"],
+          linkedItemIds: ["item_1"],
+          savedOutfitUuid: "outfit-uuid-1",
+          savedOutfitId: "saved_1"
+        }
+      ]
+    }
+  });
+
+  assert.equal(prepared.appState.fitpics[0].fitDate, "2024-03-05T00:00:00.000Z");
+  assert.deepEqual(prepared.appState.fitpics[0].linkedItemUuids, ["item-uuid-1"]);
+  assert.deepEqual(prepared.appState.fitpics[0].linkedItemIds, ["item_1"]);
+  assert.equal(prepared.appState.fitpics[0].savedOutfitUuid, "outfit-uuid-1");
+  assert.equal(prepared.appState.fitpics[0].savedOutfitId, "saved_1");
+  assert.equal(prepared.backup.appState.fitpics[0].fitDate, "2024-03-05T00:00:00.000Z");
 });
 
 test("prepareBackupImport normalizes persisted wardrobe filters in app-state", async () => {

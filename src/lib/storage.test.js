@@ -323,6 +323,51 @@ test("IndexedDB upgrade creates sync stores without breaking existing stores", a
   assert.deepEqual(storeNames, ["appState", "items", "syncMetadata", "syncState"]);
 });
 
+test("appState save and load preserves additive fitpic and saved outfit secondary-entity fields", async () => {
+  await saveAppState({
+    savedOutfits: [
+      {
+        id: "saved_1",
+        outfitUuid: "outfit-uuid-1",
+        name: "Saved outfit",
+        description: "",
+        tags: ["Evening"],
+        favorite: true,
+        createdAt: "2024-04-01T00:00:00.000Z",
+        updatedAt: "2024-04-02T00:00:00.000Z",
+        outfit: { TopInner: "top_1" },
+        outfitItemUuids: { TopInner: "item-uuid-1" },
+        layering: false
+      }
+    ],
+    fitpics: [
+      {
+        id: "fitpic_1",
+        fitpicUuid: "fitpic-uuid-1",
+        name: "Fitpic",
+        imageData: "data:image/png;base64,fitpic",
+        fitDate: "2024-03-01T00:00:00.000Z",
+        linkedItemUuids: ["item-uuid-1"],
+        linkedItemIds: ["top_1"],
+        savedOutfitUuid: "outfit-uuid-1",
+        savedOutfitId: "saved_1"
+      }
+    ]
+  });
+
+  const appState = await loadAppState();
+
+  assert.deepEqual(appState.savedOutfits[0].tags, ["Evening"]);
+  assert.equal(appState.savedOutfits[0].favorite, true);
+  assert.equal(appState.savedOutfits[0].createdAt, "2024-04-01T00:00:00.000Z");
+  assert.equal(appState.savedOutfits[0].updatedAt, "2024-04-02T00:00:00.000Z");
+  assert.equal(appState.fitpics[0].fitDate, "2024-03-01T00:00:00.000Z");
+  assert.deepEqual(appState.fitpics[0].linkedItemUuids, ["item-uuid-1"]);
+  assert.deepEqual(appState.fitpics[0].linkedItemIds, ["top_1"]);
+  assert.equal(appState.fitpics[0].savedOutfitUuid, "outfit-uuid-1");
+  assert.equal(appState.fitpics[0].savedOutfitId, "saved_1");
+});
+
 test("deviceId is created and then reused", async () => {
   const firstDeviceId = await getOrCreateDeviceId();
   const secondDeviceId = await getOrCreateDeviceId();
