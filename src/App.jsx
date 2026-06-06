@@ -128,7 +128,9 @@ import {
 } from "./lib/fitpicEditorModel";
 import {
   filterAndSortFitpics,
-  getFitpicLinkedItemFilterOptions
+  getFitpicLinkedItemFilterOptions,
+  getFitpicPreviewDirectionForKey,
+  getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
 import {
   filterAndSortSavedOutfits,
@@ -1513,6 +1515,10 @@ export default function App() {
   const visibleFitpicIds = useMemo(
     () => visibleFitpics.map((fitpic) => fitpic.id),
     [visibleFitpics]
+  );
+  const fitpicPreviewNavigation = useMemo(
+    () => getFitpicPreviewNavigation(visibleFitpicIds, fitpicPreview?.id ?? null),
+    [fitpicPreview?.id, visibleFitpicIds]
   );
   const hasActiveFitpicControls = Boolean(
     fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
@@ -3141,6 +3147,26 @@ export default function App() {
         }
       }
 
+      if (fitpicPreview) {
+        const navigationDirection = getFitpicPreviewDirectionForKey(event);
+
+        if (navigationDirection && !isEditableKeyboardTarget(event.target)) {
+          const nextFitpicId = navigationDirection === "previous"
+            ? fitpicPreviewNavigation.previousFitpicId
+            : fitpicPreviewNavigation.nextFitpicId;
+          const nextFitpic = nextFitpicId
+            ? fitpics.find((fitpic) => fitpic.id === nextFitpicId) ?? null
+            : null;
+
+          if (nextFitpic) {
+            event.preventDefault();
+            blurRetainedPointerFocus();
+            setFitpicPreview(nextFitpic);
+            return;
+          }
+        }
+      }
+
       if (event.key !== "Escape") {
         return;
       }
@@ -3248,6 +3274,8 @@ export default function App() {
     fitpicPreview,
     selectedFitpicCount,
     selectedSavedOutfitCount,
+    fitpicPreviewNavigation.nextFitpicId,
+    fitpicPreviewNavigation.previousFitpicId,
     wardrobePreviewNavigation.nextItemId,
     wardrobePreviewNavigation.previousItemId,
     wardrobePreviewItemId,
@@ -6621,6 +6649,24 @@ export default function App() {
     setFitpicPreview(fitpic);
   }
 
+  function stepFitpicPreview(direction) {
+    const nextFitpicId = direction === "previous"
+      ? fitpicPreviewNavigation.previousFitpicId
+      : fitpicPreviewNavigation.nextFitpicId;
+
+    if (!nextFitpicId) {
+      return;
+    }
+
+    const nextFitpic = fitpics.find((fitpic) => fitpic.id === nextFitpicId) ?? null;
+
+    if (!nextFitpic) {
+      return;
+    }
+
+    setFitpicPreview(nextFitpic);
+  }
+
   function startEditFitpic(fitpic) {
     closeUtilityWindows();
     setFitpicPreview(null);
@@ -8659,6 +8705,22 @@ export default function App() {
           onClose={() => setFitpicPreview(null)}
           actions={fitpicPreview ? (
             <>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => stepFitpicPreview("previous")}
+                disabled={!fitpicPreviewNavigation.previousFitpicId}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => stepFitpicPreview("next")}
+                disabled={!fitpicPreviewNavigation.nextFitpicId}
+              >
+                Next
+              </button>
               <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpicPreview)}>
                 Edit
               </button>

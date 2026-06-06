@@ -78,6 +78,43 @@ export function fitpicMatchesLinkedItemFilter(fitpic, filterValue, items = []) {
     );
 }
 
+export function getFitpicPreviewNavigation(visibleFitpicIds = [], currentFitpicId) {
+  const orderedIds = Array.isArray(visibleFitpicIds) ? visibleFitpicIds.filter(Boolean) : [];
+  const currentIndex = orderedIds.indexOf(currentFitpicId);
+
+  if (currentIndex === -1) {
+    return {
+      currentIndex: -1,
+      totalCount: orderedIds.length,
+      previousFitpicId: null,
+      nextFitpicId: null
+    };
+  }
+
+  return {
+    currentIndex,
+    totalCount: orderedIds.length,
+    previousFitpicId: orderedIds[currentIndex - 1] ?? null,
+    nextFitpicId: orderedIds[currentIndex + 1] ?? null
+  };
+}
+
+export function getFitpicPreviewDirectionForKey(eventLike) {
+  if (!eventLike || eventLike.altKey || eventLike.ctrlKey || eventLike.metaKey || eventLike.shiftKey) {
+    return null;
+  }
+
+  if (eventLike.key === "ArrowLeft") {
+    return "previous";
+  }
+
+  if (eventLike.key === "ArrowRight") {
+    return "next";
+  }
+
+  return null;
+}
+
 export function filterAndSortFitpics(
   fitpics = [],
   {

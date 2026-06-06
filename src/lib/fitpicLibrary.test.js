@@ -5,7 +5,9 @@ import {
   buildFitpicSearchText,
   filterAndSortFitpics,
   fitpicMatchesLinkedItemFilter,
-  getFitpicLinkedItemFilterOptions
+  getFitpicLinkedItemFilterOptions,
+  getFitpicPreviewDirectionForKey,
+  getFitpicPreviewNavigation
 } from "./fitpicLibrary.js";
 
 const items = [
@@ -102,4 +104,43 @@ test("title sorting and linked item filtering are fitpics-local behaviors", () =
   );
 
   assert.deepEqual(sorted.map((fitpic) => fitpic.id), ["fitpic_2"]);
+});
+
+test("fitpic preview navigation follows the current visible order without wrapping", () => {
+  assert.deepEqual(getFitpicPreviewNavigation(["fitpic_3", "fitpic_1", "fitpic_2"], "fitpic_1"), {
+    currentIndex: 1,
+    totalCount: 3,
+    previousFitpicId: "fitpic_3",
+    nextFitpicId: "fitpic_2"
+  });
+
+  assert.deepEqual(getFitpicPreviewNavigation(["fitpic_3", "fitpic_1", "fitpic_2"], "fitpic_3"), {
+    currentIndex: 0,
+    totalCount: 3,
+    previousFitpicId: null,
+    nextFitpicId: "fitpic_1"
+  });
+
+  assert.deepEqual(getFitpicPreviewNavigation(["fitpic_3", "fitpic_1", "fitpic_2"], "fitpic_2"), {
+    currentIndex: 2,
+    totalCount: 3,
+    previousFitpicId: "fitpic_1",
+    nextFitpicId: null
+  });
+});
+
+test("fitpic preview navigation reports no neighbors when the current fitpic is no longer visible", () => {
+  assert.deepEqual(getFitpicPreviewNavigation(["fitpic_1", "fitpic_3"], "fitpic_2"), {
+    currentIndex: -1,
+    totalCount: 2,
+    previousFitpicId: null,
+    nextFitpicId: null
+  });
+});
+
+test("fitpic preview keyboard navigation maps arrow keys to directions", () => {
+  assert.equal(getFitpicPreviewDirectionForKey({ key: "ArrowLeft" }), "previous");
+  assert.equal(getFitpicPreviewDirectionForKey({ key: "ArrowRight" }), "next");
+  assert.equal(getFitpicPreviewDirectionForKey({ key: "ArrowLeft", shiftKey: true }), null);
+  assert.equal(getFitpicPreviewDirectionForKey({ key: "Enter" }), null);
 });
