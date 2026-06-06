@@ -380,6 +380,46 @@ test("prepareBackupImport preserves an existing saved outfitUuid", async () => {
   assert.equal(prepared.backup.appState.savedOutfits[0].outfitUuid, "stable-outfit-uuid");
 });
 
+test("prepareBackupImport preserves multi-image fitpics and primary image aliases", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [],
+    appState: {
+      fitpics: [
+        {
+          id: "fitpic_1",
+          fitpicUuid: "fitpic-uuid-1",
+          name: "Fitpic",
+          primaryImageUuid: "fitpic-image-uuid-2",
+          fitpicImages: [
+            {
+              fitpicImageUuid: "fitpic-image-uuid-1",
+              order: 0,
+              imageData: "data:image/png;base64,front",
+              sourceOriginalFilename: "front.png"
+            },
+            {
+              fitpicImageUuid: "fitpic-image-uuid-2",
+              order: 1,
+              imageData: "data:image/png;base64,detail",
+              sourceOriginalFilename: "detail.png"
+            }
+          ]
+        }
+      ]
+    }
+  });
+
+  assert.equal(prepared.appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-2");
+  assert.equal(prepared.appState.fitpics[0].fitpicImages.length, 2);
+  assert.equal(prepared.appState.fitpics[0].fitpicImages[0].fitpicImageUuid, "fitpic-image-uuid-1");
+  assert.equal(prepared.appState.fitpics[0].fitpicImages[1].fitpicImageUuid, "fitpic-image-uuid-2");
+  assert.equal(prepared.appState.fitpics[0].imageData, "data:image/png;base64,detail");
+  assert.equal(prepared.backup.appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-2");
+  assert.equal(prepared.backup.appState.fitpics[0].fitpicImages.length, 2);
+});
+
 test("prepareBackupImport preserves additive fitpic relationship fields and fitDate", async () => {
   const prepared = await prepare({
     source: "outfit-app",

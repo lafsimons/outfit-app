@@ -346,6 +346,40 @@ test("appState save and load preserves additive fitpic and saved outfit secondar
         fitpicUuid: "fitpic-uuid-1",
         name: "Fitpic",
         imageData: "data:image/png;base64,fitpic",
+        primaryImageUuid: "fitpic-image-uuid-1",
+        fitpicImages: [
+          {
+            fitpicImageUuid: "fitpic-image-uuid-1",
+            parentFitpicUuid: "fitpic-uuid-1",
+            order: 0,
+            imageData: "data:image/png;base64,fitpic",
+            images: {
+              preview: "data:image/png;base64,fitpic",
+              original: "",
+              thumbnail: ""
+            },
+            importedAt: "2024-03-01T00:00:00.000Z",
+            sourceOriginalFilename: "fitpic.png",
+            sourceFileSize: 123,
+            sourceImageWidth: 640,
+            sourceImageHeight: 800,
+            sourceLastModified: "2024-03-01T00:00:00.000Z",
+            importSource: "file-upload",
+            sourceNamespace: "",
+            sourceRelativePath: "",
+            relinkStatus: "unknown",
+            sourceFileExtension: "png",
+            sourceMimeType: "image/png",
+            sourceAspectRatio: 0.8,
+            sourceOrientation: "portrait",
+            sourceCapturedAt: "",
+            sourceOriginalCreatedAt: "",
+            sourceCameraMake: "",
+            sourceCameraModel: "",
+            sourceLensModel: "",
+            imageKind: ""
+          }
+        ],
         fitDate: "2024-03-01T00:00:00.000Z",
         linkedItemUuids: ["item-uuid-1"],
         linkedItemIds: ["top_1"],
@@ -366,6 +400,10 @@ test("appState save and load preserves additive fitpic and saved outfit secondar
   assert.deepEqual(appState.fitpics[0].linkedItemIds, ["top_1"]);
   assert.equal(appState.fitpics[0].savedOutfitUuid, "outfit-uuid-1");
   assert.equal(appState.fitpics[0].savedOutfitId, "saved_1");
+  assert.equal(appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-1");
+  assert.equal(appState.fitpics[0].fitpicImages.length, 1);
+  assert.equal(appState.fitpics[0].fitpicImages[0].fitpicImageUuid, "fitpic-image-uuid-1");
+  assert.equal(appState.fitpics[0].fitpicImages[0].parentFitpicUuid, "fitpic-uuid-1");
 });
 
 test("deviceId is created and then reused", async () => {

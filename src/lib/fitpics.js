@@ -84,12 +84,35 @@ function normalizeImages(images, imageData) {
   };
 }
 
+function normalizeOrder(value, fallback = 0) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(numericValue));
+}
+
+function normalizeOptionalString(value) {
+  const trimmed = normalizeStringField(value).trim();
+  return trimmed || "";
+}
+
 export function createFitpicUuid() {
   if (typeof globalThis.crypto?.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
 
   return `fitpic_uuid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function createFitpicImageUuid() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `fitpic_image_uuid_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function getFitpicNameFromFilename(filename) {
@@ -102,17 +125,216 @@ export function getFitpicNameFromFilename(filename) {
   return normalizedFilename.replace(/\.[^.]+$/, "") || normalizedFilename;
 }
 
+export function normalizeFitpicImage(
+  fitpicImage,
+  {
+    createUuid = createFitpicImageUuid,
+    fallbackTimestamp = new Date().toISOString(),
+    fallbackOrder = 0,
+    parentFitpicUuid = ""
+  } = {}
+) {
+  const imageData = normalizeStringField(fitpicImage?.imageData) || normalizeStringField(fitpicImage?.images?.preview);
+  const importedAt = normalizeTimestampLike(fitpicImage?.importedAt) || fallbackTimestamp;
+
+  return {
+    ...fitpicImage,
+    fitpicImageUuid:
+      typeof fitpicImage?.fitpicImageUuid === "string" && fitpicImage.fitpicImageUuid.trim()
+        ? fitpicImage.fitpicImageUuid
+        : createUuid(),
+    parentFitpicUuid:
+      normalizeStringField(fitpicImage?.parentFitpicUuid).trim()
+      || normalizeStringField(parentFitpicUuid).trim(),
+    order: normalizeOrder(fitpicImage?.order, fallbackOrder),
+    imageData,
+    images: normalizeImages(fitpicImage?.images, imageData),
+    ...normalizeImportMetadataFields(fitpicImage, importedAt),
+    ...normalizeExtendedImageMetadataFields(fitpicImage),
+    imageKind: normalizeOptionalString(fitpicImage?.imageKind)
+  };
+}
+
+export function createFitpicImageFromLegacyFitpic(
+  fitpic,
+  {
+    createUuid = createFitpicImageUuid,
+    fallbackTimestamp = new Date().toISOString(),
+    parentFitpicUuid = ""
+  } = {}
+) {
+  const fallbackImportedAt = normalizeTimestampLike(fitpic?.importedAt)
+    || normalizeTimestampLike(fitpic?.createdAt)
+    || fallbackTimestamp;
+
+  return normalizeFitpicImage(
+    {
+      imageData: fitpic?.imageData,
+      images: fitpic?.images,
+      importedAt: fitpic?.importedAt,
+      sourceOriginalFilename: fitpic?.sourceOriginalFilename,
+      sourceFileSize: fitpic?.sourceFileSize,
+      sourceImageWidth: fitpic?.sourceImageWidth,
+      sourceImageHeight: fitpic?.sourceImageHeight,
+      sourceLastModified: fitpic?.sourceLastModified,
+      sourceFileExtension: fitpic?.sourceFileExtension,
+      sourceMimeType: fitpic?.sourceMimeType,
+      sourceAspectRatio: fitpic?.sourceAspectRatio,
+      sourceOrientation: fitpic?.sourceOrientation,
+      sourceCapturedAt: fitpic?.sourceCapturedAt,
+      sourceOriginalCreatedAt: fitpic?.sourceOriginalCreatedAt,
+      sourceCameraMake: fitpic?.sourceCameraMake,
+      sourceCameraModel: fitpic?.sourceCameraModel,
+      sourceLensModel: fitpic?.sourceLensModel,
+      importSource: fitpic?.importSource,
+      sourceNamespace: fitpic?.sourceNamespace,
+      sourceRelativePath: fitpic?.sourceRelativePath,
+      relinkStatus: fitpic?.relinkStatus,
+      imageKind: fitpic?.imageKind
+    },
+    {
+      createUuid,
+      fallbackTimestamp: fallbackImportedAt,
+      fallbackOrder: 0,
+      parentFitpicUuid
+    }
+  );
+}
+
+export function getFitpicImages(
+  fitpic,
+  {
+    createFitpicImageUuid: createImageUuid = createFitpicImageUuid,
+    fallbackTimestamp = new Date().toISOString(),
+    parentFitpicUuid = ""
+  } = {}
+) {
+  const resolvedParentFitpicUuid = normalizeStringField(parentFitpicUuid).trim()
+    || normalizeStringField(fitpic?.fitpicUuid).trim();
+  const rawImages = Array.isArray(fitpic?.fitpicImages) ? fitpic.fitpicImages : [];
+  const normalizedImages = rawImages.length
+    ? rawImages
+      .map((fitpicImage, index) =>
+        normalizeFitpicImage(fitpicImage, {
+          createUuid: createImageUuid,
+          fallbackTimestamp,
+          fallbackOrder: index,
+          parentFitpicUuid: resolvedParentFitpicUuid
+        })
+      )
+      .filter((fitpicImage) => fitpicImage.imageData)
+      .sort((left, right) => left.order - right.order)
+      .map((fitpicImage, index) => (
+        fitpicImage.order === index
+          ? fitpicImage
+          : {
+              ...fitpicImage,
+              order: index
+            }
+      ))
+    : [];
+
+  if (normalizedImages.length) {
+    return normalizedImages;
+  }
+
+  const legacyImage = createFitpicImageFromLegacyFitpic(fitpic, {
+    createUuid: createImageUuid,
+    fallbackTimestamp,
+    parentFitpicUuid: resolvedParentFitpicUuid
+  });
+
+  return legacyImage.imageData ? [legacyImage] : [];
+}
+
+export function getPrimaryFitpicImage(
+  fitpic,
+  {
+    createFitpicImageUuid: createImageUuid = createFitpicImageUuid,
+    fallbackTimestamp = new Date().toISOString(),
+    parentFitpicUuid = ""
+  } = {}
+) {
+  const fitpicImages = getFitpicImages(fitpic, {
+    createFitpicImageUuid: createImageUuid,
+    fallbackTimestamp,
+    parentFitpicUuid
+  });
+
+  if (!fitpicImages.length) {
+    return null;
+  }
+
+  const requestedPrimaryImageUuid = normalizeStringField(fitpic?.primaryImageUuid).trim();
+  return fitpicImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === requestedPrimaryImageUuid)
+    ?? fitpicImages[0]
+    ?? null;
+}
+
+export function getFitpicImageEntities(
+  fitpic,
+  {
+    createFitpicImageUuid: createImageUuid = createFitpicImageUuid,
+    fallbackTimestamp = new Date().toISOString(),
+    parentFitpicUuid = ""
+  } = {}
+) {
+  const fitpicImages = getFitpicImages(fitpic, {
+    createFitpicImageUuid: createImageUuid,
+    fallbackTimestamp,
+    parentFitpicUuid
+  });
+  const fitpicUuid = normalizeStringField(fitpic?.fitpicUuid).trim()
+    || normalizeStringField(parentFitpicUuid).trim();
+
+  return fitpicImages.map((fitpicImage) => ({
+    entityType: "fitpicImage",
+    fitpicUuid,
+    fitpicImageUuid: fitpicImage.fitpicImageUuid,
+    parentFitpicUuid: fitpicImage.parentFitpicUuid || fitpicUuid,
+    order: fitpicImage.order,
+    name: normalizeStringField(fitpic?.name),
+    fitDate: normalizeOptionalTimestamp(fitpic?.fitDate),
+    tags: normalizeTagList(fitpic?.tags),
+    favorite: normalizeBoolean(fitpic?.favorite),
+    imageData: fitpicImage.imageData,
+    images: fitpicImage.images,
+    importedAt: fitpicImage.importedAt,
+    sourceOriginalFilename: fitpicImage.sourceOriginalFilename,
+    sourceFileSize: fitpicImage.sourceFileSize,
+    sourceImageWidth: fitpicImage.sourceImageWidth,
+    sourceImageHeight: fitpicImage.sourceImageHeight,
+    sourceLastModified: fitpicImage.sourceLastModified,
+    sourceFileExtension: fitpicImage.sourceFileExtension,
+    sourceMimeType: fitpicImage.sourceMimeType,
+    sourceAspectRatio: fitpicImage.sourceAspectRatio,
+    sourceOrientation: fitpicImage.sourceOrientation,
+    sourceCapturedAt: fitpicImage.sourceCapturedAt,
+    sourceOriginalCreatedAt: fitpicImage.sourceOriginalCreatedAt,
+    sourceCameraMake: fitpicImage.sourceCameraMake,
+    sourceCameraModel: fitpicImage.sourceCameraModel,
+    sourceLensModel: fitpicImage.sourceLensModel,
+    importSource: fitpicImage.importSource,
+    sourceNamespace: fitpicImage.sourceNamespace,
+    sourceRelativePath: fitpicImage.sourceRelativePath,
+    relinkStatus: fitpicImage.relinkStatus,
+    imageKind: fitpicImage.imageKind
+  }));
+}
+
 export function normalizeFitpic(
   fitpic,
   {
     createId = () => `fitpic_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     createUuid = createFitpicUuid,
+    createFitpicImageUuid: createImageUuid = createFitpicImageUuid,
     fallbackTimestamp = new Date().toISOString()
   } = {}
 ) {
   const createdAt = normalizeTimestampLike(fitpic?.createdAt) || fallbackTimestamp;
   const updatedAt = normalizeTimestampLike(fitpic?.updatedAt) || createdAt;
-  const imageData = normalizeStringField(fitpic?.imageData) || normalizeStringField(fitpic?.images?.preview);
+  const fitpicUuid =
+    typeof fitpic?.fitpicUuid === "string" && fitpic.fitpicUuid.trim() ? fitpic.fitpicUuid : createUuid();
   const importedAt = normalizeTimestampLike(fitpic?.importedAt) || createdAt;
   const fitDate = normalizeOptionalTimestamp(fitpic?.fitDate)
     ?? normalizeOptionalTimestamp(fitpic?.sourceCapturedAt)
@@ -123,11 +345,43 @@ export function normalizeFitpic(
   const name = normalizeStringField(fitpic?.name).trim()
     || normalizeStringField(fitpic?.title).trim()
     || getFitpicNameFromFilename(fitpic?.sourceOriginalFilename);
+  const fitpicImages = getFitpicImages(
+    {
+      ...fitpic,
+      fitpicUuid
+    },
+    {
+      createFitpicImageUuid: createImageUuid,
+      fallbackTimestamp: importedAt,
+      parentFitpicUuid: fitpicUuid
+    }
+  );
+  const primaryFitpicImage = getPrimaryFitpicImage(
+    {
+      ...fitpic,
+      fitpicUuid,
+      fitpicImages
+    },
+    {
+      createFitpicImageUuid: createImageUuid,
+      fallbackTimestamp: importedAt,
+      parentFitpicUuid: fitpicUuid
+    }
+  );
+  const primaryImageUuid = primaryFitpicImage?.fitpicImageUuid ?? null;
+  const primaryImageData = primaryFitpicImage?.imageData ?? "";
+  const primaryImages = normalizeImages(primaryFitpicImage?.images, primaryImageData);
+  const primaryImportMetadata = primaryFitpicImage
+    ? normalizeImportMetadataFields(primaryFitpicImage, importedAt)
+    : normalizeImportMetadataFields(fitpic, importedAt);
+  const primaryExtendedMetadata = primaryFitpicImage
+    ? normalizeExtendedImageMetadataFields(primaryFitpicImage)
+    : normalizeExtendedImageMetadataFields(fitpic);
 
   return {
     ...fitpic,
     id: typeof fitpic?.id === "string" && fitpic.id.trim() ? fitpic.id : createId(),
-    fitpicUuid: typeof fitpic?.fitpicUuid === "string" && fitpic.fitpicUuid.trim() ? fitpic.fitpicUuid : createUuid(),
+    fitpicUuid,
     name,
     description: normalizeStringField(fitpic?.description),
     tags: normalizeTagList(fitpic?.tags),
@@ -135,14 +389,16 @@ export function normalizeFitpic(
     createdAt,
     updatedAt,
     fitDate,
-    imageData,
-    images: normalizeImages(fitpic?.images, imageData),
+    primaryImageUuid,
+    imageData: primaryImageData,
+    images: primaryImages,
+    fitpicImages,
     linkedItemUuids: normalizeStringList(fitpic?.linkedItemUuids),
     linkedItemIds: normalizeStringList(fitpic?.linkedItemIds),
     savedOutfitUuid: normalizeNullableString(fitpic?.savedOutfitUuid),
     savedOutfitId: normalizeNullableString(fitpic?.savedOutfitId),
-    ...normalizeImportMetadataFields(fitpic, importedAt),
-    ...normalizeExtendedImageMetadataFields(fitpic)
+    ...primaryImportMetadata,
+    ...primaryExtendedMetadata
   };
 }
 
@@ -164,7 +420,7 @@ export function normalizeFitpics(
         fallbackTimestamp: new Date(fallbackBaseMs + index).toISOString()
       })
     )
-    .filter((fitpic) => fitpic.imageData);
+    .filter((fitpic) => Array.isArray(fitpic.fitpicImages) && fitpic.fitpicImages.length > 0);
 }
 
 export async function createImportedFitpicFromFile(
@@ -172,6 +428,7 @@ export async function createImportedFitpicFromFile(
   {
     createId,
     createUuid,
+    createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
     compressImageSource,
@@ -194,17 +451,30 @@ export async function createImportedFitpicFromFile(
       description: "",
       tags: [],
       favorite: false,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+      primaryImageUuid: null,
+      fitpicImages: [
+        {
+          fitpicImageUuid: createImageUuid?.(),
+          order: 0,
+          imageData,
+          images: {
+            preview: imageData
+          },
+          ...importMetadata
+        }
+      ],
       imageData,
       images: {
         preview: imageData
       },
-      createdAt: importedAt,
-      updatedAt: importedAt,
       ...importMetadata
     },
     {
       createId,
       createUuid,
+      createFitpicImageUuid: createImageUuid,
       fallbackTimestamp: importedAt
     }
   );
@@ -214,6 +484,7 @@ export async function replaceFitpicImageFromFile(
   fitpic,
   file,
   {
+    createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
     compressImageSource,
@@ -222,6 +493,7 @@ export async function replaceFitpicImageFromFile(
 ) {
   const updatedAt = now();
   const currentFitpic = normalizeFitpic(fitpic, {
+    createFitpicImageUuid: createImageUuid,
     fallbackTimestamp: normalizeTimestampLike(fitpic?.createdAt) || updatedAt
   });
   const importMetadata = await readImageFileMetadata(file, {
@@ -230,20 +502,47 @@ export async function replaceFitpicImageFromFile(
     loadImage
   });
   const imageData = await compressImageSource(file);
+  const replacementPrimaryImage = normalizeFitpicImage(
+    {
+      ...getPrimaryFitpicImage(currentFitpic, {
+        createFitpicImageUuid: createImageUuid,
+        fallbackTimestamp: updatedAt,
+        parentFitpicUuid: currentFitpic.fitpicUuid
+      }),
+      imageData,
+      images: {
+        ...(currentFitpic.images ?? {}),
+        preview: imageData
+      },
+      ...importMetadata
+    },
+    {
+      createUuid: createImageUuid,
+      fallbackTimestamp: updatedAt,
+      fallbackOrder: 0,
+      parentFitpicUuid: currentFitpic.fitpicUuid
+    }
+  );
+  const nextFitpicImages = currentFitpic.fitpicImages.map((fitpicImage) =>
+    fitpicImage.fitpicImageUuid === replacementPrimaryImage.fitpicImageUuid
+      ? replacementPrimaryImage
+      : fitpicImage
+  );
 
   return normalizeFitpic(
     {
       ...fitpic,
       fitDate: currentFitpic.fitDate,
+      fitpicUuid: currentFitpic.fitpicUuid,
+      fitpicImages: nextFitpicImages,
+      primaryImageUuid: replacementPrimaryImage.fitpicImageUuid,
+      imageData: replacementPrimaryImage.imageData,
+      images: replacementPrimaryImage.images,
       ...importMetadata,
-      imageData,
-      images: {
-        ...(fitpic?.images ?? {}),
-        preview: imageData
-      },
       updatedAt
     },
     {
+      createFitpicImageUuid: createImageUuid,
       fallbackTimestamp: normalizeTimestampLike(fitpic?.createdAt) || updatedAt
     }
   );
