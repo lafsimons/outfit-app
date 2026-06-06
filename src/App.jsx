@@ -1438,6 +1438,25 @@ export default function App() {
     () => getFitpicLinkedItemFilterOptions(fitpics, items),
     [fitpics, items]
   );
+  const selectedFitpicLinkedItemFilterLabel = useMemo(
+    () => fitpicLinkedItemFilterOptions.find((option) => option.value === fitpicLinkedItemFilter)?.label ?? "",
+    [fitpicLinkedItemFilter, fitpicLinkedItemFilterOptions]
+  );
+  const selectedFitpicSortLabel = useMemo(() => {
+    switch (fitpicSort) {
+      case "fitDateOldest":
+        return "Fit date oldest";
+      case "createdNewest":
+        return "Created newest";
+      case "importedNewest":
+        return "Imported newest";
+      case "titleAz":
+        return "Title A-Z";
+      case "fitDateNewest":
+      default:
+        return "Fit date newest";
+    }
+  }, [fitpicSort]);
   const visibleFitpics = useMemo(
     () =>
       filterAndSortFitpics(
@@ -1451,6 +1470,9 @@ export default function App() {
         items
       ),
     [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
+  );
+  const hasActiveFitpicControls = Boolean(
+    fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
   );
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
@@ -5489,6 +5511,19 @@ export default function App() {
         ) : (
           <>
             <div className="fitpic-controls" aria-label="Fitpic controls">
+              <div className="fitpic-controls-header">
+                <p className="fitpic-controls-count">
+                  {visibleFitpics.length} of {fitpics.length} fitpics
+                </p>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={resetFitpicControls}
+                  disabled={!hasActiveFitpicControls}
+                >
+                  Clear filters
+                </button>
+              </div>
               <label>
                 <span className="eyebrow">Search</span>
                 <input
@@ -5515,7 +5550,9 @@ export default function App() {
                 >
                   <option value="">All linked items</option>
                   {fitpicLinkedItemFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -5528,11 +5565,44 @@ export default function App() {
                 <span>Favorites only</span>
               </label>
             </div>
+            {hasActiveFitpicControls ? (
+              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic controls">
+                <div className="active-filter-chips">
+                  {fitpicSearch.trim() ? (
+                    <span className="active-filter-chip">
+                      <span>Search</span>
+                      {fitpicSearch.trim()}
+                    </span>
+                  ) : null}
+                  {fitpicFavoritesOnly ? (
+                    <span className="active-filter-chip">
+                      <span>Filter</span>
+                      Favorites only
+                    </span>
+                  ) : null}
+                  {fitpicLinkedItemFilter ? (
+                    <span className="active-filter-chip">
+                      <span>Linked</span>
+                      {selectedFitpicLinkedItemFilterLabel}
+                    </span>
+                  ) : null}
+                  {fitpicSort !== "fitDateNewest" ? (
+                    <span className="active-filter-chip">
+                      <span>Sort</span>
+                      {selectedFitpicSortLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             {!visibleFitpics.length ? (
               <div className="editor-placeholder fitpics-empty-state">
                 <p>No fitpics match the current local search and filters.</p>
                 <p>Clear the controls or import more fitpics.</p>
+                <button type="button" className="ghost-button" onClick={resetFitpicControls}>
+                  Clear filters
+                </button>
               </div>
             ) : (
               <div className="fitpic-list">
@@ -6144,6 +6214,13 @@ export default function App() {
     } finally {
       event.target.value = "";
     }
+  }
+
+  function resetFitpicControls() {
+    setFitpicSearch("");
+    setFitpicSort("fitDateNewest");
+    setFitpicFavoritesOnly(false);
+    setFitpicLinkedItemFilter("");
   }
 
   function addWardrobeItemToEditingFitpic(item) {
