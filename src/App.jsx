@@ -1344,6 +1344,8 @@ export default function App() {
   const [fitpicSort, setFitpicSort] = useState("fitDateNewest");
   const [fitpicFavoritesOnly, setFitpicFavoritesOnly] = useState(false);
   const [fitpicLinkedItemFilter, setFitpicLinkedItemFilter] = useState("");
+  const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
+  const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
@@ -1393,6 +1395,8 @@ export default function App() {
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const fitpicSelectClickTimeoutRef = useRef(null);
+  const fitpicPendingSelectionRef = useRef(null);
   const outfitItemPreviewClickTimeoutRef = useRef(null);
   const pendingOutfitItemPreviewRef = useRef(null);
   const fitpicDropDepthRef = useRef(0);
@@ -1400,6 +1404,10 @@ export default function App() {
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
+  );
+  const fitpicsById = useMemo(
+    () => Object.fromEntries(fitpics.map((fitpic) => [fitpic.id, fitpic])),
+    [fitpics]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
   const isWardrobePreviewItemEquipped = wardrobePreviewItem
@@ -1471,9 +1479,25 @@ export default function App() {
       ),
     [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
   );
+  const visibleFitpicIds = useMemo(
+    () => visibleFitpics.map((fitpic) => fitpic.id),
+    [visibleFitpics]
+  );
   const hasActiveFitpicControls = Boolean(
     fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
   );
+  const selectedFitpics = useMemo(
+    () => selectedFitpicIds.map((fitpicId) => fitpicsById[fitpicId]).filter(Boolean),
+    [fitpicsById, selectedFitpicIds]
+  );
+  const selectedFitpicCount = selectedFitpicIds.length;
+  const hasFitpicSelection = selectedFitpicCount > 0;
+  const isSingleFitpicSelected = selectedFitpicCount === 1;
+  const areAllSelectedFitpicsFavorite = useMemo(
+    () => selectedFitpics.length > 0 && selectedFitpics.every((fitpic) => Boolean(fitpic.favorite)),
+    [selectedFitpics]
+  );
+  const fitpicFavoriteActionLabel = areAllSelectedFitpicsFavorite ? "Unfavorite" : "Favorite";
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
@@ -1605,6 +1629,11 @@ export default function App() {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       }
       wardrobePendingSelectionRef.current = null;
+
+      if (fitpicSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      }
+      fitpicPendingSelectionRef.current = null;
 
       if (outfitItemPreviewClickTimeoutRef.current !== null) {
         window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
@@ -2876,6 +2905,13 @@ export default function App() {
   }, [items]);
 
   useEffect(() => {
+    const validIds = fitpics.map((fitpic) => fitpic.id);
+
+    setSelectedFitpicIds((current) => pruneSelectedIds(current, validIds));
+    setFitpicSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
+  }, [fitpics]);
+
+  useEffect(() => {
     if (!itemListOptions.includes(bulkListDraft)) {
       setBulkListDraft(itemListOptions[0] ?? defaultItemList);
     }
@@ -3843,6 +3879,90 @@ export default function App() {
 
     wardrobePendingSelectionRef.current = null;
     openWardrobePreview(item.id);
+  }
+
+  function handleFitpicCardClick(fitpic, event) {
+    registerPointerActivatedControl(event);
+    const shiftKey = event.shiftKey;
+    const toggleKey = event.metaKey || event.ctrlKey;
+    const pendingSelection = fitpicPendingSelectionRef.current;
+
+    if (pendingSelection && pendingSelection.fitpic.id !== fitpic.id) {
+      flushPendingFitpicSelection();
+    }
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+    }
+
+    fitpicPendingSelectionRef.current = {
+      fitpic,
+      shiftKey,
+      toggleKey
+    };
+
+    fitpicSelectClickTimeoutRef.current = window.setTimeout(() => {
+      flushPendingFitpicSelection();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+
+    blurPointerActivatedControl(event);
+  }
+
+  function handleFitpicSelection(fitpic, shiftKey, toggleKey) {
+    const nextSelectionState = getNextSelectionState({
+      selectedIds: selectedFitpicIds,
+      orderedIds: visibleFitpicIds,
+      clickedId: fitpic.id,
+      anchorId: fitpicSelectionAnchorId,
+      shiftKey,
+      toggleKey
+    });
+
+    setSelectedFitpicIds(nextSelectionState.selectedIds);
+    setFitpicSelectionAnchorId(nextSelectionState.anchorId);
+  }
+
+  function flushPendingFitpicSelection() {
+    const pendingSelection = fitpicPendingSelectionRef.current;
+
+    if (!pendingSelection) {
+      return;
+    }
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+
+    fitpicPendingSelectionRef.current = null;
+    handleFitpicSelection(pendingSelection.fitpic, pendingSelection.shiftKey, pendingSelection.toggleKey);
+  }
+
+  function handleFitpicCardDoubleClick(fitpic, event) {
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
+
+    event.currentTarget.blur();
+    openFitpicPreview(fitpic);
+  }
+
+  function handleFitpicCardKeyDown(fitpic, event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+
+    fitpicPendingSelectionRef.current = null;
+    openFitpicPreview(fitpic);
   }
 
   function editWardrobePreviewItem() {
@@ -4986,6 +5106,11 @@ export default function App() {
         wardrobeSelectClickTimeoutRef.current = null;
       }
       wardrobePendingSelectionRef.current = null;
+      if (fitpicSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+        fitpicSelectClickTimeoutRef.current = null;
+      }
+      fitpicPendingSelectionRef.current = null;
       cancelEditSavedOutfit();
       setBulkMetadataEditorOpen(false);
       setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -5014,6 +5139,11 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     cancelEdit();
   }
@@ -5041,6 +5171,11 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     setBulkMetadataEditorOpen(false);
     setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -5565,6 +5700,57 @@ export default function App() {
                 <span>Favorites only</span>
               </label>
             </div>
+            <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
+              <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} fitpic{visibleFitpics.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="wardrobe-toolbar-context">
+                {hasFitpicSelection ? (
+                  <div className="wardrobe-selection-summary fitpic-selection-summary">
+                    <div className="wardrobe-selection-count wardrobe-selection-chip">
+                      <span>{selectedFitpicCount} selected</span>
+                      <button
+                        type="button"
+                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+                        onMouseDown={preventMouseButtonFocus}
+                        onClick={clearFitpicSelection}
+                        aria-label="Clear fitpic selection"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                <div className="wardrobe-toolbar-context-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={editSelectedFitpic}
+                    disabled={!isSingleFitpicSelected}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
+                    onClick={toggleSelectedFitpicFavorites}
+                    disabled={!hasFitpicSelection}
+                  >
+                    {fitpicFavoriteActionLabel}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button danger"
+                    onClick={deleteSelectedFitpics}
+                    disabled={!hasFitpicSelection}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
             {hasActiveFitpicControls ? (
               <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic controls">
                 <div className="active-filter-chips">
@@ -5606,41 +5792,37 @@ export default function App() {
               </div>
             ) : (
               <div className="fitpic-list">
-                {visibleFitpics.map((fitpic) => (
-              <article key={fitpic.id} className="fitpic-card">
-                <button
-                  type="button"
-                  className="fitpic-image-button"
-                  onClick={() => openFitpicPreview(fitpic)}
-                >
-                  <img src={fitpic.imageData} alt={fitpic.name} />
-                </button>
-                <div className="fitpic-card-copy">
-                  <strong title={fitpic.name}>{fitpic.name}</strong>
-                  <span>{formatFitpicImportMeta(fitpic) || formatFitpicDate(fitpic.createdAt)}</span>
-                  {fitpic.tags.length ? (
-                    <span className="fitpic-card-tags" title={fitpic.tags.join(", ")}>
-                      {fitpic.tags.join(", ")}
-                    </span>
-                  ) : null}
-                </div>
-                <div className="fitpic-card-actions">
-                  <button
-                    type="button"
-                    className={`ghost-button ${fitpic.favorite ? "is-active" : ""}`}
-                    onClick={() => toggleFitpicFavorite(fitpic.id)}
+                {visibleFitpics.map((fitpic) => {
+                  const isSelected = selectedFitpicIds.includes(fitpic.id);
+
+                  return (
+                  <article
+                    key={fitpic.id}
+                    className={`fitpic-card ${isSelected ? "is-selected" : ""}`}
                   >
-                    {fitpic.favorite ? "Favorited" : "Favorite"}
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpic)}>
-                    Edit
-                  </button>
-                  <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
-                    Delete
-                  </button>
-                </div>
-              </article>
-                ))}
+                    <button
+                      type="button"
+                      className="fitpic-image-button"
+                      onClick={(event) => handleFitpicCardClick(fitpic, event)}
+                      onDoubleClick={(event) => handleFitpicCardDoubleClick(fitpic, event)}
+                      onKeyDown={(event) => handleFitpicCardKeyDown(fitpic, event)}
+                      aria-pressed={isSelected}
+                      aria-label={`Select ${fitpic.name}. Double-click or press Enter to preview.`}
+                    >
+                      <img src={fitpic.imageData} alt={fitpic.name} />
+                      <div className="fitpic-card-copy">
+                        <strong title={fitpic.name}>{fitpic.name}</strong>
+                        <span>{formatFitpicImportMeta(fitpic) || formatFitpicDate(fitpic.createdAt)}</span>
+                        {fitpic.tags.length ? (
+                          <span className="fitpic-card-tags" title={fitpic.tags.join(", ")}>
+                            {fitpic.tags.join(", ")}
+                          </span>
+                        ) : null}
+                      </div>
+                    </button>
+                  </article>
+                  );
+                })}
               </div>
             )}
           </>
@@ -6223,6 +6405,78 @@ export default function App() {
     setFitpicLinkedItemFilter("");
   }
 
+  function clearFitpicSelection() {
+    setSelectedFitpicIds([]);
+    setFitpicSelectionAnchorId(null);
+  }
+
+  function editSelectedFitpic() {
+    if (selectedFitpics.length !== 1) {
+      return;
+    }
+
+    startEditFitpic(selectedFitpics[0]);
+  }
+
+  function toggleSelectedFitpicFavorites() {
+    if (!selectedFitpicIds.length) {
+      return;
+    }
+
+    const selectedIdSet = new Set(selectedFitpicIds);
+    const shouldFavorite = !areAllSelectedFitpicsFavorite;
+    const updatedAt = new Date().toISOString();
+
+    setFitpics((current) =>
+      current.map((fitpic) =>
+        selectedIdSet.has(fitpic.id)
+          ? normalizeFitpic({
+              ...fitpic,
+              favorite: shouldFavorite,
+              updatedAt
+            })
+          : fitpic
+      )
+    );
+  }
+
+  async function deleteFitpicsById(fitpicIds) {
+    const uniqueFitpicIds = [...new Set((fitpicIds ?? []).filter(Boolean))];
+
+    if (!uniqueFitpicIds.length) {
+      return;
+    }
+
+    const confirmed = await requestConfirmation({
+      title: uniqueFitpicIds.length === 1 ? "Delete fitpic?" : "Delete fitpics?",
+      message: uniqueFitpicIds.length === 1
+        ? "This fitpic will be removed from this browser."
+        : `${uniqueFitpicIds.length} fitpics will be removed from this browser.`,
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const deletedIdSet = new Set(uniqueFitpicIds);
+
+    setFitpics((current) => current.filter((fitpic) => !deletedIdSet.has(fitpic.id)));
+    setSelectedFitpicIds((current) => current.filter((fitpicId) => !deletedIdSet.has(fitpicId)));
+
+    if (fitpicPreview?.id && deletedIdSet.has(fitpicPreview.id)) {
+      setFitpicPreview(null);
+    }
+
+    if (editingFitpicId && deletedIdSet.has(editingFitpicId)) {
+      cancelEditFitpic();
+    }
+  }
+
+  async function deleteSelectedFitpics() {
+    await deleteFitpicsById(selectedFitpicIds);
+  }
+
   function addWardrobeItemToEditingFitpic(item) {
     setFitpicDraft((current) => ({
       ...addLinkedItemToFitpicDraft(current, item),
@@ -6251,25 +6505,7 @@ export default function App() {
   }
 
   async function deleteFitpic(fitpicId) {
-    const confirmed = await requestConfirmation({
-      title: "Delete fitpic?",
-      message: "This fitpic will be removed from this browser.",
-      confirmLabel: "Delete"
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
-    setFitpics((current) => current.filter((fitpic) => fitpic.id !== fitpicId));
-
-    if (fitpicPreview?.id === fitpicId) {
-      setFitpicPreview(null);
-    }
-
-    if (editingFitpicId === fitpicId) {
-      cancelEditFitpic();
-    }
+    await deleteFitpicsById([fitpicId]);
   }
 
   function removeAccessoryFromSlot(slot) {
