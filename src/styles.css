@@ -2973,6 +2973,60 @@ button:disabled {
   align-items: center;
 }
 
+.fitpic-linked-items {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-linked-items-list,
+.fitpic-linked-item-suggestions {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-linked-item,
+.fitpic-linked-item-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-linked-item.is-missing {
+  border-style: dashed;
+}
+
+.fitpic-linked-item-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.fitpic-linked-item-copy strong,
+.fitpic-linked-item-copy span,
+.fitpic-linked-item-suggestion strong,
+.fitpic-linked-item-suggestion span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fitpic-linked-item-copy span,
+.fitpic-linked-item-suggestion span,
+.fitpic-linked-items-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.fitpic-linked-item-suggestion {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
 .fitpic-metadata-panel {
   display: grid;
   gap: 10px;

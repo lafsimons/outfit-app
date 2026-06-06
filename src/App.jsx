@@ -116,6 +116,13 @@ import {
   normalizeFitpic,
   replaceFitpicImageFromFile
 } from "./lib/fitpics";
+import {
+  addLinkedItemToFitpicDraft,
+  applyFitpicDateInput,
+  getFitpicDateInputValue,
+  removeLinkedItemFromFitpicDraft,
+  resolveFitpicLinkedItems
+} from "./lib/fitpicEditorModel";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -1310,7 +1317,16 @@ export default function App() {
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
   const [editingFitpicId, setEditingFitpicId] = useState(null);
-  const [fitpicDraft, setFitpicDraft] = useState({ name: "", description: "", tagsText: "", favorite: false });
+  const [fitpicDraft, setFitpicDraft] = useState({
+    name: "",
+    description: "",
+    tagsText: "",
+    favorite: false,
+    fitDate: "",
+    linkedItemUuids: [],
+    linkedItemIds: [],
+    linkedItemSearch: ""
+  });
   const [fitpicImportError, setFitpicImportError] = useState("");
   const [fitpicImporting, setFitpicImporting] = useState(false);
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
@@ -1376,6 +1392,34 @@ export default function App() {
     ? Object.values(outfit).includes(wardrobePreviewItem.id)
     : false;
   const editingFitpic = editingFitpicId ? fitpics.find((fitpic) => fitpic.id === editingFitpicId) ?? null : null;
+  const editingFitpicLinkedItems = useMemo(
+    () => resolveFitpicLinkedItems(fitpicDraft.linkedItemUuids, fitpicDraft.linkedItemIds, items),
+    [fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, items]
+  );
+  const fitpicLinkedItemSearch = fitpicDraft.linkedItemSearch.trim().toLowerCase();
+  const fitpicLinkedItemSuggestions = useMemo(() => {
+    if (!editingFitpic) {
+      return [];
+    }
+
+    return items
+      .filter((item) => {
+        const alreadyLinkedByUuid = item.itemUuid && fitpicDraft.linkedItemUuids.includes(item.itemUuid);
+        const alreadyLinkedById = fitpicDraft.linkedItemIds.includes(item.id);
+
+        if (alreadyLinkedByUuid || alreadyLinkedById) {
+          return false;
+        }
+
+        if (!fitpicLinkedItemSearch) {
+          return false;
+        }
+
+        const searchText = `${buildDisplayName(item)} ${item.id} ${getWardrobeSearchText(item)}`.toLowerCase();
+        return searchText.includes(fitpicLinkedItemSearch);
+      })
+      .slice(0, 8);
+  }, [editingFitpic, fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, fitpicLinkedItemSearch, items]);
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
@@ -5816,14 +5860,27 @@ export default function App() {
       name: fitpic.name ?? "",
       description: fitpic.description ?? "",
       tagsText: Array.isArray(fitpic.tags) ? fitpic.tags.join(", ") : "",
-      favorite: Boolean(fitpic.favorite)
+      favorite: Boolean(fitpic.favorite),
+      fitDate: getFitpicDateInputValue(fitpic.fitDate),
+      linkedItemUuids: Array.isArray(fitpic.linkedItemUuids) ? fitpic.linkedItemUuids : [],
+      linkedItemIds: Array.isArray(fitpic.linkedItemIds) ? fitpic.linkedItemIds : [],
+      linkedItemSearch: ""
     });
   }
 
   function cancelEditFitpic() {
     setEditingFitpicId(null);
     setFitpicImportError("");
-    setFitpicDraft({ name: "", description: "", tagsText: "", favorite: false });
+    setFitpicDraft({
+      name: "",
+      description: "",
+      tagsText: "",
+      favorite: false,
+      fitDate: "",
+      linkedItemUuids: [],
+      linkedItemIds: [],
+      linkedItemSearch: ""
+    });
   }
 
   function saveFitpicDraft(event) {
@@ -5843,6 +5900,9 @@ export default function App() {
       description: fitpicDraft.description.trim(),
       tags: nextTags,
       favorite: fitpicDraft.favorite,
+      fitDate: applyFitpicDateInput(editingFitpic.fitDate, fitpicDraft.fitDate),
+      linkedItemUuids: fitpicDraft.linkedItemUuids,
+      linkedItemIds: fitpicDraft.linkedItemIds,
       updatedAt
     });
 
@@ -5962,6 +6022,17 @@ export default function App() {
     } finally {
       event.target.value = "";
     }
+  }
+
+  function addWardrobeItemToEditingFitpic(item) {
+    setFitpicDraft((current) => ({
+      ...addLinkedItemToFitpicDraft(current, item),
+      linkedItemSearch: ""
+    }));
+  }
+
+  function removeWardrobeItemFromEditingFitpic(linkedEntry) {
+    setFitpicDraft((current) => removeLinkedItemFromFitpicDraft(current, linkedEntry));
   }
 
   function toggleFitpicFavorite(fitpicId) {
@@ -7857,6 +7928,20 @@ export default function App() {
                   />
                 </label>
 
+                <label>
+                  <span className="editor-label-row"><span>Fit date</span></span>
+                  <input
+                    type="date"
+                    value={fitpicDraft.fitDate}
+                    onChange={(event) =>
+                      setFitpicDraft((current) => ({
+                        ...current,
+                        fitDate: event.target.value
+                      }))
+                    }
+                  />
+                </label>
+
                 <label className="fitpic-favorite-field">
                   <input
                     type="checkbox"
@@ -7870,6 +7955,69 @@ export default function App() {
                   />
                   <span>Favorite</span>
                 </label>
+
+                <div className="fitpic-linked-items">
+                  <div className="editor-label-row">
+                    <span>Linked wardrobe items</span>
+                  </div>
+                  {editingFitpicLinkedItems.length ? (
+                    <div className="fitpic-linked-items-list">
+                      {editingFitpicLinkedItems.map((linkedEntry) => (
+                        <div key={linkedEntry.key} className={`fitpic-linked-item ${linkedEntry.missing ? "is-missing" : ""}`}>
+                          <div className="fitpic-linked-item-copy">
+                            <strong>{linkedEntry.label}</strong>
+                            <span>
+                              {linkedEntry.missing
+                                ? linkedEntry.itemUuid || linkedEntry.itemId || "Unknown link"
+                                : linkedEntry.item?.id}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => removeWardrobeItemFromEditingFitpic(linkedEntry)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="fitpic-linked-items-empty">No linked wardrobe items.</p>
+                  )}
+
+                  <label>
+                    <span className="editor-label-row"><span>Add wardrobe items</span></span>
+                    <input
+                      value={fitpicDraft.linkedItemSearch}
+                      onChange={(event) =>
+                        setFitpicDraft((current) => ({
+                          ...current,
+                          linkedItemSearch: event.target.value
+                        }))
+                      }
+                      placeholder="Search wardrobe items"
+                    />
+                  </label>
+
+                  {fitpicLinkedItemSuggestions.length ? (
+                    <div className="fitpic-linked-item-suggestions">
+                      {fitpicLinkedItemSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="fitpic-linked-item-suggestion"
+                          onClick={() => addWardrobeItemToEditingFitpic(item)}
+                        >
+                          <strong>{buildDisplayName(item)}</strong>
+                          <span>{item.id}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : fitpicLinkedItemSearch ? (
+                    <p className="fitpic-linked-items-empty">No matching wardrobe items.</p>
+                  ) : null}
+                </div>
 
                 {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
 
