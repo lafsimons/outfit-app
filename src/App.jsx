@@ -5946,8 +5946,6 @@ export default function App() {
         >
           <div className="fitpic-dropzone-copy">
             <p className="eyebrow">Import fitpics</p>
-            <h3>Drop one or more images here</h3>
-            <p>Imported fitpics keep their existing records, appear here immediately, and can be edited afterward.</p>
             {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
           </div>
           <button
@@ -6142,12 +6140,7 @@ export default function App() {
                       <img src={fitpic.imageData} alt={fitpic.name} />
                       <div className="fitpic-card-copy">
                         <strong title={fitpic.name}>{fitpic.name}</strong>
-                        <span>{formatFitpicImportMeta(fitpic) || formatFitpicDate(fitpic.createdAt)}</span>
-                        {fitpic.tags.length ? (
-                          <span className="fitpic-card-tags" title={fitpic.tags.join(", ")}>
-                            {fitpic.tags.join(", ")}
-                          </span>
-                        ) : null}
+                        <span>{formatFitpicDate(fitpic.fitDate || fitpic.createdAt)}</span>
                       </div>
                     </button>
                   </article>
@@ -8503,12 +8496,6 @@ export default function App() {
         {activePanel === "outfits" ? (
         <section className="insights-stack">
           <div className="panel fitpics-panel outfits-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Outfits</p>
-                <h2>Outfit archive</h2>
-              </div>
-            </div>
             <div className="outfits-panel-tabs" role="tablist" aria-label="Outfits sections">
               {outfitSectionTabs.map(([tab, label]) => (
                 <button
@@ -8681,7 +8668,6 @@ export default function App() {
                   {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(" · ")}</p> : null}
                   {fitpicPreviewLinkedItems.length ? (
                     <div className="fitpic-preview-linked-items">
-                      <p className="fitpic-preview-section-label">Linked wardrobe items</p>
                       <div className="fitpic-preview-linked-list">
                         {fitpicPreviewLinkedItems.map((linkedEntry) =>
                           linkedEntry.missing ? (

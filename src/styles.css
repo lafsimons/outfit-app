@@ -3328,7 +3328,7 @@ button:disabled {
 }
 
 .preview-overlay-backdrop {
-  z-index: 48;
+  z-index: 96;
   display: grid;
   place-items: center;
   padding: 20px;
