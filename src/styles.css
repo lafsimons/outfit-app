@@ -2976,7 +2976,7 @@ button:disabled {
   aspect-ratio: 4 / 5;
   overflow: hidden;
   border-radius: calc(var(--radius-panel) - 4px);
-  background: var(--preview-end);
+  background: #fff;
 }
 
 .fitpic-card img {
@@ -3019,6 +3019,8 @@ button:disabled {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
   line-height: 1.2;
 }
 
