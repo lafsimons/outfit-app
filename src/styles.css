@@ -3114,6 +3114,7 @@ button:disabled {
 }
 
 .fitpic-editor-description-input {
+  min-width: min(100%, 540px);
   min-height: 144px;
   resize: vertical;
 }
