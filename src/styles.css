@@ -2825,7 +2825,8 @@ button:disabled {
   gap: 14px;
 }
 
-.fitpic-controls {
+.fitpic-controls,
+.saved-outfit-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px 12px;
@@ -2835,7 +2836,8 @@ button:disabled {
   background: var(--surface-solid);
 }
 
-.fitpic-controls-header {
+.fitpic-controls-header,
+.saved-outfit-controls-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2843,23 +2845,28 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
-.fitpic-controls-count {
+.fitpic-controls-count,
+.saved-outfit-controls-count {
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
-.fitpic-controls-summary {
+.fitpic-controls-summary,
+.saved-outfit-controls-summary {
   margin-top: -4px;
 }
 
-.fitpic-controls label {
+.fitpic-controls label,
+.saved-outfit-controls label {
   display: grid;
   gap: 5px;
 }
 
 .fitpic-controls input,
-.fitpic-controls select {
+.fitpic-controls select,
+.saved-outfit-controls input,
+.saved-outfit-controls select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
@@ -2869,7 +2876,8 @@ button:disabled {
   color: var(--text);
 }
 
-.fitpic-controls-toggle {
+.fitpic-controls-toggle,
+.saved-outfit-controls-toggle {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -2878,6 +2886,10 @@ button:disabled {
 }
 
 .fitpic-toolbar {
+  align-items: center;
+}
+
+.saved-outfit-toolbar {
   align-items: center;
 }
 
@@ -2891,6 +2903,10 @@ button:disabled {
 }
 
 .fitpics-empty-state .ghost-button {
+  justify-self: start;
+}
+
+.saved-outfits-empty .ghost-button {
   justify-self: start;
 }
 

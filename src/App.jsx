@@ -128,6 +128,10 @@ import {
   filterAndSortFitpics,
   getFitpicLinkedItemFilterOptions
 } from "./lib/fitpicLibrary";
+import {
+  filterAndSortSavedOutfits,
+  getSavedOutfitTagFilterOptions
+} from "./lib/savedOutfitLibrary";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -1321,6 +1325,10 @@ export default function App() {
     tagsText: "",
     favorite: false
   });
+  const [savedOutfitSearch, setSavedOutfitSearch] = useState("");
+  const [savedOutfitSort, setSavedOutfitSort] = useState("updatedNewest");
+  const [savedOutfitFavoritesOnly, setSavedOutfitFavoritesOnly] = useState(false);
+  const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
@@ -1412,6 +1420,10 @@ export default function App() {
     () => Object.fromEntries(fitpics.map((fitpic) => [fitpic.id, fitpic])),
     [fitpics]
   );
+  const savedOutfitsById = useMemo(
+    () => Object.fromEntries(savedOutfits.map((savedOutfit) => [savedOutfit.id, savedOutfit])),
+    [savedOutfits]
+  );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
   const isWardrobePreviewItemEquipped = wardrobePreviewItem
     ? Object.values(outfit).includes(wardrobePreviewItem.id)
@@ -1501,6 +1513,41 @@ export default function App() {
     [selectedFitpics]
   );
   const fitpicFavoriteActionLabel = areAllSelectedFitpicsFavorite ? "Unfavorite" : "Favorite";
+  const savedOutfitTagFilterOptions = useMemo(
+    () => getSavedOutfitTagFilterOptions(savedOutfits),
+    [savedOutfits]
+  );
+  const selectedSavedOutfitTagFilterLabel = useMemo(
+    () => savedOutfitTagFilterOptions.find((option) => option.value === savedOutfitTagFilter)?.label ?? "",
+    [savedOutfitTagFilter, savedOutfitTagFilterOptions]
+  );
+  const selectedSavedOutfitSortLabel = useMemo(() => {
+    switch (savedOutfitSort) {
+      case "createdNewest":
+        return "Created newest";
+      case "titleAz":
+        return "Title A-Z";
+      case "updatedNewest":
+      default:
+        return "Updated newest";
+    }
+  }, [savedOutfitSort]);
+  const visibleSavedOutfits = useMemo(
+    () =>
+      filterAndSortSavedOutfits(savedOutfits, {
+        search: savedOutfitSearch,
+        sort: savedOutfitSort,
+        favoritesOnly: savedOutfitFavoritesOnly,
+        tagFilter: savedOutfitTagFilter
+      }),
+    [savedOutfitFavoritesOnly, savedOutfitSearch, savedOutfitSort, savedOutfitTagFilter, savedOutfits]
+  );
+  const hasActiveSavedOutfitControls = Boolean(
+    savedOutfitSearch.trim()
+    || savedOutfitFavoritesOnly
+    || savedOutfitTagFilter
+    || savedOutfitSort !== "updatedNewest"
+  );
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
@@ -2542,14 +2589,12 @@ export default function App() {
     [itemsById, selectedWardrobeItemIds]
   );
   const visibleSavedOutfitIds = useMemo(
-    () => savedOutfits.map((savedOutfit) => savedOutfit.id),
-    [savedOutfits]
+    () => visibleSavedOutfits.map((savedOutfit) => savedOutfit.id),
+    [visibleSavedOutfits]
   );
   const selectedSavedOutfits = useMemo(
-    () => selectedSavedOutfitIds
-      .map((savedOutfitId) => savedOutfits.find((savedOutfit) => savedOutfit.id === savedOutfitId))
-      .filter(Boolean),
-    [savedOutfits, selectedSavedOutfitIds]
+    () => selectedSavedOutfitIds.map((savedOutfitId) => savedOutfitsById[savedOutfitId]).filter(Boolean),
+    [savedOutfitsById, selectedSavedOutfitIds]
   );
   const selectedSavedOutfitCount = selectedSavedOutfitIds.length;
   const hasSavedOutfitSelection = selectedSavedOutfitCount > 0;
@@ -5614,11 +5659,62 @@ export default function App() {
           </div>
         ) : (
           <>
+            <div className="saved-outfit-controls" aria-label="Saved outfit controls">
+              <div className="saved-outfit-controls-header">
+                <p className="saved-outfit-controls-count">
+                  {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
+                </p>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={resetSavedOutfitControls}
+                  disabled={!hasActiveSavedOutfitControls}
+                >
+                  Clear filters
+                </button>
+              </div>
+              <label>
+                Search
+                <input
+                  type="search"
+                  value={savedOutfitSearch}
+                  onChange={(event) => setSavedOutfitSearch(event.target.value)}
+                  placeholder="Search saved outfits"
+                />
+              </label>
+              <label>
+                Sort
+                <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)}>
+                  <option value="updatedNewest">Updated newest</option>
+                  <option value="createdNewest">Created newest</option>
+                  <option value="titleAz">Title A-Z</option>
+                </select>
+              </label>
+              <label>
+                Tag
+                <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)}>
+                  <option value="">All tags</option>
+                  {savedOutfitTagFilterOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="saved-outfit-controls-toggle">
+                <input
+                  type="checkbox"
+                  checked={savedOutfitFavoritesOnly}
+                  onChange={(event) => setSavedOutfitFavoritesOnly(event.target.checked)}
+                />
+                <span>Favorites only</span>
+              </label>
+            </div>
             {hasSavedOutfitSelection ? (
               <div className="wardrobe-toolbar saved-outfit-toolbar" aria-label="Saved outfit library actions">
                 <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
                   <span className="wardrobe-results-count">
-                    {savedOutfits.length} saved outfit{savedOutfits.length === 1 ? "" : "s"}
+                    {visibleSavedOutfits.length} saved outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="wardrobe-toolbar-context">
@@ -5663,8 +5759,48 @@ export default function App() {
                 </div>
               </div>
             ) : null}
+            {hasActiveSavedOutfitControls ? (
+              <div className="active-filter-summary saved-outfit-controls-summary" aria-label="Active saved outfit controls">
+                <span>Local controls:</span>
+                <div className="active-filter-list">
+                  {savedOutfitSearch.trim() ? (
+                    <span className="active-filter-pill">
+                      Search:
+                      {" "}
+                      {savedOutfitSearch.trim()}
+                    </span>
+                  ) : null}
+                  {savedOutfitFavoritesOnly ? (
+                    <span className="active-filter-pill">Favorites only</span>
+                  ) : null}
+                  {savedOutfitTagFilter ? (
+                    <span className="active-filter-pill">
+                      Tag:
+                      {" "}
+                      {selectedSavedOutfitTagFilterLabel || savedOutfitTagFilter}
+                    </span>
+                  ) : null}
+                  {savedOutfitSort !== "updatedNewest" ? (
+                    <span className="active-filter-pill">
+                      Sort:
+                      {" "}
+                      {selectedSavedOutfitSortLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {!visibleSavedOutfits.length ? (
+              <div className="editor-placeholder saved-outfits-empty">
+                <p>No saved outfits match the current local search and filters.</p>
+                <p>Clear the controls or save more outfits.</p>
+                <button type="button" className="ghost-button" onClick={resetSavedOutfitControls}>
+                  Clear filters
+                </button>
+              </div>
+            ) : (
             <div className="saved-outfits-list">
-              {savedOutfits.map((savedOutfit) => {
+              {visibleSavedOutfits.map((savedOutfit) => {
               const savedOutfitKey = getOutfitKey(savedOutfit.outfit, savedOutfit.layering);
               const isSavedOutfitLiked = Boolean(likedOutfitKeys[savedOutfitKey]);
               const isSelected = selectedSavedOutfitIds.includes(savedOutfit.id);
@@ -5767,6 +5903,7 @@ export default function App() {
               );
               })}
             </div>
+            )}
           </>
         )}
       </section>
@@ -6370,6 +6507,13 @@ export default function App() {
   function clearSavedOutfitSelection() {
     setSelectedSavedOutfitIds([]);
     setSavedOutfitSelectionAnchorId(null);
+  }
+
+  function resetSavedOutfitControls() {
+    setSavedOutfitSearch("");
+    setSavedOutfitSort("updatedNewest");
+    setSavedOutfitFavoritesOnly(false);
+    setSavedOutfitTagFilter("");
   }
 
   function editSelectedSavedOutfit() {
