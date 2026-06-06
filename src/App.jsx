@@ -112,20 +112,24 @@ import {
   normalizeSavedOutfits
 } from "./lib/appStateModel";
 import {
+  createFitpicImageUuid,
   createImportedFitpicFromFile,
   getFitpicImages,
   getPrimaryFitpicImage,
   normalizeFitpic,
-  replaceFitpicImageFromFile
+  normalizeFitpicImage
 } from "./lib/fitpics";
 import {
+  addFitpicImagesToDraft,
   addFitpicTagsToDraft,
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
   removeFitpicTagFromDraft,
+  removeFitpicImageFromDraft,
   removeLinkedItemFromFitpicDraft,
   resolveFitpicLinkedItems,
+  setPrimaryFitpicImageInDraft,
   syncFitpicLinkedItemSidecars
 } from "./lib/fitpicEditorModel";
 import {
@@ -1295,6 +1299,7 @@ export default function App() {
   const importBackupRef = useRef(null);
   const fitpicUploadInputRef = useRef(null);
   const fitpicReplaceInputRef = useRef(null);
+  const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
   const inlineEditorResizeRef = useRef(null);
@@ -1356,6 +1361,8 @@ export default function App() {
     tagInput: "",
     favorite: false,
     fitDate: "",
+    fitpicImages: [],
+    primaryImageUuid: null,
     linkedItemUuids: [],
     linkedItemIds: [],
     linkedItemSearch: ""
@@ -1453,6 +1460,16 @@ export default function App() {
       ? resolveFitpicLinkedItems(fitpicPreview.linkedItemUuids, fitpicPreview.linkedItemIds, items)
       : [],
     [fitpicPreview, items]
+  );
+  const editingFitpicImages = useMemo(
+    () => Array.isArray(fitpicDraft.fitpicImages) ? fitpicDraft.fitpicImages : [],
+    [fitpicDraft.fitpicImages]
+  );
+  const editingFitpicPrimaryImage = useMemo(
+    () => editingFitpicImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === fitpicDraft.primaryImageUuid)
+      ?? editingFitpicImages[0]
+      ?? null,
+    [editingFitpicImages, fitpicDraft.primaryImageUuid]
   );
   const fitpicPreviewImages = useMemo(
     () => (fitpicPreview ? getFitpicImages(fitpicPreview) : []),
@@ -6739,6 +6756,8 @@ export default function App() {
       tagInput: "",
       favorite: Boolean(fitpic.favorite),
       fitDate: getFitpicDateInputValue(fitpic.fitDate),
+      fitpicImages: getFitpicImages(fitpic),
+      primaryImageUuid: getPrimaryFitpicImage(fitpic)?.fitpicImageUuid ?? null,
       linkedItemUuids: Array.isArray(fitpic.linkedItemUuids) ? fitpic.linkedItemUuids : [],
       linkedItemIds: Array.isArray(fitpic.linkedItemIds) ? fitpic.linkedItemIds : [],
       linkedItemSearch: ""
@@ -6755,6 +6774,8 @@ export default function App() {
       tagInput: "",
       favorite: false,
       fitDate: "",
+      fitpicImages: [],
+      primaryImageUuid: null,
       linkedItemUuids: [],
       linkedItemIds: [],
       linkedItemSearch: ""
@@ -6779,6 +6800,8 @@ export default function App() {
       tags: nextTags,
       favorite: fitpicDraft.favorite,
       fitDate: applyFitpicDateInput(editingFitpic.fitDate, fitpicDraft.fitDate),
+      fitpicImages: fitpicDraft.fitpicImages,
+      primaryImageUuid: fitpicDraft.primaryImageUuid,
       linkedItemUuids: fitpicDraft.linkedItemUuids,
       linkedItemIds: fitpicDraft.linkedItemIds,
       updatedAt
@@ -6901,19 +6924,111 @@ export default function App() {
 
     try {
       setFitpicImportError("");
-      const nextFitpic = await replaceFitpicImageFromFile(editingFitpic, file, {
+      const importMetadata = await readImageFileMetadata(file, {
         readFileAsDataUrl,
-        loadImage,
-        compressImageSource
+        loadImage
       });
-      setFitpics((current) =>
-        current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
-      );
+      const imageData = await compressImageSource(file);
+
+      setFitpicDraft((current) => {
+        const currentImages = Array.isArray(current.fitpicImages) ? current.fitpicImages : [];
+        const primaryImageUuid = current.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
+
+        return {
+          ...current,
+          fitpicImages: currentImages.map((fitpicImage, index) =>
+            fitpicImage.fitpicImageUuid === primaryImageUuid
+              ? normalizeFitpicImage(
+                  {
+                    ...fitpicImage,
+                    imageData,
+                    images: {
+                      ...(fitpicImage.images ?? {}),
+                      preview: imageData
+                    },
+                    ...importMetadata
+                  },
+                  {
+                    createUuid: createFitpicImageUuid,
+                    fallbackTimestamp: importMetadata.importedAt,
+                    fallbackOrder: index,
+                    parentFitpicUuid: editingFitpic.fitpicUuid
+                  }
+                )
+              : fitpicImage
+          )
+        };
+      });
     } catch (error) {
       setFitpicImportError(error?.message || "This image could not be used.");
     } finally {
       event.target.value = "";
     }
+  }
+
+  async function addImagesToEditingFitpic(event) {
+    const files = [...(event.target.files ?? [])];
+
+    if (!files.length || !editingFitpic) {
+      return;
+    }
+
+    try {
+      setFitpicImportError("");
+      const imageFiles = files.filter((file) => file?.type?.startsWith("image/"));
+
+      if (!imageFiles.length) {
+        setFitpicImportError("No image files were found.");
+        return;
+      }
+
+      const nextFitpicImages = await Promise.all(
+        imageFiles.map(async (file, index) => {
+          const importMetadata = await readImageFileMetadata(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
+          const imageData = await compressImageSource(file);
+
+          return normalizeFitpicImage(
+            {
+              fitpicImageUuid: createFitpicImageUuid(),
+              parentFitpicUuid: editingFitpic.fitpicUuid,
+              order: editingFitpicImages.length + index,
+              imageData,
+              images: {
+                preview: imageData
+              },
+              ...importMetadata
+            },
+            {
+              createUuid: createFitpicImageUuid,
+              fallbackTimestamp: importMetadata.importedAt,
+              fallbackOrder: editingFitpicImages.length + index,
+              parentFitpicUuid: editingFitpic.fitpicUuid
+            }
+          );
+        })
+      );
+
+      setFitpicDraft((current) => addFitpicImagesToDraft(current, nextFitpicImages));
+
+      if (imageFiles.length !== files.length) {
+        setFitpicImportError("Added the image files and ignored non-image files.");
+      }
+    } catch (error) {
+      setFitpicImportError(error?.message || "These images could not be added.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeImageFromEditingFitpic(fitpicImageUuid) {
+    setFitpicDraft((current) => removeFitpicImageFromDraft(current, fitpicImageUuid));
+  }
+
+  function setPrimaryImageForEditingFitpic(fitpicImageUuid) {
+    setFitpicDraft((current) => setPrimaryFitpicImageInDraft(current, fitpicImageUuid));
   }
 
   function resetFitpicControls() {
@@ -8892,7 +9007,11 @@ export default function App() {
           {editingFitpic ? (
             <form id="fitpic-editor-form" className="fitpic-editor" onSubmit={saveFitpicDraft}>
               <div className="fitpic-editor-media">
-                <img className="fitpic-editor-image" src={editingFitpic.imageData} alt={editingFitpic.name} />
+                <img
+                  className="fitpic-editor-image"
+                  src={editingFitpicPrimaryImage?.imageData || editingFitpic.imageData}
+                  alt={editingFitpic.name}
+                />
                 <div className="fitpic-editor-media-actions">
                   <button
                     type="button"
@@ -8901,6 +9020,13 @@ export default function App() {
                   >
                     Replace image
                   </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => fitpicAddImagesInputRef.current?.click()}
+                  >
+                    Add image
+                  </button>
                   <input
                     ref={fitpicReplaceInputRef}
                     type="file"
@@ -8908,6 +9034,59 @@ export default function App() {
                     className="fitpic-file-input"
                     onChange={replaceEditingFitpicImage}
                   />
+                  <input
+                    ref={fitpicAddImagesInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="fitpic-file-input"
+                    onChange={addImagesToEditingFitpic}
+                  />
+                </div>
+                <div className="fitpic-editor-image-list" aria-label="Fitpic images">
+                  {editingFitpicImages.map((fitpicImage) => {
+                    const isPrimary = fitpicImage.fitpicImageUuid === fitpicDraft.primaryImageUuid;
+                    const imageFilename = fitpicImage.sourceOriginalFilename || `Image ${fitpicImage.order + 1}`;
+                    const canRemove = editingFitpicImages.length > 1;
+
+                    return (
+                      <div
+                        key={fitpicImage.fitpicImageUuid}
+                        className={`fitpic-editor-image-row ${isPrimary ? "is-primary" : ""}`}
+                      >
+                        <img
+                          className="fitpic-editor-image-thumb"
+                          src={fitpicImage.images?.thumbnail || fitpicImage.images?.preview || fitpicImage.imageData}
+                          alt={imageFilename}
+                        />
+                        <div className="fitpic-editor-image-copy">
+                          <strong>{imageFilename}</strong>
+                          <span>{isPrimary ? "Primary image" : `Image ${fitpicImage.order + 1}`}</span>
+                        </div>
+                        <div className="fitpic-editor-image-actions">
+                          {!isPrimary ? (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => setPrimaryImageForEditingFitpic(fitpicImage.fitpicImageUuid)}
+                            >
+                              Set primary
+                            </button>
+                          ) : (
+                            <span className="fitpic-editor-image-primary-indicator">Primary</span>
+                          )}
+                          <button
+                            type="button"
+                            className="ghost-button danger"
+                            onClick={() => removeImageFromEditingFitpic(fitpicImage.fitpicImageUuid)}
+                            disabled={!canRemove}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

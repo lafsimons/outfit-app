@@ -3130,6 +3130,61 @@ button:disabled {
 .fitpic-editor-media-actions {
   display: flex;
   justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fitpic-editor-image-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-editor-image-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-editor-image-row.is-primary {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.fitpic-editor-image-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: calc(var(--radius-panel) - 4px);
+  background: var(--preview-end);
+}
+
+.fitpic-editor-image-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fitpic-editor-image-copy strong,
+.fitpic-editor-image-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fitpic-editor-image-copy span,
+.fitpic-editor-image-primary-indicator {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.fitpic-editor-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .fitpic-editor-fields {

@@ -283,3 +283,68 @@ export function removeFitpicTagFromDraft(currentDraft, tagToRemove) {
     )
   };
 }
+
+export function addFitpicImagesToDraft(currentDraft, fitpicImages = []) {
+  const currentImages = Array.isArray(currentDraft?.fitpicImages) ? currentDraft.fitpicImages : [];
+  const nextImages = [...currentImages];
+
+  fitpicImages.forEach((fitpicImage) => {
+    if (!fitpicImage?.fitpicImageUuid || !fitpicImage?.imageData) {
+      return;
+    }
+
+    nextImages.push({
+      ...fitpicImage,
+      order: nextImages.length
+    });
+  });
+
+  return {
+    ...currentDraft,
+    fitpicImages: nextImages,
+    primaryImageUuid: currentDraft?.primaryImageUuid || nextImages[0]?.fitpicImageUuid || null
+  };
+}
+
+export function removeFitpicImageFromDraft(currentDraft, fitpicImageUuid) {
+  const normalizedFitpicImageUuid = typeof fitpicImageUuid === "string" ? fitpicImageUuid.trim() : "";
+  const currentImages = Array.isArray(currentDraft?.fitpicImages) ? currentDraft.fitpicImages : [];
+
+  if (!normalizedFitpicImageUuid || currentImages.length <= 1) {
+    return currentDraft;
+  }
+
+  const nextImages = currentImages
+    .filter((fitpicImage) => fitpicImage.fitpicImageUuid !== normalizedFitpicImageUuid)
+    .map((fitpicImage, index) => ({
+      ...fitpicImage,
+      order: index
+    }));
+
+  if (nextImages.length === currentImages.length) {
+    return currentDraft;
+  }
+
+  return {
+    ...currentDraft,
+    fitpicImages: nextImages,
+    primaryImageUuid:
+      currentDraft?.primaryImageUuid === normalizedFitpicImageUuid
+        ? nextImages[0]?.fitpicImageUuid ?? null
+        : currentDraft?.primaryImageUuid || nextImages[0]?.fitpicImageUuid || null
+  };
+}
+
+export function setPrimaryFitpicImageInDraft(currentDraft, fitpicImageUuid) {
+  const normalizedFitpicImageUuid = typeof fitpicImageUuid === "string" ? fitpicImageUuid.trim() : "";
+  const currentImages = Array.isArray(currentDraft?.fitpicImages) ? currentDraft.fitpicImages : [];
+
+  if (!normalizedFitpicImageUuid || !currentImages.some((fitpicImage) => fitpicImage.fitpicImageUuid === normalizedFitpicImageUuid)) {
+    return currentDraft;
+  }
+
+  return {
+    ...currentDraft,
+    primaryImageUuid: normalizedFitpicImageUuid
+  };
+}

@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 
 import {
   addFitpicTagsToDraft,
+  addFitpicImagesToDraft,
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
   removeFitpicTagFromDraft,
+  removeFitpicImageFromDraft,
   removeLinkedItemFromFitpicDraft,
   resolveFitpicLinkedItems,
+  setPrimaryFitpicImageInDraft,
   syncFitpicLinkedItemSidecars
 } from "./fitpicEditorModel.js";
 
@@ -189,4 +192,86 @@ test("fitpic draft tag helpers remove tags case-insensitively", () => {
     tags: ["Summer", "fit-check"],
     tagInput: ""
   });
+});
+
+test("fitpic image draft helpers add images and keep appended order", () => {
+  const added = addFitpicImagesToDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" }
+      ],
+      primaryImageUuid: "image-1"
+    },
+    [
+      { fitpicImageUuid: "image-2", order: 0, imageData: "two" },
+      { fitpicImageUuid: "image-3", order: 0, imageData: "three" }
+    ]
+  );
+
+  assert.deepEqual(
+    added.fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      order: fitpicImage.order
+    })),
+    [
+      { fitpicImageUuid: "image-1", order: 0 },
+      { fitpicImageUuid: "image-2", order: 1 },
+      { fitpicImageUuid: "image-3", order: 2 }
+    ]
+  );
+  assert.equal(added.primaryImageUuid, "image-1");
+});
+
+test("fitpic image draft helpers cannot remove the only remaining image", () => {
+  const unchanged = removeFitpicImageFromDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" }
+      ],
+      primaryImageUuid: "image-1"
+    },
+    "image-1"
+  );
+
+  assert.deepEqual(unchanged, {
+    fitpicImages: [
+      { fitpicImageUuid: "image-1", order: 0, imageData: "one" }
+    ],
+    primaryImageUuid: "image-1"
+  });
+});
+
+test("fitpic image draft helpers remove images and reassign primary safely", () => {
+  const removed = removeFitpicImageFromDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" },
+        { fitpicImageUuid: "image-2", order: 1, imageData: "two" }
+      ],
+      primaryImageUuid: "image-1"
+    },
+    "image-1"
+  );
+
+  assert.deepEqual(removed, {
+    fitpicImages: [
+      { fitpicImageUuid: "image-2", order: 0, imageData: "two" }
+    ],
+    primaryImageUuid: "image-2"
+  });
+});
+
+test("fitpic image draft helpers set the selected primary image", () => {
+  const updated = setPrimaryFitpicImageInDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" },
+        { fitpicImageUuid: "image-2", order: 1, imageData: "two" }
+      ],
+      primaryImageUuid: "image-1"
+    },
+    "image-2"
+  );
+
+  assert.equal(updated.primaryImageUuid, "image-2");
 });
