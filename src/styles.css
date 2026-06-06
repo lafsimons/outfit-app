@@ -3059,12 +3059,14 @@ button:disabled {
 }
 
 .fitpic-preview-linked-list {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 8px;
+  justify-items: start;
 }
 
 .fitpic-preview-linked-item {
+  display: inline-flex;
+  align-items: center;
   padding: 0;
   border: none;
   background: transparent;
