@@ -6737,10 +6737,10 @@ export default function App() {
 
     setFitpicPreviewImageIndex((current) => {
       if (direction === "previous") {
-        return Math.max(0, current - 1);
+        return current === 0 ? fitpicPreviewImages.length - 1 : current - 1;
       }
 
-      return Math.min(fitpicPreviewImages.length - 1, current + 1);
+      return current === fitpicPreviewImages.length - 1 ? 0 : current + 1;
     });
   }
 
@@ -8921,7 +8921,6 @@ export default function App() {
                       type="button"
                       className="preview-overlay-nav preview-overlay-nav-left"
                       onClick={() => stepFitpicPreviewImage("previous")}
-                      disabled={fitpicPreviewImageIndex === 0}
                       aria-label="Previous image in fitpic"
                       title="Previous image"
                     >
@@ -8931,7 +8930,6 @@ export default function App() {
                       type="button"
                       className="preview-overlay-nav preview-overlay-nav-right"
                       onClick={() => stepFitpicPreviewImage("next")}
-                      disabled={fitpicPreviewImageIndex >= fitpicPreviewImages.length - 1}
                       aria-label="Next image in fitpic"
                       title="Next image"
                     >
