@@ -117,9 +117,11 @@ import {
   replaceFitpicImageFromFile
 } from "./lib/fitpics";
 import {
+  addFitpicTagsToDraft,
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
+  removeFitpicTagFromDraft,
   removeLinkedItemFromFitpicDraft,
   resolveFitpicLinkedItems,
   syncFitpicLinkedItemSidecars
@@ -961,10 +963,16 @@ function formatFitpicImportMeta(fitpic) {
 }
 
 function parseFitpicTagsInput(value) {
-  return value
+  return [...new Set(value
     .split(",")
     .map((tag) => tag.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((tag) => tag.toLowerCase()))].map((normalizedTag) =>
+      value
+        .split(",")
+        .map((tag) => tag.trim())
+        .find((tag) => tag && tag.toLowerCase() === normalizedTag)
+    ).filter(Boolean);
 }
 
 function getFallbackPaletteColor(item) {
@@ -1339,7 +1347,8 @@ export default function App() {
   const [fitpicDraft, setFitpicDraft] = useState({
     name: "",
     description: "",
-    tagsText: "",
+    tags: [],
+    tagInput: "",
     favorite: false,
     fitDate: "",
     linkedItemUuids: [],
@@ -1432,6 +1441,12 @@ export default function App() {
   const editingFitpicLinkedItems = useMemo(
     () => resolveFitpicLinkedItems(fitpicDraft.linkedItemUuids, fitpicDraft.linkedItemIds, items),
     [fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, items]
+  );
+  const fitpicPreviewLinkedItems = useMemo(
+    () => fitpicPreview
+      ? resolveFitpicLinkedItems(fitpicPreview.linkedItemUuids, fitpicPreview.linkedItemIds, items)
+      : [],
+    [fitpicPreview, items]
   );
   const fitpicLinkedItemSearch = fitpicDraft.linkedItemSearch.trim().toLowerCase();
   const fitpicLinkedItemSuggestions = useMemo(() => {
@@ -3929,6 +3944,15 @@ export default function App() {
     closeUtilityWindows();
     setFitpicPreview(null);
     setWardrobePreviewItemId(itemId);
+  }
+
+  function openFitpicPreviewLinkedItem(itemId) {
+    if (!itemId) {
+      return;
+    }
+
+    setActivePanel("wardrobe");
+    openWardrobePreview(itemId);
   }
 
   function closeWardrobePreview() {
@@ -6597,7 +6621,8 @@ export default function App() {
     setFitpicDraft({
       name: fitpic.name ?? "",
       description: fitpic.description ?? "",
-      tagsText: Array.isArray(fitpic.tags) ? fitpic.tags.join(", ") : "",
+      tags: Array.isArray(fitpic.tags) ? fitpic.tags : [],
+      tagInput: "",
       favorite: Boolean(fitpic.favorite),
       fitDate: getFitpicDateInputValue(fitpic.fitDate),
       linkedItemUuids: Array.isArray(fitpic.linkedItemUuids) ? fitpic.linkedItemUuids : [],
@@ -6612,7 +6637,8 @@ export default function App() {
     setFitpicDraft({
       name: "",
       description: "",
-      tagsText: "",
+      tags: [],
+      tagInput: "",
       favorite: false,
       fitDate: "",
       linkedItemUuids: [],
@@ -6630,7 +6656,7 @@ export default function App() {
     }
 
     const trimmedName = fitpicDraft.name.trim();
-    const nextTags = parseFitpicTagsInput(fitpicDraft.tagsText);
+    const nextTags = Array.isArray(fitpicDraft.tags) ? fitpicDraft.tags : [];
     const updatedAt = new Date().toISOString();
     const nextFitpic = normalizeFitpic({
       ...editingFitpic,
@@ -6648,6 +6674,20 @@ export default function App() {
       current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
     );
     cancelEditFitpic();
+  }
+
+  function commitFitpicTagInput() {
+    const normalizedInput = typeof fitpicDraft.tagInput === "string" ? fitpicDraft.tagInput.trim() : "";
+
+    if (!normalizedInput) {
+      return;
+    }
+
+    setFitpicDraft((current) => addFitpicTagsToDraft(current, current.tagInput));
+  }
+
+  function removeTagFromEditingFitpic(tag) {
+    setFitpicDraft((current) => removeFitpicTagFromDraft(current, tag));
   }
 
   async function importFitpicFiles(fileList) {
@@ -8611,9 +8651,9 @@ export default function App() {
 
         <PreviewOverlay
           open={Boolean(fitpicPreview)}
-          eyebrow="Fitpic"
+          eyebrow=""
           title={fitpicPreview?.name ?? ""}
-          meta={fitpicPreview ? formatFitpicImportMeta(fitpicPreview) || formatFitpicDate(fitpicPreview.createdAt) : null}
+          meta={fitpicPreview ? formatFitpicDate(fitpicPreview.fitDate || fitpicPreview.createdAt) : null}
           onClose={() => setFitpicPreview(null)}
           actions={fitpicPreview ? (
             <>
@@ -8632,11 +8672,36 @@ export default function App() {
         >
           {fitpicPreview ? (
             <div className="fitpic-preview-content">
-              <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} />
-              {(fitpicPreview.description || fitpicPreview.tags.length) ? (
+              <div className="fitpic-preview-image-frame">
+                <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} />
+              </div>
+              {(fitpicPreview.description || fitpicPreview.tags.length || fitpicPreviewLinkedItems.length) ? (
                 <div className="fitpic-preview-copy">
-                  {fitpicPreview.description ? <p>{fitpicPreview.description}</p> : null}
-                  {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(", ")}</p> : null}
+                  {fitpicPreview.description ? <p className="fitpic-preview-description">{fitpicPreview.description}</p> : null}
+                  {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(" · ")}</p> : null}
+                  {fitpicPreviewLinkedItems.length ? (
+                    <div className="fitpic-preview-linked-items">
+                      <p className="fitpic-preview-section-label">Linked wardrobe items</p>
+                      <div className="fitpic-preview-linked-list">
+                        {fitpicPreviewLinkedItems.map((linkedEntry) =>
+                          linkedEntry.missing ? (
+                            <span key={linkedEntry.key} className="fitpic-preview-linked-item is-missing">
+                              Missing wardrobe item
+                            </span>
+                          ) : (
+                            <button
+                              key={linkedEntry.key}
+                              type="button"
+                              className="fitpic-preview-linked-item"
+                              onClick={() => openFitpicPreviewLinkedItem(linkedEntry.itemId)}
+                            >
+                              {linkedEntry.label}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -8689,6 +8754,7 @@ export default function App() {
                 <label>
                   <span className="editor-label-row"><span>Name / title</span></span>
                   <input
+                    className="fitpic-editor-title-input"
                     value={fitpicDraft.name}
                     onChange={(event) =>
                       setFitpicDraft((current) => ({
@@ -8702,7 +8768,8 @@ export default function App() {
                 <label>
                   <span className="editor-label-row"><span>Description</span></span>
                   <textarea
-                    rows="4"
+                    className="fitpic-editor-description-input"
+                    rows="6"
                     value={fitpicDraft.description}
                     onChange={(event) =>
                       setFitpicDraft((current) => ({
@@ -8715,16 +8782,49 @@ export default function App() {
 
                 <label>
                   <span className="editor-label-row"><span>Tags</span></span>
-                  <input
-                    value={fitpicDraft.tagsText}
-                    onChange={(event) =>
-                      setFitpicDraft((current) => ({
-                        ...current,
-                        tagsText: event.target.value
-                      }))
-                    }
-                    placeholder="casual, summer, black"
-                  />
+                  <div className="fitpic-tag-editor">
+                    {fitpicDraft.tags.length ? (
+                      <div className="fitpic-tag-chip-list" aria-label="Fitpic tags">
+                        {fitpicDraft.tags.map((tag) => (
+                          <span key={tag} className="fitpic-tag-chip">
+                            <span>{tag}</span>
+                            <button
+                              type="button"
+                              className="fitpic-tag-chip-remove"
+                              onClick={() => removeTagFromEditingFitpic(tag)}
+                              aria-label={`Remove ${tag} tag`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <input
+                      value={fitpicDraft.tagInput}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+
+                        if (nextValue.includes(",")) {
+                          setFitpicDraft((current) => addFitpicTagsToDraft(current, nextValue));
+                          return;
+                        }
+
+                        setFitpicDraft((current) => ({
+                          ...current,
+                          tagInput: nextValue
+                        }));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitFitpicTagInput();
+                        }
+                      }}
+                      onBlur={commitFitpicTagInput}
+                      placeholder="Type a tag and press Enter"
+                    />
+                  </div>
                 </label>
 
                 <label>
@@ -8765,11 +8865,7 @@ export default function App() {
                         <div key={linkedEntry.key} className={`fitpic-linked-item ${linkedEntry.missing ? "is-missing" : ""}`}>
                           <div className="fitpic-linked-item-copy">
                             <strong>{linkedEntry.label}</strong>
-                            <span>
-                              {linkedEntry.missing
-                                ? linkedEntry.itemUuid || linkedEntry.itemId || "Unknown link"
-                                : linkedEntry.item?.id}
-                            </span>
+                            <span>{linkedEntry.missing ? "Missing wardrobe item" : "Linked wardrobe item"}</span>
                           </div>
                           <button
                             type="button"
@@ -8809,7 +8905,7 @@ export default function App() {
                           onClick={() => addWardrobeItemToEditingFitpic(item)}
                         >
                           <strong>{buildDisplayName(item)}</strong>
-                          <span>{item.id}</span>
+                          <span>{item.type || item.garmentType || "Wardrobe item"}</span>
                         </button>
                       ))}
                     </div>

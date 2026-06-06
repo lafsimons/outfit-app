@@ -3018,9 +3018,67 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-preview-image-frame {
+  display: grid;
+  place-items: center;
+  max-height: calc(100vh - 220px);
+}
+
 .fitpic-preview-copy,
 .fitpic-preview-copy p {
   margin: 0;
+}
+
+.fitpic-preview-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-preview-description {
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.fitpic-preview-tags {
+  color: var(--muted-strong);
+  line-height: 1.45;
+}
+
+.fitpic-preview-section-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fitpic-preview-linked-items {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-preview-linked-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fitpic-preview-linked-item {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+.fitpic-preview-linked-item.is-missing {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: default;
 }
 
 .fitpic-editor {
@@ -3051,10 +3109,51 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-editor-title-input {
+  min-width: min(100%, 540px);
+}
+
+.fitpic-editor-description-input {
+  min-height: 144px;
+  resize: vertical;
+}
+
 .fitpic-favorite-field {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+}
+
+.fitpic-tag-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-tag-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fitpic-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  font-size: 0.78rem;
+}
+
+.fitpic-tag-chip-remove {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .fitpic-linked-items {
@@ -3087,7 +3186,7 @@ button:disabled {
 .fitpic-linked-item-copy {
   min-width: 0;
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .fitpic-linked-item-copy strong,
@@ -3103,6 +3202,10 @@ button:disabled {
 .fitpic-linked-items-empty {
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.fitpic-linked-items > label input {
+  min-width: min(100%, 420px);
 }
 
 .fitpic-linked-item-suggestion {
@@ -3275,7 +3378,7 @@ button:disabled {
 .preview-overlay-fitpic-image {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 64px);
+  max-height: min(72vh, calc(100vh - 220px));
   object-fit: contain;
   margin: 0 auto;
 }

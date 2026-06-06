@@ -230,3 +230,56 @@ export function removeLinkedItemFromFitpicDraft(currentDraft, { itemUuid = null,
     linkedItemIds: nextLinkedItemIds
   };
 }
+
+function normalizeDraftTags(tags = []) {
+  const seen = new Set();
+  const normalizedTags = [];
+
+  tags.forEach((tag) => {
+    const normalizedTag = typeof tag === "string" ? tag.trim() : "";
+    const normalizedKey = normalizedTag.toLowerCase();
+
+    if (!normalizedTag || seen.has(normalizedKey)) {
+      return;
+    }
+
+    seen.add(normalizedKey);
+    normalizedTags.push(normalizedTag);
+  });
+
+  return normalizedTags;
+}
+
+export function addFitpicTagsToDraft(currentDraft, rawValue) {
+  const incomingTags = String(rawValue ?? "")
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (!incomingTags.length) {
+    return currentDraft;
+  }
+
+  return {
+    ...currentDraft,
+    tags: normalizeDraftTags([...(Array.isArray(currentDraft?.tags) ? currentDraft.tags : []), ...incomingTags]),
+    tagInput: ""
+  };
+}
+
+export function removeFitpicTagFromDraft(currentDraft, tagToRemove) {
+  const normalizedRemoveKey = typeof tagToRemove === "string" ? tagToRemove.trim().toLowerCase() : "";
+
+  if (!normalizedRemoveKey) {
+    return currentDraft;
+  }
+
+  return {
+    ...currentDraft,
+    tags: normalizeDraftTags(
+      (Array.isArray(currentDraft?.tags) ? currentDraft.tags : []).filter(
+        (tag) => tag.trim().toLowerCase() !== normalizedRemoveKey
+      )
+    )
+  };
+}

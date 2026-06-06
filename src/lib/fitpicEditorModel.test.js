@@ -2,9 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  addFitpicTagsToDraft,
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
+  removeFitpicTagFromDraft,
   removeLinkedItemFromFitpicDraft,
   resolveFitpicLinkedItems,
   syncFitpicLinkedItemSidecars
@@ -157,4 +159,34 @@ test("fitpic draft linked item helpers keep uuid/id sidecars aligned and avoid d
       linkedItemIds: []
     }
   );
+});
+
+test("fitpic draft tag helpers add deduped trimmed tags and clear tag input", () => {
+  const added = addFitpicTagsToDraft(
+    {
+      tags: ["Summer"],
+      tagInput: "  black, summer,  fit-check "
+    },
+    "  black, summer,  fit-check "
+  );
+
+  assert.deepEqual(added, {
+    tags: ["Summer", "black", "fit-check"],
+    tagInput: ""
+  });
+});
+
+test("fitpic draft tag helpers remove tags case-insensitively", () => {
+  const removed = removeFitpicTagFromDraft(
+    {
+      tags: ["Summer", "black", "fit-check"],
+      tagInput: ""
+    },
+    "BLACK"
+  );
+
+  assert.deepEqual(removed, {
+    tags: ["Summer", "fit-check"],
+    tagInput: ""
+  });
 });
