@@ -3115,6 +3115,13 @@ export default function App() {
         return;
       }
 
+      if (selectedFitpicCount) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        clearFitpicSelection();
+        return;
+      }
+
       if (generationListsOpen) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -3139,6 +3146,7 @@ export default function App() {
     editingId,
     bulkMetadataEditorOpen,
     fitpicPreview,
+    selectedFitpicCount,
     wardrobePreviewNavigation.nextItemId,
     wardrobePreviewNavigation.previousItemId,
     wardrobePreviewItemId,
@@ -5708,47 +5716,47 @@ export default function App() {
               </div>
               <div className="wardrobe-toolbar-context">
                 {hasFitpicSelection ? (
-                  <div className="wardrobe-selection-summary fitpic-selection-summary">
-                    <div className="wardrobe-selection-count wardrobe-selection-chip">
-                      <span>{selectedFitpicCount} selected</span>
+                  <>
+                    <div className="wardrobe-selection-summary fitpic-selection-summary">
+                      <div className="wardrobe-selection-count wardrobe-selection-chip">
+                        <span>{selectedFitpicCount} selected</span>
+                        <button
+                          type="button"
+                          className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+                          onMouseDown={preventMouseButtonFocus}
+                          onClick={clearFitpicSelection}
+                          aria-label="Clear fitpic selection"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    <div className="wardrobe-toolbar-context-actions">
                       <button
                         type="button"
-                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
-                        onMouseDown={preventMouseButtonFocus}
-                        onClick={clearFitpicSelection}
-                        aria-label="Clear fitpic selection"
+                        className="ghost-button"
+                        onClick={editSelectedFitpic}
+                        disabled={!isSingleFitpicSelected}
                       >
-                        ×
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
+                        onClick={toggleSelectedFitpicFavorites}
+                      >
+                        {fitpicFavoriteActionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button danger"
+                        onClick={deleteSelectedFitpics}
+                      >
+                        Delete
                       </button>
                     </div>
-                  </div>
+                  </>
                 ) : null}
-                <div className="wardrobe-toolbar-context-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={editSelectedFitpic}
-                    disabled={!isSingleFitpicSelected}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
-                    onClick={toggleSelectedFitpicFavorites}
-                    disabled={!hasFitpicSelection}
-                  >
-                    {fitpicFavoriteActionLabel}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button danger"
-                    onClick={deleteSelectedFitpics}
-                    disabled={!hasFitpicSelection}
-                  >
-                    Delete
-                  </button>
-                </div>
               </div>
             </div>
             {hasActiveFitpicControls ? (
