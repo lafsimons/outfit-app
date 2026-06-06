@@ -113,6 +113,8 @@ import {
 } from "./lib/appStateModel";
 import {
   createImportedFitpicFromFile,
+  getFitpicImages,
+  getPrimaryFitpicImage,
   normalizeFitpic,
   replaceFitpicImageFromFile
 } from "./lib/fitpics";
@@ -1345,6 +1347,7 @@ export default function App() {
   const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
+  const [fitpicPreviewImageIndex, setFitpicPreviewImageIndex] = useState(0);
   const [editingFitpicId, setEditingFitpicId] = useState(null);
   const [fitpicDraft, setFitpicDraft] = useState({
     name: "",
@@ -1451,6 +1454,18 @@ export default function App() {
       : [],
     [fitpicPreview, items]
   );
+  const fitpicPreviewImages = useMemo(
+    () => (fitpicPreview ? getFitpicImages(fitpicPreview) : []),
+    [fitpicPreview]
+  );
+  const fitpicPreviewPrimaryImage = useMemo(
+    () => (fitpicPreview ? getPrimaryFitpicImage(fitpicPreview) : null),
+    [fitpicPreview]
+  );
+  const activePreviewFitpicImage = fitpicPreviewImages[fitpicPreviewImageIndex]
+    ?? fitpicPreviewPrimaryImage
+    ?? fitpicPreviewImages[0]
+    ?? null;
   const fitpicLinkedItemSearch = fitpicDraft.linkedItemSearch.trim().toLowerCase();
   const fitpicLinkedItemSuggestions = useMemo(() => {
     if (!editingFitpic) {
@@ -1582,6 +1597,35 @@ export default function App() {
     const nextPreview = fitpics.find((fitpic) => fitpic.id === fitpicPreview.id) ?? null;
     setFitpicPreview(nextPreview);
   }, [fitpicPreview, fitpics]);
+
+  useEffect(() => {
+    if (!fitpicPreview) {
+      setFitpicPreviewImageIndex(0);
+      return;
+    }
+
+    const primaryImageUuid = fitpicPreviewPrimaryImage?.fitpicImageUuid ?? "";
+    const primaryImageIndex = primaryImageUuid
+      ? fitpicPreviewImages.findIndex((fitpicImage) => fitpicImage.fitpicImageUuid === primaryImageUuid)
+      : -1;
+
+    setFitpicPreviewImageIndex(primaryImageIndex >= 0 ? primaryImageIndex : 0);
+  }, [fitpicPreview?.id]);
+
+  useEffect(() => {
+    if (!fitpicPreviewImages.length) {
+      if (fitpicPreviewImageIndex !== 0) {
+        setFitpicPreviewImageIndex(0);
+      }
+      return;
+    }
+
+    if (fitpicPreviewImageIndex < fitpicPreviewImages.length) {
+      return;
+    }
+
+    setFitpicPreviewImageIndex(fitpicPreviewImages.length - 1);
+  }, [fitpicPreviewImageIndex, fitpicPreviewImages]);
 
   function noteInteractionModality(event) {
     if (event.type === "pointerdown") {
@@ -6646,6 +6690,7 @@ export default function App() {
   function openFitpicPreview(fitpic) {
     closeUtilityWindows();
     setEditingFitpicId(null);
+    setFitpicPreviewImageIndex(0);
     setFitpicPreview(fitpic);
   }
 
@@ -6664,7 +6709,22 @@ export default function App() {
       return;
     }
 
+    setFitpicPreviewImageIndex(0);
     setFitpicPreview(nextFitpic);
+  }
+
+  function stepFitpicPreviewImage(direction) {
+    if (fitpicPreviewImages.length <= 1) {
+      return;
+    }
+
+    setFitpicPreviewImageIndex((current) => {
+      if (direction === "previous") {
+        return Math.max(0, current - 1);
+      }
+
+      return Math.min(fitpicPreviewImages.length - 1, current + 1);
+    });
   }
 
   function startEditFitpic(fitpic) {
@@ -8702,7 +8762,10 @@ export default function App() {
           eyebrow=""
           title={fitpicPreview?.name ?? ""}
           meta={fitpicPreview ? formatFitpicDate(fitpicPreview.fitDate || fitpicPreview.createdAt) : null}
-          onClose={() => setFitpicPreview(null)}
+          onClose={() => {
+            setFitpicPreviewImageIndex(0);
+            setFitpicPreview(null);
+          }}
           actions={fitpicPreview ? (
             <>
               <button
@@ -8737,7 +8800,42 @@ export default function App() {
           {fitpicPreview ? (
             <div className="fitpic-preview-content">
               <div className="fitpic-preview-image-frame">
-                <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} />
+                {fitpicPreviewImages.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="preview-overlay-nav preview-overlay-nav-left"
+                      onClick={() => stepFitpicPreviewImage("previous")}
+                      disabled={fitpicPreviewImageIndex === 0}
+                      aria-label="Previous image in fitpic"
+                      title="Previous image"
+                    >
+                      <span aria-hidden="true">‹</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-nav preview-overlay-nav-right"
+                      onClick={() => stepFitpicPreviewImage("next")}
+                      disabled={fitpicPreviewImageIndex >= fitpicPreviewImages.length - 1}
+                      aria-label="Next image in fitpic"
+                      title="Next image"
+                    >
+                      <span aria-hidden="true">›</span>
+                    </button>
+                    <div className="fitpic-preview-image-indicator" aria-label="Current fitpic image">
+                      {fitpicPreviewImageIndex + 1} / {fitpicPreviewImages.length}
+                    </div>
+                  </>
+                ) : null}
+                {activePreviewFitpicImage ? (
+                  <img
+                    className="preview-overlay-fitpic-image"
+                    src={activePreviewFitpicImage.imageData}
+                    alt={fitpicPreview.name}
+                  />
+                ) : (
+                  <div className="fitpic-preview-image-empty">Image unavailable.</div>
+                )}
               </div>
               {(fitpicPreview.description || fitpicPreview.tags.length || fitpicPreviewLinkedItems.length) ? (
                 <div className="fitpic-preview-copy">

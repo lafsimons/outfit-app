@@ -3019,9 +3019,35 @@ button:disabled {
 }
 
 .fitpic-preview-image-frame {
+  position: relative;
   display: grid;
   place-items: center;
   max-height: calc(100vh - 220px);
+  min-height: min(72vh, calc(100vh - 220px));
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  background: linear-gradient(180deg, var(--preview-start), var(--preview-end));
+}
+
+.fitpic-preview-image-indicator {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+.fitpic-preview-image-empty {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
 }
 
 .fitpic-preview-copy,
