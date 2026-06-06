@@ -54,67 +54,62 @@ export function resolveFitpicLinkedItems(linkedItemUuids = [], linkedItemIds = [
   );
   const seenItems = new Set();
   const entries = [];
+  const maxLength = Math.max(linkedItemUuids.length, linkedItemIds.length);
 
-  linkedItemUuids.forEach((itemUuid) => {
-    const normalizedUuid = typeof itemUuid === "string" ? itemUuid.trim() : "";
+  for (let index = 0; index < maxLength; index += 1) {
+    const normalizedUuid = typeof linkedItemUuids[index] === "string" ? linkedItemUuids[index].trim() : "";
+    const normalizedId = typeof linkedItemIds[index] === "string" ? linkedItemIds[index].trim() : "";
 
-    if (!normalizedUuid) {
-      return;
+    if (!normalizedUuid && !normalizedId) {
+      continue;
     }
 
-    const item = itemsByUuid.get(normalizedUuid) ?? null;
+    const uuidItem = normalizedUuid ? itemsByUuid.get(normalizedUuid) ?? null : null;
 
-    if (item) {
-      if (seenItems.has(item.id)) {
-        return;
+    if (uuidItem) {
+      if (!seenItems.has(uuidItem.id)) {
+        seenItems.add(uuidItem.id);
+        entries.push({
+          key: `uuid:${normalizedUuid}`,
+          itemUuid: normalizedUuid,
+          itemId: uuidItem.id,
+          item: uuidItem,
+          label: buildDisplayName(uuidItem),
+          missing: false
+        });
       }
 
-      seenItems.add(item.id);
+      continue;
+    }
+
+    if (normalizedUuid) {
       entries.push({
         key: `uuid:${normalizedUuid}`,
         itemUuid: normalizedUuid,
-        itemId: item.id,
-        item,
-        label: buildDisplayName(item),
-        missing: false
+        itemId: null,
+        item: null,
+        label: "Missing wardrobe item",
+        missing: true
       });
-      return;
+      continue;
     }
 
-    entries.push({
-      key: `uuid:${normalizedUuid}`,
-      itemUuid: normalizedUuid,
-      itemId: null,
-      item: null,
-      label: "Missing wardrobe item",
-      missing: true
-    });
-  });
+    const idItem = normalizedId ? itemsById.get(normalizedId) ?? null : null;
 
-  linkedItemIds.forEach((itemId) => {
-    const normalizedId = typeof itemId === "string" ? itemId.trim() : "";
-
-    if (!normalizedId) {
-      return;
-    }
-
-    const item = itemsById.get(normalizedId) ?? null;
-
-    if (item) {
-      if (seenItems.has(item.id)) {
-        return;
+    if (idItem) {
+      if (!seenItems.has(idItem.id)) {
+        seenItems.add(idItem.id);
+        entries.push({
+          key: `id:${normalizedId}`,
+          itemUuid: idItem.itemUuid ?? null,
+          itemId: normalizedId,
+          item: idItem,
+          label: buildDisplayName(idItem),
+          missing: false
+        });
       }
 
-      seenItems.add(item.id);
-      entries.push({
-        key: `id:${normalizedId}`,
-        itemUuid: item.itemUuid ?? null,
-        itemId: normalizedId,
-        item,
-        label: buildDisplayName(item),
-        missing: false
-      });
-      return;
+      continue;
     }
 
     entries.push({
@@ -125,9 +120,43 @@ export function resolveFitpicLinkedItems(linkedItemUuids = [], linkedItemIds = [
       label: "Missing wardrobe item",
       missing: true
     });
-  });
+  }
 
   return entries;
+}
+
+export function syncFitpicLinkedItemSidecars(fitpic, items = []) {
+  const linkedItemUuids = Array.isArray(fitpic?.linkedItemUuids) ? fitpic.linkedItemUuids : [];
+  const linkedItemIds = Array.isArray(fitpic?.linkedItemIds) ? fitpic.linkedItemIds : [];
+  const itemsByUuid = new Map(
+    items
+      .filter((item) => typeof item?.itemUuid === "string" && item.itemUuid.trim())
+      .map((item) => [item.itemUuid, item])
+  );
+  const nextLinkedItemIds = [...linkedItemIds];
+
+  linkedItemUuids.forEach((itemUuid, index) => {
+    const normalizedUuid = typeof itemUuid === "string" ? itemUuid.trim() : "";
+
+    if (!normalizedUuid) {
+      return;
+    }
+
+    const item = itemsByUuid.get(normalizedUuid) ?? null;
+
+    if (item?.id) {
+      nextLinkedItemIds[index] = item.id;
+    }
+  });
+
+  if (JSON.stringify(nextLinkedItemIds) === JSON.stringify(linkedItemIds)) {
+    return fitpic;
+  }
+
+  return {
+    ...fitpic,
+    linkedItemIds: nextLinkedItemIds
+  };
 }
 
 export function addLinkedItemToFitpicDraft(currentDraft, item) {
@@ -141,8 +170,21 @@ export function addLinkedItemToFitpicDraft(currentDraft, item) {
   const nextLinkedItemUuids = Array.isArray(currentDraft?.linkedItemUuids) ? [...currentDraft.linkedItemUuids] : [];
   const nextLinkedItemIds = Array.isArray(currentDraft?.linkedItemIds) ? [...currentDraft.linkedItemIds] : [];
 
-  if (itemUuid && !nextLinkedItemUuids.includes(itemUuid)) {
-    nextLinkedItemUuids.push(itemUuid);
+  if (itemUuid) {
+    const existingIndex = nextLinkedItemUuids.indexOf(itemUuid);
+
+    if (existingIndex === -1) {
+      nextLinkedItemUuids.push(itemUuid);
+      nextLinkedItemIds.push(itemId || "");
+    } else if (itemId) {
+      nextLinkedItemIds[existingIndex] = itemId;
+    }
+
+    return {
+      ...currentDraft,
+      linkedItemUuids: nextLinkedItemUuids,
+      linkedItemIds: nextLinkedItemIds
+    };
   }
 
   if (itemId && !nextLinkedItemIds.includes(itemId)) {
@@ -157,11 +199,34 @@ export function addLinkedItemToFitpicDraft(currentDraft, item) {
 }
 
 export function removeLinkedItemFromFitpicDraft(currentDraft, { itemUuid = null, itemId = null } = {}) {
+  const linkedItemUuids = Array.isArray(currentDraft?.linkedItemUuids) ? currentDraft.linkedItemUuids : [];
+  const linkedItemIds = Array.isArray(currentDraft?.linkedItemIds) ? currentDraft.linkedItemIds : [];
+  const nextLinkedItemUuids = [];
+  const nextLinkedItemIds = [];
+  const maxLength = Math.max(linkedItemUuids.length, linkedItemIds.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const currentUuid = linkedItemUuids[index] ?? null;
+    const currentId = linkedItemIds[index] ?? null;
+    const matchesUuid = itemUuid !== null && currentUuid === itemUuid;
+    const matchesId = itemId !== null && currentId === itemId;
+
+    if (matchesUuid || matchesId) {
+      continue;
+    }
+
+    if (currentUuid !== undefined) {
+      nextLinkedItemUuids.push(currentUuid);
+    }
+
+    if (currentId !== undefined) {
+      nextLinkedItemIds.push(currentId);
+    }
+  }
+
   return {
     ...currentDraft,
-    linkedItemUuids: (Array.isArray(currentDraft?.linkedItemUuids) ? currentDraft.linkedItemUuids : [])
-      .filter((value) => value !== itemUuid),
-    linkedItemIds: (Array.isArray(currentDraft?.linkedItemIds) ? currentDraft.linkedItemIds : [])
-      .filter((value) => value !== itemId)
+    linkedItemUuids: nextLinkedItemUuids,
+    linkedItemIds: nextLinkedItemIds
   };
 }

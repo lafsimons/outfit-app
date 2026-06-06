@@ -121,7 +121,8 @@ import {
   applyFitpicDateInput,
   getFitpicDateInputValue,
   removeLinkedItemFromFitpicDraft,
-  resolveFitpicLinkedItems
+  resolveFitpicLinkedItems,
+  syncFitpicLinkedItemSidecars
 } from "./lib/fitpicEditorModel";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
@@ -2813,7 +2814,11 @@ export default function App() {
       const next = current.map((savedOutfit) => syncSavedOutfitItemUuids(savedOutfit, itemsById));
       return JSON.stringify(next) === JSON.stringify(current) ? current : next;
     });
-  }, [itemsById, outfit, loading]);
+    setFitpics((current) => {
+      const next = current.map((fitpic) => syncFitpicLinkedItemSidecars(fitpic, items));
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
+  }, [items, itemsById, outfit, loading]);
 
   useEffect(() => {
     const validIds = items.map((item) => item.id);
