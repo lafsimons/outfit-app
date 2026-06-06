@@ -113,6 +113,7 @@ import {
 } from "./lib/appStateModel";
 import {
   createFitpicImageUuid,
+  createImportedGroupedFitpicFromFiles,
   createImportedFitpicFromFile,
   getFitpicImages,
   getPrimaryFitpicImage,
@@ -1299,6 +1300,7 @@ export default function App() {
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
   const fitpicUploadInputRef = useRef(null);
+  const fitpicGroupedUploadInputRef = useRef(null);
   const fitpicReplaceInputRef = useRef(null);
   const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
@@ -6053,14 +6055,24 @@ export default function App() {
             <p className="eyebrow">Import fitpics</p>
             {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
           </div>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => fitpicUploadInputRef.current?.click()}
-            disabled={fitpicImporting}
-          >
-            {fitpicImporting ? "Importing…" : "Choose images"}
-          </button>
+          <div className="fitpic-dropzone-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => fitpicUploadInputRef.current?.click()}
+              disabled={fitpicImporting}
+            >
+              {fitpicImporting ? "Importing…" : "Choose images"}
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => fitpicGroupedUploadInputRef.current?.click()}
+              disabled={fitpicImporting}
+            >
+              {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
+            </button>
+          </div>
           <input
             ref={fitpicUploadInputRef}
             type="file"
@@ -6068,6 +6080,14 @@ export default function App() {
             multiple
             className="fitpic-file-input"
             onChange={handleFitpicUpload}
+          />
+          <input
+            ref={fitpicGroupedUploadInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="fitpic-file-input"
+            onChange={handleGroupedFitpicUpload}
           />
         </div>
 
@@ -6871,6 +6891,50 @@ export default function App() {
   async function handleFitpicUpload(event) {
     try {
       await importFitpicFiles(event.target.files);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function importGroupedFitpicFiles(fileList) {
+    const files = [...(fileList ?? [])];
+
+    if (!files.length) {
+      return;
+    }
+
+    const imageFiles = files.filter((file) => file?.type?.startsWith("image/"));
+
+    if (!imageFiles.length) {
+      setFitpicImportError("No image files were found.");
+      return;
+    }
+
+    try {
+      setFitpicImporting(true);
+      setFitpicImportError("");
+      const nextFitpic = await createImportedGroupedFitpicFromFiles(imageFiles, {
+        createId: createFitpicId,
+        readFileAsDataUrl,
+        loadImage,
+        compressImageSource
+      });
+
+      setFitpics((current) => [nextFitpic, ...current]);
+
+      if (imageFiles.length !== files.length) {
+        setFitpicImportError("Created a grouped fitpic from the image files and ignored non-image files.");
+      }
+    } catch (error) {
+      setFitpicImportError(error?.message || "These images could not be imported together.");
+    } finally {
+      setFitpicImporting(false);
+    }
+  }
+
+  async function handleGroupedFitpicUpload(event) {
+    try {
+      await importGroupedFitpicFiles(event.target.files);
     } finally {
       event.target.value = "";
     }

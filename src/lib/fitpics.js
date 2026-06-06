@@ -423,6 +423,46 @@ export function normalizeFitpics(
     .filter((fitpic) => Array.isArray(fitpic.fitpicImages) && fitpic.fitpicImages.length > 0);
 }
 
+async function createImportedFitpicImageFromFile(
+  file,
+  {
+    createFitpicImageUuid: createImageUuid,
+    readFileAsDataUrl,
+    loadImage,
+    compressImageSource,
+    now = () => new Date().toISOString(),
+    importedAt = now(),
+    parentFitpicUuid = "",
+    order = 0
+  }
+) {
+  const importMetadata = await readImageFileMetadata(file, {
+    now: () => importedAt,
+    readFileAsDataUrl,
+    loadImage
+  });
+  const imageData = await compressImageSource(file);
+
+  return normalizeFitpicImage(
+    {
+      fitpicImageUuid: createImageUuid?.(),
+      parentFitpicUuid,
+      order,
+      imageData,
+      images: {
+        preview: imageData
+      },
+      ...importMetadata
+    },
+    {
+      createUuid: createImageUuid,
+      fallbackTimestamp: importedAt,
+      fallbackOrder: order,
+      parentFitpicUuid
+    }
+  );
+}
+
 export async function createImportedFitpicFromFile(
   file,
   {
@@ -435,41 +475,98 @@ export async function createImportedFitpicFromFile(
     now = () => new Date().toISOString()
   }
 ) {
+  const fitpicUuid = createUuid?.();
   const importedAt = now();
-  const importMetadata = await readImageFileMetadata(file, {
-    now: () => importedAt,
+  const fitpicImage = await createImportedFitpicImageFromFile(file, {
+    createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
-    loadImage
+    loadImage,
+    compressImageSource,
+    now,
+    importedAt,
+    parentFitpicUuid: fitpicUuid,
+    order: 0
   });
-  const imageData = await compressImageSource(file);
 
   return normalizeFitpic(
     {
       id: createId?.(),
-      fitpicUuid: createUuid?.(),
+      fitpicUuid,
       name: getFitpicNameFromFilename(file?.name),
       description: "",
       tags: [],
       favorite: false,
       createdAt: importedAt,
       updatedAt: importedAt,
-      primaryImageUuid: null,
-      fitpicImages: [
-        {
-          fitpicImageUuid: createImageUuid?.(),
-          order: 0,
-          imageData,
-          images: {
-            preview: imageData
-          },
-          ...importMetadata
-        }
-      ],
-      imageData,
-      images: {
-        preview: imageData
-      },
-      ...importMetadata
+      primaryImageUuid: fitpicImage.fitpicImageUuid,
+      fitpicImages: [fitpicImage],
+      imageData: fitpicImage.imageData,
+      images: fitpicImage.images,
+      ...normalizeImportMetadataFields(fitpicImage, importedAt),
+      ...normalizeExtendedImageMetadataFields(fitpicImage)
+    },
+    {
+      createId,
+      createUuid,
+      createFitpicImageUuid: createImageUuid,
+      fallbackTimestamp: importedAt
+    }
+  );
+}
+
+export async function createImportedGroupedFitpicFromFiles(
+  files,
+  {
+    createId,
+    createUuid,
+    createFitpicImageUuid: createImageUuid,
+    readFileAsDataUrl,
+    loadImage,
+    compressImageSource,
+    now = () => new Date().toISOString()
+  }
+) {
+  const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+  if (!normalizedFiles.length) {
+    throw new Error("No image files were provided.");
+  }
+
+  const fitpicUuid = createUuid?.();
+  const importedAt = now();
+  const fitpicImages = await Promise.all(
+    normalizedFiles.map((file, index) =>
+      createImportedFitpicImageFromFile(file, {
+        createFitpicImageUuid: createImageUuid,
+        readFileAsDataUrl,
+        loadImage,
+        compressImageSource,
+        now,
+        importedAt,
+        parentFitpicUuid: fitpicUuid,
+        order: index
+      })
+    )
+  );
+
+  const primaryFitpicImage = fitpicImages[0] ?? null;
+
+  return normalizeFitpic(
+    {
+      id: createId?.(),
+      fitpicUuid,
+      name: getFitpicNameFromFilename(normalizedFiles[0]?.name),
+      description: "",
+      tags: [],
+      favorite: false,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+      primaryImageUuid: primaryFitpicImage?.fitpicImageUuid ?? null,
+      fitpicImages,
+      imageData: primaryFitpicImage?.imageData ?? "",
+      images: primaryFitpicImage?.images ?? { preview: "", original: "", thumbnail: "" },
+      ...normalizeImportMetadataFields(primaryFitpicImage, importedAt),
+      ...normalizeExtendedImageMetadataFields(primaryFitpicImage)
     },
     {
       createId,

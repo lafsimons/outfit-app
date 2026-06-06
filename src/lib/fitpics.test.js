@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  createImportedGroupedFitpicFromFiles,
   createImportedFitpicFromFile,
   getFitpicImageEntities,
   getPrimaryFitpicImage,
@@ -249,6 +250,100 @@ test("createImportedFitpicFromFile captures shared metadata and creates one nest
   assert.equal(fitpic.images.preview, "data:image/webp;base64,preview");
   assert.equal(fitpic.importedAt, "2024-05-01T12:34:56.000Z");
   assert.equal(fitpic.fitDate, "2024-05-01T12:34:56.000Z");
+});
+
+test("createImportedGroupedFitpicFromFiles creates one multi-image fitpic with the first image as primary", async () => {
+  const uuidSequence = ["fitpic-image-uuid-1", "fitpic-image-uuid-2"];
+  const grouped = await createImportedGroupedFitpicFromFiles(
+    [
+      {
+        name: "Front.png",
+        size: 111,
+        lastModified: 1710000000000,
+        type: "image/png"
+      },
+      {
+        name: "Detail.png",
+        size: 222,
+        lastModified: 1710000001000,
+        type: "image/png"
+      }
+    ],
+    {
+      createId: () => "fitpic_grouped_1",
+      createUuid: () => "fitpic-uuid-grouped-1",
+      createFitpicImageUuid: () => uuidSequence.shift(),
+      now: () => "2024-05-03T08:00:00.000Z",
+      readFileAsDataUrl: async () => "data:image/png;base64,raw",
+      loadImage: async () => ({
+        naturalWidth: 1200,
+        naturalHeight: 1600
+      }),
+      compressImageSource: async (file) => `data:image/webp;base64,${file.name}`
+    }
+  );
+
+  assert.equal(grouped.name, "Front");
+  assert.equal(grouped.primaryImageUuid, "fitpic-image-uuid-1");
+  assert.equal(grouped.fitDate, "2024-05-03T08:00:00.000Z");
+  assert.equal(grouped.fitpicImages.length, 2);
+  assert.deepEqual(
+    grouped.fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      parentFitpicUuid: fitpicImage.parentFitpicUuid,
+      order: fitpicImage.order,
+      imageData: fitpicImage.imageData,
+      sourceOriginalFilename: fitpicImage.sourceOriginalFilename
+    })),
+    [
+      {
+        fitpicImageUuid: "fitpic-image-uuid-1",
+        parentFitpicUuid: "fitpic-uuid-grouped-1",
+        order: 0,
+        imageData: "data:image/webp;base64,Front.png",
+        sourceOriginalFilename: "Front.png"
+      },
+      {
+        fitpicImageUuid: "fitpic-image-uuid-2",
+        parentFitpicUuid: "fitpic-uuid-grouped-1",
+        order: 1,
+        imageData: "data:image/webp;base64,Detail.png",
+        sourceOriginalFilename: "Detail.png"
+      }
+    ]
+  );
+  assert.equal(grouped.imageData, "data:image/webp;base64,Front.png");
+  assert.equal(grouped.images.preview, "data:image/webp;base64,Front.png");
+});
+
+test("createImportedGroupedFitpicFromFiles supports a one-file grouped import", async () => {
+  const grouped = await createImportedGroupedFitpicFromFiles(
+    [
+      {
+        name: "Solo.png",
+        size: 111,
+        lastModified: 1710000000000,
+        type: "image/png"
+      }
+    ],
+    {
+      createId: () => "fitpic_grouped_solo",
+      createUuid: () => "fitpic-uuid-grouped-solo",
+      createFitpicImageUuid: () => "fitpic-image-uuid-solo",
+      now: () => "2024-05-03T09:00:00.000Z",
+      readFileAsDataUrl: async () => "data:image/png;base64,raw",
+      loadImage: async () => ({
+        naturalWidth: 800,
+        naturalHeight: 1000
+      }),
+      compressImageSource: async () => "data:image/webp;base64,solo"
+    }
+  );
+
+  assert.equal(grouped.primaryImageUuid, "fitpic-image-uuid-solo");
+  assert.equal(grouped.fitpicImages.length, 1);
+  assert.equal(grouped.fitpicImages[0].parentFitpicUuid, "fitpic-uuid-grouped-solo");
+  assert.equal(grouped.imageData, "data:image/webp;base64,solo");
 });
 
 test("replaceFitpicImageFromFile replaces the primary nested image while preserving parent metadata and other images", async () => {
