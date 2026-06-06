@@ -6270,7 +6270,12 @@ export default function App() {
                       aria-pressed={isSelected}
                       aria-label={fitpicCardAccessibleLabel}
                     >
-                      <img src={fitpic.imageData} alt="" />
+                      <div className="fitpic-card-image-frame">
+                        <img src={fitpic.imageData} alt="" />
+                      </div>
+                      <div className="fitpic-card-copy">
+                        <strong title={fitpic.name}>{fitpic.name}</strong>
+                      </div>
                     </button>
                   </article>
                   );
