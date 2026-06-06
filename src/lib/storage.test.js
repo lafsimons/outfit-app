@@ -574,6 +574,10 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
     outfitUuid: "outfit-uuid-1",
     name: "Saved outfit",
     description: "",
+    tags: [],
+    favorite: false,
+    createdAt: "2024-04-01T00:00:00.000Z",
+    updatedAt: "2024-04-01T00:00:00.000Z",
     outfit: { TopInner: "top_1" },
     outfitItemUuids: { TopInner: "item-uuid-1" },
     layering: false
@@ -603,17 +607,25 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
       {
         ...savedOutfit,
         name: "Edited outfit",
-        description: "Updated"
+        description: "Updated",
+        tags: ["Evening", "Black"],
+        favorite: true,
+        updatedAt: "2024-04-02T00:00:00.000Z"
       }
     ]
   });
 
   const editedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  const editedState = await loadAppState();
   assert.equal(editedMetadata.recordVersion, 4);
   assert.equal(editedMetadata.syncStatus, "pending_upload");
   assert.equal(editedMetadata.pendingDelete, false);
   assert.equal(editedMetadata.lastSyncedAt, "2024-04-01T00:00:00.000Z");
   assert.equal(editedMetadata.lastLocalChangeAt.length > 0, true);
+  assert.equal(editedState.savedOutfits[0].createdAt, "2024-04-01T00:00:00.000Z");
+  assert.equal(editedState.savedOutfits[0].updatedAt, "2024-04-02T00:00:00.000Z");
+  assert.deepEqual(editedState.savedOutfits[0].tags, ["Evening", "Black"]);
+  assert.equal(editedState.savedOutfits[0].favorite, true);
 
   await saveAppState({
     savedOutfits: []

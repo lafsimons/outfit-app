@@ -1309,7 +1309,12 @@ export default function App() {
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
   const [selectedSavedOutfitId, setSelectedSavedOutfitId] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
-  const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
+  const [savedOutfitDraft, setSavedOutfitDraft] = useState({
+    name: "",
+    description: "",
+    tagsText: "",
+    favorite: false
+  });
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
@@ -5329,6 +5334,32 @@ export default function App() {
                           rows="3"
                         />
                       </label>
+                      <label>
+                        Tags
+                        <input
+                          value={savedOutfitDraft.tagsText}
+                          onChange={(event) =>
+                            setSavedOutfitDraft((current) => ({
+                              ...current,
+                              tagsText: event.target.value
+                            }))
+                          }
+                          placeholder="casual, summer, black"
+                        />
+                      </label>
+                      <label className="saved-outfit-favorite-field">
+                        <input
+                          type="checkbox"
+                          checked={savedOutfitDraft.favorite}
+                          onChange={(event) =>
+                            setSavedOutfitDraft((current) => ({
+                              ...current,
+                              favorite: event.target.checked
+                            }))
+                          }
+                        />
+                        <span>Favorite</span>
+                      </label>
                       <div className="saved-outfit-actions">
                         <button type="submit" className="primary-button">Save</button>
                         <button type="button" className="ghost-button" onClick={cancelEditSavedOutfit}>
@@ -5791,13 +5822,20 @@ export default function App() {
     setEditingSavedOutfitId(savedOutfit.id);
     setSavedOutfitDraft({
       name: savedOutfit.name ?? "",
-      description: savedOutfit.description ?? ""
+      description: savedOutfit.description ?? "",
+      tagsText: Array.isArray(savedOutfit.tags) ? savedOutfit.tags.join(", ") : "",
+      favorite: Boolean(savedOutfit.favorite)
     });
   }
 
   function cancelEditSavedOutfit() {
     setEditingSavedOutfitId(null);
-    setSavedOutfitDraft({ name: "", description: "" });
+    setSavedOutfitDraft({
+      name: "",
+      description: "",
+      tagsText: "",
+      favorite: false
+    });
   }
 
   function submitSavedOutfit(event, savedOutfitId) {
@@ -5805,6 +5843,7 @@ export default function App() {
 
     const trimmedName = savedOutfitDraft.name.trim();
     const trimmedDescription = savedOutfitDraft.description.trim();
+    const nextTags = parseFitpicTagsInput(savedOutfitDraft.tagsText);
     const updatedAt = new Date().toISOString();
 
     setSavedOutfits((current) =>
@@ -5814,6 +5853,8 @@ export default function App() {
               ...savedOutfit,
               name: trimmedName || savedOutfit.name,
               description: trimmedDescription,
+              tags: nextTags,
+              favorite: savedOutfitDraft.favorite,
               updatedAt
             }
           : savedOutfit
