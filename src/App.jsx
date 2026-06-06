@@ -6247,6 +6247,14 @@ export default function App() {
               <div className="fitpic-list">
                 {visibleFitpics.map((fitpic) => {
                   const isSelected = selectedFitpicIds.includes(fitpic.id);
+                  const fitpicCardDateLabel = formatFitpicDate(fitpic.fitDate || fitpic.createdAt);
+                  const fitpicCardAccessibleLabel = [
+                    `Select ${fitpic.name}.`,
+                    fitpicCardDateLabel ? `${fitpicCardDateLabel}.` : "",
+                    "Double-click or press Enter to preview."
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
 
                   return (
                   <article
@@ -6260,13 +6268,9 @@ export default function App() {
                       onDoubleClick={(event) => handleFitpicCardDoubleClick(fitpic, event)}
                       onKeyDown={(event) => handleFitpicCardKeyDown(fitpic, event)}
                       aria-pressed={isSelected}
-                      aria-label={`Select ${fitpic.name}. Double-click or press Enter to preview.`}
+                      aria-label={fitpicCardAccessibleLabel}
                     >
-                      <img src={fitpic.imageData} alt={fitpic.name} />
-                      <div className="fitpic-card-copy">
-                        <strong title={fitpic.name}>{fitpic.name}</strong>
-                        <span>{formatFitpicDate(fitpic.fitDate || fitpic.createdAt)}</span>
-                      </div>
+                      <img src={fitpic.imageData} alt="" />
                     </button>
                   </article>
                   );

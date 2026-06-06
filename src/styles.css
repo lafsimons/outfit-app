@@ -2762,11 +2762,6 @@ button:disabled {
   font-size: 0.72rem;
 }
 
-.fitpic-card span {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
 .worth-chart {
   display: grid;
   gap: 10px;
@@ -2986,33 +2981,12 @@ button:disabled {
 }
 
 .fitpic-image-button {
-  display: grid;
-  gap: 10px;
-  align-content: start;
+  display: block;
   width: 100%;
   padding: 0;
   border: none;
   background: transparent;
-  text-align: left;
   cursor: pointer;
-}
-
-.fitpic-card-copy {
-  display: grid;
-  gap: 4px;
-}
-
-.fitpic-card-copy strong,
-.fitpic-card-copy span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fitpic-card-copy strong,
-.fitpic-card-copy span,
-.fitpic-card-tags {
-  white-space: nowrap;
 }
 
 .fitpic-import-error {
