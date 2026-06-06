@@ -2825,6 +2825,40 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 12px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.fitpic-controls input,
+.fitpic-controls select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: 8px 9px;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.fitpic-controls-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 40px;
+}
+
 .fitpic-dropzone {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

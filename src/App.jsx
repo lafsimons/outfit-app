@@ -124,6 +124,10 @@ import {
   resolveFitpicLinkedItems,
   syncFitpicLinkedItemSidecars
 } from "./lib/fitpicEditorModel";
+import {
+  filterAndSortFitpics,
+  getFitpicLinkedItemFilterOptions
+} from "./lib/fitpicLibrary";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -1336,6 +1340,10 @@ export default function App() {
   const [fitpicImportError, setFitpicImportError] = useState("");
   const [fitpicImporting, setFitpicImporting] = useState(false);
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
+  const [fitpicSearch, setFitpicSearch] = useState("");
+  const [fitpicSort, setFitpicSort] = useState("fitDateNewest");
+  const [fitpicFavoritesOnly, setFitpicFavoritesOnly] = useState(false);
+  const [fitpicLinkedItemFilter, setFitpicLinkedItemFilter] = useState("");
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
@@ -1426,6 +1434,24 @@ export default function App() {
       })
       .slice(0, 8);
   }, [editingFitpic, fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, fitpicLinkedItemSearch, items]);
+  const fitpicLinkedItemFilterOptions = useMemo(
+    () => getFitpicLinkedItemFilterOptions(fitpics, items),
+    [fitpics, items]
+  );
+  const visibleFitpics = useMemo(
+    () =>
+      filterAndSortFitpics(
+        fitpics,
+        {
+          search: fitpicSearch,
+          sort: fitpicSort,
+          favoritesOnly: fitpicFavoritesOnly,
+          linkedItemFilter: fitpicLinkedItemFilter
+        },
+        items
+      ),
+    [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
+  );
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
@@ -5461,8 +5487,56 @@ export default function App() {
             <p>Import outfit photos here to build an editable visual archive.</p>
           </div>
         ) : (
-          <div className="fitpic-list">
-            {fitpics.map((fitpic) => (
+          <>
+            <div className="fitpic-controls" aria-label="Fitpic controls">
+              <label>
+                <span className="eyebrow">Search</span>
+                <input
+                  value={fitpicSearch}
+                  onChange={(event) => setFitpicSearch(event.target.value)}
+                  placeholder="Search fitpics"
+                />
+              </label>
+              <label>
+                <span className="eyebrow">Sort</span>
+                <select value={fitpicSort} onChange={(event) => setFitpicSort(event.target.value)}>
+                  <option value="fitDateNewest">Fit date newest</option>
+                  <option value="fitDateOldest">Fit date oldest</option>
+                  <option value="createdNewest">Created newest</option>
+                  <option value="importedNewest">Imported newest</option>
+                  <option value="titleAz">Title A-Z</option>
+                </select>
+              </label>
+              <label>
+                <span className="eyebrow">Linked item</span>
+                <select
+                  value={fitpicLinkedItemFilter}
+                  onChange={(event) => setFitpicLinkedItemFilter(event.target.value)}
+                >
+                  <option value="">All linked items</option>
+                  {fitpicLinkedItemFilterOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="fitpic-controls-toggle">
+                <input
+                  type="checkbox"
+                  checked={fitpicFavoritesOnly}
+                  onChange={(event) => setFitpicFavoritesOnly(event.target.checked)}
+                />
+                <span>Favorites only</span>
+              </label>
+            </div>
+
+            {!visibleFitpics.length ? (
+              <div className="editor-placeholder fitpics-empty-state">
+                <p>No fitpics match the current local search and filters.</p>
+                <p>Clear the controls or import more fitpics.</p>
+              </div>
+            ) : (
+              <div className="fitpic-list">
+                {visibleFitpics.map((fitpic) => (
               <article key={fitpic.id} className="fitpic-card">
                 <button
                   type="button"
@@ -5496,8 +5570,10 @@ export default function App() {
                   </button>
                 </div>
               </article>
-            ))}
-          </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </section>
     );
