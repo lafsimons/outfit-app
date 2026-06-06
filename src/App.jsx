@@ -1312,7 +1312,8 @@ export default function App() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
-  const [selectedSavedOutfitId, setSelectedSavedOutfitId] = useState(null);
+  const [selectedSavedOutfitIds, setSelectedSavedOutfitIds] = useState([]);
+  const [savedOutfitSelectionAnchorId, setSavedOutfitSelectionAnchorId] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
   const [savedOutfitDraft, setSavedOutfitDraft] = useState({
     name: "",
@@ -1395,6 +1396,8 @@ export default function App() {
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const savedOutfitSelectClickTimeoutRef = useRef(null);
+  const savedOutfitPendingSelectionRef = useRef(null);
   const fitpicSelectClickTimeoutRef = useRef(null);
   const fitpicPendingSelectionRef = useRef(null);
   const outfitItemPreviewClickTimeoutRef = useRef(null);
@@ -1629,6 +1632,11 @@ export default function App() {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       }
       wardrobePendingSelectionRef.current = null;
+
+      if (savedOutfitSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      }
+      savedOutfitPendingSelectionRef.current = null;
 
       if (fitpicSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(fitpicSelectClickTimeoutRef.current);
@@ -2533,6 +2541,24 @@ export default function App() {
     () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
     [itemsById, selectedWardrobeItemIds]
   );
+  const visibleSavedOutfitIds = useMemo(
+    () => savedOutfits.map((savedOutfit) => savedOutfit.id),
+    [savedOutfits]
+  );
+  const selectedSavedOutfits = useMemo(
+    () => selectedSavedOutfitIds
+      .map((savedOutfitId) => savedOutfits.find((savedOutfit) => savedOutfit.id === savedOutfitId))
+      .filter(Boolean),
+    [savedOutfits, selectedSavedOutfitIds]
+  );
+  const selectedSavedOutfitCount = selectedSavedOutfitIds.length;
+  const hasSavedOutfitSelection = selectedSavedOutfitCount > 0;
+  const isSingleSavedOutfitSelected = selectedSavedOutfitCount === 1;
+  const areAllSelectedSavedOutfitsFavorite = useMemo(
+    () => selectedSavedOutfits.length > 0 && selectedSavedOutfits.every((savedOutfit) => Boolean(savedOutfit.favorite)),
+    [selectedSavedOutfits]
+  );
+  const savedOutfitFavoriteActionLabel = areAllSelectedSavedOutfitsFavorite ? "Unfavorite" : "Favorite";
   const areAllSelectedWardrobeItemsFavorite = useMemo(
     () => selectedWardrobeItems.length > 0 && selectedWardrobeItems.every((item) => Boolean(item.favorite)),
     [selectedWardrobeItems]
@@ -2933,14 +2959,20 @@ export default function App() {
   }, [itemsById, wardrobePreviewItemId]);
 
   useEffect(() => {
-    if (!selectedSavedOutfitId) {
+    const validIds = savedOutfits.map((savedOutfit) => savedOutfit.id);
+
+    setSelectedSavedOutfitIds((current) => pruneSelectedIds(current, validIds));
+    setSavedOutfitSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
+  }, [savedOutfits]);
+
+  useEffect(() => {
+    if (activeOutfitsTab === "saved") {
       return;
     }
 
-    if (activeOutfitsTab !== "saved" || !savedOutfits.some((savedOutfit) => savedOutfit.id === selectedSavedOutfitId)) {
-      setSelectedSavedOutfitId(null);
-    }
-  }, [activeOutfitsTab, savedOutfits, selectedSavedOutfitId]);
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
+  }, [activeOutfitsTab]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot && !selectedOutfitSlot && !selectedAccessorySlot) {
@@ -3115,6 +3147,13 @@ export default function App() {
         return;
       }
 
+      if (selectedSavedOutfitCount) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        clearSavedOutfitSelection();
+        return;
+      }
+
       if (selectedFitpicCount) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -3147,6 +3186,7 @@ export default function App() {
     bulkMetadataEditorOpen,
     fitpicPreview,
     selectedFitpicCount,
+    selectedSavedOutfitCount,
     wardrobePreviewNavigation.nextItemId,
     wardrobePreviewNavigation.previousItemId,
     wardrobePreviewItemId,
@@ -5114,6 +5154,11 @@ export default function App() {
         wardrobeSelectClickTimeoutRef.current = null;
       }
       wardrobePendingSelectionRef.current = null;
+      if (savedOutfitSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+        savedOutfitSelectClickTimeoutRef.current = null;
+      }
+      savedOutfitPendingSelectionRef.current = null;
       if (fitpicSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(fitpicSelectClickTimeoutRef.current);
         fitpicSelectClickTimeoutRef.current = null;
@@ -5147,6 +5192,11 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
     if (fitpicSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(fitpicSelectClickTimeoutRef.current);
       fitpicSelectClickTimeoutRef.current = null;
@@ -5179,6 +5229,11 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
     if (fitpicSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(fitpicSelectClickTimeoutRef.current);
       fitpicSelectClickTimeoutRef.current = null;
@@ -5303,25 +5358,37 @@ export default function App() {
 
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
-    setSelectedSavedOutfitId(null);
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
     cancelEditSavedOutfit();
     setActivePanel(null);
   }
 
   function handleSavedOutfitClick(savedOutfit, event) {
-    if (isMobileViewport) {
-      loadAndCloseSavedOutfit(savedOutfit);
-      return;
+    registerPointerActivatedControl(event);
+    const shiftKey = event.shiftKey;
+    const toggleKey = event.metaKey || event.ctrlKey;
+    const pendingSelection = savedOutfitPendingSelectionRef.current;
+
+    if (pendingSelection && pendingSelection.savedOutfit.id !== savedOutfit.id) {
+      flushPendingSavedOutfitSelection();
     }
 
-    if (event?.detail === 0) {
-      loadAndCloseSavedOutfit(savedOutfit);
-      return;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
     }
 
-    if (event?.detail <= 1) {
-      setSelectedSavedOutfitId(savedOutfit.id);
-    }
+    savedOutfitPendingSelectionRef.current = {
+      savedOutfit,
+      shiftKey,
+      toggleKey
+    };
+
+    savedOutfitSelectClickTimeoutRef.current = window.setTimeout(() => {
+      flushPendingSavedOutfitSelection();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+
+    blurPointerActivatedControl(event);
   }
 
   function handleSavedOutfitDoubleClick(savedOutfit, event) {
@@ -5329,7 +5396,61 @@ export default function App() {
       event.preventDefault();
     }
 
-    setSelectedSavedOutfitId(null);
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
+    loadAndCloseSavedOutfit(savedOutfit);
+  }
+
+  function handleSavedOutfitSelection(savedOutfit, shiftKey, toggleKey) {
+    const nextSelectionState = getNextSelectionState({
+      selectedIds: selectedSavedOutfitIds,
+      orderedIds: visibleSavedOutfitIds,
+      clickedId: savedOutfit.id,
+      anchorId: savedOutfitSelectionAnchorId,
+      shiftKey,
+      toggleKey
+    });
+
+    setSelectedSavedOutfitIds(nextSelectionState.selectedIds);
+    setSavedOutfitSelectionAnchorId(nextSelectionState.anchorId);
+  }
+
+  function flushPendingSavedOutfitSelection() {
+    const pendingSelection = savedOutfitPendingSelectionRef.current;
+
+    if (!pendingSelection) {
+      return;
+    }
+
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+
+    savedOutfitPendingSelectionRef.current = null;
+    handleSavedOutfitSelection(
+      pendingSelection.savedOutfit,
+      pendingSelection.shiftKey,
+      pendingSelection.toggleKey
+    );
+  }
+
+  function handleSavedOutfitKeyDown(savedOutfit, event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+
+    savedOutfitPendingSelectionRef.current = null;
     loadAndCloseSavedOutfit(savedOutfit);
   }
 
@@ -5492,11 +5613,61 @@ export default function App() {
             <p>Save an outfit you like and it will appear here.</p>
           </div>
         ) : (
-          <div className="saved-outfits-list">
-            {savedOutfits.map((savedOutfit) => {
+          <>
+            {hasSavedOutfitSelection ? (
+              <div className="wardrobe-toolbar saved-outfit-toolbar" aria-label="Saved outfit library actions">
+                <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
+                  <span className="wardrobe-results-count">
+                    {savedOutfits.length} saved outfit{savedOutfits.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="wardrobe-toolbar-context">
+                  <div className="wardrobe-selection-summary fitpic-selection-summary">
+                    <div className="wardrobe-selection-count wardrobe-selection-chip">
+                      <span>{selectedSavedOutfitCount} selected</span>
+                      <button
+                        type="button"
+                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+                        onMouseDown={preventMouseButtonFocus}
+                        onClick={clearSavedOutfitSelection}
+                        aria-label="Clear saved outfit selection"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <div className="wardrobe-toolbar-context-actions">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={editSelectedSavedOutfit}
+                      disabled={!isSingleSavedOutfitSelected}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button ${areAllSelectedSavedOutfitsFavorite ? "is-active" : ""}`}
+                      onClick={toggleSelectedSavedOutfitFavorites}
+                    >
+                      {savedOutfitFavoriteActionLabel}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button danger"
+                      onClick={deleteSelectedSavedOutfits}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="saved-outfits-list">
+              {savedOutfits.map((savedOutfit) => {
               const savedOutfitKey = getOutfitKey(savedOutfit.outfit, savedOutfit.layering);
               const isSavedOutfitLiked = Boolean(likedOutfitKeys[savedOutfitKey]);
-              const isSelected = selectedSavedOutfitId === savedOutfit.id;
+              const isSelected = selectedSavedOutfitIds.includes(savedOutfit.id);
 
               return (
                 <article key={savedOutfit.id} className={`saved-outfit-card ${isSelected ? "is-selected" : ""}`}>
@@ -5570,6 +5741,9 @@ export default function App() {
                         className="saved-outfit-load"
                         onClick={(event) => handleSavedOutfitClick(savedOutfit, event)}
                         onDoubleClick={(event) => handleSavedOutfitDoubleClick(savedOutfit, event)}
+                        onKeyDown={(event) => handleSavedOutfitKeyDown(savedOutfit, event)}
+                        aria-pressed={isSelected}
+                        aria-label={`Select ${savedOutfit.name}. Double-click or press Enter to load.`}
                       >
                         {renderSavedOutfitPreview(savedOutfit)}
                         <strong>{savedOutfit.name}</strong>
@@ -5586,27 +5760,14 @@ export default function App() {
                         >
                           {isSavedOutfitLiked ? "Liked" : "Like"}
                         </button>
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => startEditSavedOutfit(savedOutfit)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button danger"
-                          onClick={() => deleteSavedOutfit(savedOutfit.id)}
-                        >
-                          Delete
-                        </button>
                       </div>
                     </>
                   )}
                 </article>
               );
-            })}
-          </div>
+              })}
+            </div>
+          </>
         )}
       </section>
     );
@@ -6159,7 +6320,8 @@ export default function App() {
   }
 
   function startEditSavedOutfit(savedOutfit) {
-    setSelectedSavedOutfitId(savedOutfit.id);
+    setSelectedSavedOutfitIds([savedOutfit.id]);
+    setSavedOutfitSelectionAnchorId(savedOutfit.id);
     setEditingSavedOutfitId(savedOutfit.id);
     setSavedOutfitDraft({
       name: savedOutfit.name ?? "",
@@ -6205,10 +6367,53 @@ export default function App() {
     cancelEditSavedOutfit();
   }
 
-  async function deleteSavedOutfit(savedOutfitId) {
+  function clearSavedOutfitSelection() {
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
+  }
+
+  function editSelectedSavedOutfit() {
+    if (selectedSavedOutfits.length !== 1) {
+      return;
+    }
+
+    startEditSavedOutfit(selectedSavedOutfits[0]);
+  }
+
+  function toggleSelectedSavedOutfitFavorites() {
+    if (!selectedSavedOutfitIds.length) {
+      return;
+    }
+
+    const selectedIdSet = new Set(selectedSavedOutfitIds);
+    const shouldFavorite = !areAllSelectedSavedOutfitsFavorite;
+    const updatedAt = new Date().toISOString();
+
+    setSavedOutfits((current) =>
+      current.map((savedOutfit) =>
+        selectedIdSet.has(savedOutfit.id)
+          ? {
+              ...savedOutfit,
+              favorite: shouldFavorite,
+              updatedAt
+            }
+          : savedOutfit
+      )
+    );
+  }
+
+  async function deleteSavedOutfitsById(savedOutfitIds) {
+    const uniqueSavedOutfitIds = [...new Set((savedOutfitIds ?? []).filter(Boolean))];
+
+    if (!uniqueSavedOutfitIds.length) {
+      return;
+    }
+
     const confirmed = await requestConfirmation({
-      title: "Delete outfit?",
-      message: "This saved outfit will be removed from this browser.",
+      title: uniqueSavedOutfitIds.length === 1 ? "Delete outfit?" : "Delete outfits?",
+      message: uniqueSavedOutfitIds.length === 1
+        ? "This saved outfit will be removed from this browser."
+        : `${uniqueSavedOutfitIds.length} saved outfits will be removed from this browser.`,
       confirmLabel: "Delete"
     });
 
@@ -6216,15 +6421,22 @@ export default function App() {
       return;
     }
 
-    setSavedOutfits((current) => current.filter((savedOutfit) => savedOutfit.id !== savedOutfitId));
+    const deletedIdSet = new Set(uniqueSavedOutfitIds);
 
-    if (editingSavedOutfitId === savedOutfitId) {
+    setSavedOutfits((current) => current.filter((savedOutfit) => !deletedIdSet.has(savedOutfit.id)));
+    setSelectedSavedOutfitIds((current) => current.filter((savedOutfitId) => !deletedIdSet.has(savedOutfitId)));
+
+    if (editingSavedOutfitId && deletedIdSet.has(editingSavedOutfitId)) {
       cancelEditSavedOutfit();
     }
+  }
 
-    if (selectedSavedOutfitId === savedOutfitId) {
-      setSelectedSavedOutfitId(null);
-    }
+  async function deleteSelectedSavedOutfits() {
+    await deleteSavedOutfitsById(selectedSavedOutfitIds);
+  }
+
+  async function deleteSavedOutfit(savedOutfitId) {
+    await deleteSavedOutfitsById([savedOutfitId]);
   }
 
   function openFitpicPreview(fitpic) {
