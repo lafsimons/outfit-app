@@ -1365,6 +1365,7 @@ export default function App() {
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
+  const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
@@ -2667,7 +2668,7 @@ export default function App() {
     }
 
     if (!visibleWardrobeItemIds.includes(wardrobePreviewItemId)) {
-      setWardrobePreviewItemId(null);
+      closeWardrobePreview();
     }
   }, [visibleWardrobeItemIds, wardrobePreviewItemId]);
   const wardrobePreviewMeta = useMemo(() => {
@@ -3015,7 +3016,7 @@ export default function App() {
       return;
     }
 
-    setWardrobePreviewItemId(null);
+    closeWardrobePreview();
   }, [itemsById, wardrobePreviewItemId]);
 
   useEffect(() => {
@@ -3161,7 +3162,7 @@ export default function App() {
       if (wardrobePreviewItemId) {
         event.preventDefault();
         blurRetainedPointerFocus();
-        setWardrobePreviewItemId(null);
+        closeWardrobePreview();
         return;
       }
 
@@ -3941,22 +3942,36 @@ export default function App() {
   }
 
   function openWardrobePreview(itemId) {
-    closeUtilityWindows();
-    setFitpicPreview(null);
-    setWardrobePreviewItemId(itemId);
-  }
-
-  function openFitpicPreviewLinkedItem(itemId) {
     if (!itemId) {
       return;
     }
 
-    setActivePanel("wardrobe");
-    openWardrobePreview(itemId);
+    closeUtilityWindows();
+    setWardrobePreviewReturnFitpicPreview(null);
+    setFitpicPreview(null);
+    setWardrobePreviewItemId(itemId);
   }
 
-  function closeWardrobePreview() {
+  function openWardrobePreviewFromFitpicPreview(itemId) {
+    if (!itemId) {
+      return;
+    }
+
+    closeUtilityWindows();
+    setWardrobePreviewReturnFitpicPreview(fitpicPreview);
+    setFitpicPreview(null);
+    setWardrobePreviewItemId(itemId);
+  }
+
+  function closeWardrobePreview({ restoreFitpicPreview = true } = {}) {
+    const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
+
+    if (restoreFitpicPreview && returnFitpicPreview) {
+      setFitpicPreview(returnFitpicPreview);
+    }
+
+    setWardrobePreviewReturnFitpicPreview(null);
   }
 
   function showPreviousWardrobePreviewItem() {
@@ -4088,7 +4103,7 @@ export default function App() {
     }
 
     const previewedItem = wardrobePreviewItem;
-    closeWardrobePreview();
+    closeWardrobePreview({ restoreFitpicPreview: false });
     startEdit(previewedItem, {
       returnTarget: activePanel === "wardrobe" ? "wardrobe" : "outfit"
     });
@@ -5215,9 +5230,9 @@ export default function App() {
       setWardrobeFiltersOpen(false);
       setDashboardFiltersOpen(false);
       setWardrobeManageOpen(false);
+      closeWardrobePreview({ restoreFitpicPreview: false });
       setFitpicPreview(null);
       cancelEditFitpic();
-      setWardrobePreviewItemId(null);
       if (wardrobeSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
         wardrobeSelectClickTimeoutRef.current = null;
@@ -5251,9 +5266,9 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
+    closeWardrobePreview({ restoreFitpicPreview: false });
     setFitpicPreview(null);
     cancelEditFitpic();
-    setWardrobePreviewItemId(null);
     setOutfitFiltersOpen(false);
     setGenerationListsOpen(false);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
@@ -8679,7 +8694,7 @@ export default function App() {
                               key={linkedEntry.key}
                               type="button"
                               className="fitpic-preview-linked-item"
-                              onClick={() => openFitpicPreviewLinkedItem(linkedEntry.itemId)}
+                              onClick={() => openWardrobePreviewFromFitpicPreview(linkedEntry.itemId)}
                             >
                               {linkedEntry.label}
                             </button>
