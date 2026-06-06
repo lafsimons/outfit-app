@@ -348,3 +348,31 @@ export function setPrimaryFitpicImageInDraft(currentDraft, fitpicImageUuid) {
     primaryImageUuid: normalizedFitpicImageUuid
   };
 }
+
+export function moveFitpicImageInDraft(currentDraft, fitpicImageUuid, direction) {
+  const normalizedFitpicImageUuid = typeof fitpicImageUuid === "string" ? fitpicImageUuid.trim() : "";
+  const currentImages = Array.isArray(currentDraft?.fitpicImages) ? currentDraft.fitpicImages : [];
+  const currentIndex = currentImages.findIndex((fitpicImage) => fitpicImage.fitpicImageUuid === normalizedFitpicImageUuid);
+
+  if (currentIndex === -1) {
+    return currentDraft;
+  }
+
+  const targetIndex = direction === "up" ? currentIndex - 1 : direction === "down" ? currentIndex + 1 : currentIndex;
+
+  if (targetIndex < 0 || targetIndex >= currentImages.length || targetIndex === currentIndex) {
+    return currentDraft;
+  }
+
+  const nextImages = [...currentImages];
+  const [movedImage] = nextImages.splice(currentIndex, 1);
+  nextImages.splice(targetIndex, 0, movedImage);
+
+  return {
+    ...currentDraft,
+    fitpicImages: nextImages.map((fitpicImage, index) => ({
+      ...fitpicImage,
+      order: index
+    }))
+  };
+}

@@ -7,6 +7,7 @@ import {
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
+  moveFitpicImageInDraft,
   removeFitpicTagFromDraft,
   removeFitpicImageFromDraft,
   removeLinkedItemFromFitpicDraft,
@@ -274,4 +275,60 @@ test("fitpic image draft helpers set the selected primary image", () => {
   );
 
   assert.equal(updated.primaryImageUuid, "image-2");
+});
+
+test("fitpic image draft helpers move an image up while preserving primary identity", () => {
+  const updated = moveFitpicImageInDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" },
+        { fitpicImageUuid: "image-2", order: 1, imageData: "two" },
+        { fitpicImageUuid: "image-3", order: 2, imageData: "three" }
+      ],
+      primaryImageUuid: "image-2"
+    },
+    "image-2",
+    "up"
+  );
+
+  assert.deepEqual(
+    updated.fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      order: fitpicImage.order
+    })),
+    [
+      { fitpicImageUuid: "image-2", order: 0 },
+      { fitpicImageUuid: "image-1", order: 1 },
+      { fitpicImageUuid: "image-3", order: 2 }
+    ]
+  );
+  assert.equal(updated.primaryImageUuid, "image-2");
+});
+
+test("fitpic image draft helpers move an image down while preserving image uuids", () => {
+  const updated = moveFitpicImageInDraft(
+    {
+      fitpicImages: [
+        { fitpicImageUuid: "image-1", order: 0, imageData: "one" },
+        { fitpicImageUuid: "image-2", order: 1, imageData: "two" },
+        { fitpicImageUuid: "image-3", order: 2, imageData: "three" }
+      ],
+      primaryImageUuid: "image-1"
+    },
+    "image-2",
+    "down"
+  );
+
+  assert.deepEqual(
+    updated.fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      order: fitpicImage.order
+    })),
+    [
+      { fitpicImageUuid: "image-1", order: 0 },
+      { fitpicImageUuid: "image-3", order: 1 },
+      { fitpicImageUuid: "image-2", order: 2 }
+    ]
+  );
+  assert.equal(updated.primaryImageUuid, "image-1");
 });

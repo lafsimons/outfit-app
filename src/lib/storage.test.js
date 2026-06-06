@@ -345,21 +345,52 @@ test("appState save and load preserves additive fitpic and saved outfit secondar
         id: "fitpic_1",
         fitpicUuid: "fitpic-uuid-1",
         name: "Fitpic",
-        imageData: "data:image/png;base64,fitpic",
-        primaryImageUuid: "fitpic-image-uuid-1",
+        imageData: "data:image/png;base64,fitpic-primary",
+        primaryImageUuid: "fitpic-image-uuid-2",
         fitpicImages: [
           {
-            fitpicImageUuid: "fitpic-image-uuid-1",
+            fitpicImageUuid: "fitpic-image-uuid-2",
             parentFitpicUuid: "fitpic-uuid-1",
             order: 0,
-            imageData: "data:image/png;base64,fitpic",
+            imageData: "data:image/png;base64,fitpic-primary",
             images: {
-              preview: "data:image/png;base64,fitpic",
+              preview: "data:image/png;base64,fitpic-primary",
               original: "",
               thumbnail: ""
             },
             importedAt: "2024-03-01T00:00:00.000Z",
-            sourceOriginalFilename: "fitpic.png",
+            sourceOriginalFilename: "fitpic-primary.png",
+            sourceFileSize: 124,
+            sourceImageWidth: 640,
+            sourceImageHeight: 800,
+            sourceLastModified: "2024-03-01T00:00:00.000Z",
+            importSource: "file-upload",
+            sourceNamespace: "",
+            sourceRelativePath: "",
+            relinkStatus: "unknown",
+            sourceFileExtension: "png",
+            sourceMimeType: "image/png",
+            sourceAspectRatio: 0.8,
+            sourceOrientation: "portrait",
+            sourceCapturedAt: "",
+            sourceOriginalCreatedAt: "",
+            sourceCameraMake: "",
+            sourceCameraModel: "",
+            sourceLensModel: "",
+            imageKind: ""
+          },
+          {
+            fitpicImageUuid: "fitpic-image-uuid-1",
+            parentFitpicUuid: "fitpic-uuid-1",
+            order: 1,
+            imageData: "data:image/png;base64,fitpic-secondary",
+            images: {
+              preview: "data:image/png;base64,fitpic-secondary",
+              original: "",
+              thumbnail: ""
+            },
+            importedAt: "2024-03-01T00:00:00.000Z",
+            sourceOriginalFilename: "fitpic-secondary.png",
             sourceFileSize: 123,
             sourceImageWidth: 640,
             sourceImageHeight: 800,
@@ -400,10 +431,28 @@ test("appState save and load preserves additive fitpic and saved outfit secondar
   assert.deepEqual(appState.fitpics[0].linkedItemIds, ["top_1"]);
   assert.equal(appState.fitpics[0].savedOutfitUuid, "outfit-uuid-1");
   assert.equal(appState.fitpics[0].savedOutfitId, "saved_1");
-  assert.equal(appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-1");
-  assert.equal(appState.fitpics[0].fitpicImages.length, 1);
-  assert.equal(appState.fitpics[0].fitpicImages[0].fitpicImageUuid, "fitpic-image-uuid-1");
-  assert.equal(appState.fitpics[0].fitpicImages[0].parentFitpicUuid, "fitpic-uuid-1");
+  assert.equal(appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-2");
+  assert.equal(appState.fitpics[0].imageData, "data:image/png;base64,fitpic-primary");
+  assert.equal(appState.fitpics[0].fitpicImages.length, 2);
+  assert.deepEqual(
+    appState.fitpics[0].fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      parentFitpicUuid: fitpicImage.parentFitpicUuid,
+      order: fitpicImage.order
+    })),
+    [
+      {
+        fitpicImageUuid: "fitpic-image-uuid-2",
+        parentFitpicUuid: "fitpic-uuid-1",
+        order: 0
+      },
+      {
+        fitpicImageUuid: "fitpic-image-uuid-1",
+        parentFitpicUuid: "fitpic-uuid-1",
+        order: 1
+      }
+    ]
+  );
 });
 
 test("deviceId is created and then reused", async () => {

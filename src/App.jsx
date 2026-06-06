@@ -125,6 +125,7 @@ import {
   addLinkedItemToFitpicDraft,
   applyFitpicDateInput,
   getFitpicDateInputValue,
+  moveFitpicImageInDraft,
   removeFitpicTagFromDraft,
   removeFitpicImageFromDraft,
   removeLinkedItemFromFitpicDraft,
@@ -7031,6 +7032,10 @@ export default function App() {
     setFitpicDraft((current) => setPrimaryFitpicImageInDraft(current, fitpicImageUuid));
   }
 
+  function moveEditingFitpicImage(fitpicImageUuid, direction) {
+    setFitpicDraft((current) => moveFitpicImageInDraft(current, fitpicImageUuid, direction));
+  }
+
   function resetFitpicControls() {
     setFitpicSearch("");
     setFitpicSort("fitDateNewest");
@@ -9042,10 +9047,12 @@ export default function App() {
                   />
                 </div>
                 <div className="fitpic-editor-image-list" aria-label="Fitpic images">
-                  {editingFitpicImages.map((fitpicImage) => {
+                  {editingFitpicImages.map((fitpicImage, index) => {
                     const isPrimary = fitpicImage.fitpicImageUuid === fitpicDraft.primaryImageUuid;
                     const imageFilename = fitpicImage.sourceOriginalFilename || `Image ${fitpicImage.order + 1}`;
                     const canRemove = editingFitpicImages.length > 1;
+                    const canMoveUp = index > 0;
+                    const canMoveDown = index < editingFitpicImages.length - 1;
 
                     return (
                       <div
@@ -9062,6 +9069,22 @@ export default function App() {
                           <span>{isPrimary ? "Primary image" : `Image ${fitpicImage.order + 1}`}</span>
                         </div>
                         <div className="fitpic-editor-image-actions">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => moveEditingFitpicImage(fitpicImage.fitpicImageUuid, "up")}
+                            disabled={!canMoveUp}
+                          >
+                            Move up
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => moveEditingFitpicImage(fitpicImage.fitpicImageUuid, "down")}
+                            disabled={!canMoveDown}
+                          >
+                            Move down
+                          </button>
                           {!isPrimary ? (
                             <button
                               type="button"
