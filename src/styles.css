@@ -3564,6 +3564,31 @@ button:disabled {
   margin: 0;
 }
 
+.wardrobe-item-preview-carousel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto;
+}
+
+.wardrobe-item-preview-image-indicator {
+  min-width: 72px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.wardrobe-item-preview-image-empty {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .saved-outfit-form {
   display: grid;
   gap: 10px;

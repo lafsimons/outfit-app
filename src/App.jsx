@@ -74,11 +74,14 @@ import {
 } from "./lib/generation";
 import {
   buildDisplayName,
+  getActiveWardrobeItemImageAsset,
   createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
   formatCurrency,
   garmentTypes,
+  getActiveWardrobeItemImage,
+  getWardrobeItemImages,
   getNumericValue,
   getWorthCategory,
   itemNeedsClimateTagMigration,
@@ -96,6 +99,7 @@ import {
   itemNeedsTagMigration,
   itemNeedsTimestampMigration,
   itemNeedsWeightMigration,
+  mirrorActiveWardrobeImageAssetToLegacyAliases,
   normalizeCollections,
   normalizeItem,
   normalizeItemColor,
@@ -203,6 +207,7 @@ import {
 } from "./lib/imagePresentation";
 import {
   getWardrobePreviewDirectionForKey,
+  getWardrobePreviewImageNavigation,
   getWardrobePreviewNavigation
 } from "./lib/wardrobePreviewNavigation";
 
@@ -1380,6 +1385,7 @@ export default function App() {
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
+  const [wardrobePreviewItemImageUuid, setWardrobePreviewItemImageUuid] = useState(null);
   const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
@@ -1450,6 +1456,41 @@ export default function App() {
     [savedOutfits]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const wardrobePreviewImages = useMemo(
+    () => (wardrobePreviewItem ? getWardrobeItemImages(wardrobePreviewItem) : []),
+    [wardrobePreviewItem]
+  );
+  const wardrobePreviewActiveImage = useMemo(
+    () => (wardrobePreviewItem ? getActiveWardrobeItemImage(wardrobePreviewItem) : null),
+    [wardrobePreviewItem]
+  );
+  const wardrobePreviewImageNavigation = useMemo(
+    () => getWardrobePreviewImageNavigation(wardrobePreviewImages, wardrobePreviewItemImageUuid),
+    [wardrobePreviewImages, wardrobePreviewItemImageUuid]
+  );
+  const activeWardrobePreviewItemImage = wardrobePreviewImageNavigation.currentItemImage;
+  const wardrobePreviewDisplayItem = useMemo(() => {
+    if (!wardrobePreviewItem || !activeWardrobePreviewItemImage) {
+      return null;
+    }
+
+    return mirrorActiveWardrobeImageAssetToLegacyAliases({
+      ...wardrobePreviewItem,
+      itemImages: wardrobePreviewImages,
+      activeItemImageUuid: activeWardrobePreviewItemImage.itemImageUuid
+    });
+  }, [activeWardrobePreviewItemImage, wardrobePreviewImages, wardrobePreviewItem]);
+  const wardrobePreviewDisplayAsset = useMemo(() => {
+    if (!wardrobePreviewItem || !activeWardrobePreviewItemImage) {
+      return null;
+    }
+
+    return getActiveWardrobeItemImageAsset({
+      ...wardrobePreviewItem,
+      itemImages: wardrobePreviewImages,
+      activeItemImageUuid: activeWardrobePreviewItemImage.itemImageUuid
+    });
+  }, [activeWardrobePreviewItemImage, wardrobePreviewImages, wardrobePreviewItem]);
   const isWardrobePreviewItemEquipped = wardrobePreviewItem
     ? Object.values(outfit).includes(wardrobePreviewItem.id)
     : false;
@@ -1608,6 +1649,15 @@ export default function App() {
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
+
+  useEffect(() => {
+    if (!wardrobePreviewItem) {
+      setWardrobePreviewItemImageUuid(null);
+      return;
+    }
+
+    setWardrobePreviewItemImageUuid(wardrobePreviewActiveImage?.itemImageUuid ?? null);
+  }, [wardrobePreviewActiveImage?.itemImageUuid, wardrobePreviewItem?.id]);
 
   useEffect(() => {
     if (!fitpicPreview) {
@@ -4058,6 +4108,7 @@ export default function App() {
   function closeWardrobePreview({ restoreFitpicPreview = true } = {}) {
     const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
+    setWardrobePreviewItemImageUuid(null);
 
     if (restoreFitpicPreview && returnFitpicPreview) {
       setFitpicPreview(returnFitpicPreview);
@@ -4075,6 +4126,18 @@ export default function App() {
   function showNextWardrobePreviewItem() {
     if (wardrobePreviewNavigation.nextItemId) {
       setWardrobePreviewItemId(wardrobePreviewNavigation.nextItemId);
+    }
+  }
+
+  function showPreviousWardrobePreviewImage() {
+    if (wardrobePreviewImageNavigation.previousItemImageUuid) {
+      setWardrobePreviewItemImageUuid(wardrobePreviewImageNavigation.previousItemImageUuid);
+    }
+  }
+
+  function showNextWardrobePreviewImage() {
+    if (wardrobePreviewImageNavigation.nextItemImageUuid) {
+      setWardrobePreviewItemImageUuid(wardrobePreviewImageNavigation.nextItemImageUuid);
     }
   }
 
@@ -8926,7 +8989,7 @@ export default function App() {
                   <span aria-hidden="true">‹</span>
                 </button>
                 <ManagedItemImage
-                  item={wardrobePreviewItem}
+                  item={wardrobePreviewDisplayItem ?? wardrobePreviewItem}
                   alt={buildDisplayName(wardrobePreviewItem)}
                   className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
@@ -8940,7 +9003,35 @@ export default function App() {
                 >
                   <span aria-hidden="true">›</span>
                 </button>
+                {wardrobePreviewDisplayAsset?.imageUrl?.trim() ? null : (
+                  <div className="wardrobe-item-preview-image-empty">Image unavailable.</div>
+                )}
               </div>
+              {wardrobePreviewImageNavigation.showCarousel ? (
+                <div className="wardrobe-item-preview-carousel" aria-label="Wardrobe item images">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={showPreviousWardrobePreviewImage}
+                    aria-label="Previous image for this wardrobe item"
+                    title="Previous image"
+                  >
+                    ◀
+                  </button>
+                  <div className="wardrobe-item-preview-image-indicator" aria-label="Current wardrobe item image">
+                    {wardrobePreviewImageNavigation.currentIndex + 1} / {wardrobePreviewImageNavigation.totalCount}
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={showNextWardrobePreviewImage}
+                    aria-label="Next image for this wardrobe item"
+                    title="Next image"
+                  >
+                    ▶
+                  </button>
+                </div>
+              ) : null}
               {wardrobePreviewItem.description?.trim() ? (
                 <div className="wardrobe-item-preview-copy">
                   <p>{wardrobePreviewItem.description.trim()}</p>
