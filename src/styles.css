@@ -2668,7 +2668,7 @@ button:disabled {
 
 .saved-outfit-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -2762,11 +2762,6 @@ button:disabled {
   font-size: 0.72rem;
 }
 
-.fitpic-card span {
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
 .worth-chart {
   display: grid;
   gap: 10px;
@@ -2825,6 +2820,91 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-controls,
+.saved-outfit-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 12px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-controls-header,
+.saved-outfit-controls-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.fitpic-controls-count,
+.saved-outfit-controls-count {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.fitpic-controls-summary,
+.saved-outfit-controls-summary {
+  margin-top: -4px;
+}
+
+.fitpic-controls label,
+.saved-outfit-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.fitpic-controls input,
+.fitpic-controls select,
+.saved-outfit-controls input,
+.saved-outfit-controls select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: 8px 9px;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
+.fitpic-controls-toggle,
+.saved-outfit-controls-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 40px;
+}
+
+.fitpic-toolbar {
+  align-items: center;
+}
+
+.saved-outfit-toolbar {
+  align-items: center;
+}
+
+.fitpic-toolbar-leading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.fitpic-selection-summary {
+  padding-left: 0;
+}
+
+.fitpics-empty-state .ghost-button {
+  justify-self: start;
+}
+
+.saved-outfits-empty .ghost-button {
+  justify-self: start;
+}
+
 .fitpic-dropzone {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2859,6 +2939,13 @@ button:disabled {
   margin: 0;
 }
 
+.fitpic-dropzone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .fitpic-file-input {
   display: none;
 }
@@ -2868,60 +2955,73 @@ button:disabled {
 }
 
 .fitpic-card {
-  display: grid;
-  gap: 10px;
-  align-content: start;
+  display: flex;
+  position: relative;
   min-height: 0;
   padding: 10px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel);
   background: var(--surface-solid);
+}
+
+.fitpic-card.is-selected {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.fitpic-card-image-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
+  border-radius: calc(var(--radius-panel) - 4px);
+  background: #fff;
 }
 
 .fitpic-card img {
+  display: block;
   width: 100%;
-  aspect-ratio: 4 / 5;
-  height: auto;
-  object-fit: cover;
-  border-radius: calc(var(--radius-panel) - 4px);
-  background: var(--preview-end);
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  object-fit: contain;
+  object-position: center;
+  flex: 0 0 auto;
 }
 
 .fitpic-image-button {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
   width: 100%;
   padding: 0;
   border: none;
   background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
 }
 
 .fitpic-card-copy {
-  display: grid;
-  gap: 4px;
+  display: block;
+  min-width: 0;
+  padding-inline: 2px;
 }
 
-.fitpic-card-copy strong,
-.fitpic-card-copy span {
+.fitpic-card-copy strong {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.fitpic-card-copy strong,
-.fitpic-card-copy span,
-.fitpic-card-tags {
   white-space: nowrap;
-}
-
-.fitpic-card-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.fitpic-card-actions .ghost-button {
-  width: 100%;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.2;
 }
 
 .fitpic-import-error {
@@ -2934,9 +3034,95 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-preview-image-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  max-height: calc(100vh - 220px);
+  min-height: min(72vh, calc(100vh - 220px));
+  padding: 20px;
+  border-radius: var(--radius-panel);
+  background: linear-gradient(180deg, var(--preview-start), var(--preview-end));
+}
+
+.fitpic-preview-image-indicator {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: 4px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+}
+
+.fitpic-preview-image-empty {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
+}
+
 .fitpic-preview-copy,
 .fitpic-preview-copy p {
   margin: 0;
+}
+
+.fitpic-preview-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-preview-description {
+  line-height: 1.55;
+  color: var(--text);
+}
+
+.fitpic-preview-tags {
+  color: var(--muted-strong);
+  line-height: 1.45;
+}
+
+.fitpic-preview-section-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.fitpic-preview-linked-items {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-preview-linked-list {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.fitpic-preview-linked-item {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  cursor: pointer;
+}
+
+.fitpic-preview-linked-item.is-missing {
+  color: var(--muted);
+  text-decoration: none;
+  cursor: default;
 }
 
 .fitpic-editor {
@@ -2960,6 +3146,61 @@ button:disabled {
 .fitpic-editor-media-actions {
   display: flex;
   justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fitpic-editor-image-list {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-editor-image-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-editor-image-row.is-primary {
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.fitpic-editor-image-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: calc(var(--radius-panel) - 4px);
+  background: var(--preview-end);
+}
+
+.fitpic-editor-image-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fitpic-editor-image-copy strong,
+.fitpic-editor-image-copy span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fitpic-editor-image-copy span,
+.fitpic-editor-image-primary-indicator {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.fitpic-editor-image-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .fitpic-editor-fields {
@@ -2967,10 +3208,110 @@ button:disabled {
   gap: 14px;
 }
 
+.fitpic-editor-title-input {
+  min-width: min(100%, 540px);
+}
+
+.fitpic-editor-description-input {
+  min-width: min(100%, 540px);
+  min-height: 144px;
+  resize: vertical;
+}
+
 .fitpic-favorite-field {
   display: inline-flex;
   gap: 8px;
   align-items: center;
+}
+
+.fitpic-tag-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-tag-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.fitpic-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-solid);
+  font-size: 0.78rem;
+}
+
+.fitpic-tag-chip-remove {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted-strong);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.fitpic-linked-items {
+  display: grid;
+  gap: 10px;
+}
+
+.fitpic-linked-items-list,
+.fitpic-linked-item-suggestions {
+  display: grid;
+  gap: 8px;
+}
+
+.fitpic-linked-item,
+.fitpic-linked-item-suggestion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.fitpic-linked-item.is-missing {
+  border-style: dashed;
+}
+
+.fitpic-linked-item-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.fitpic-linked-item-copy strong,
+.fitpic-linked-item-copy span,
+.fitpic-linked-item-suggestion strong,
+.fitpic-linked-item-suggestion span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.fitpic-linked-item-copy span,
+.fitpic-linked-item-suggestion span,
+.fitpic-linked-items-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.fitpic-linked-items > label input {
+  min-width: min(100%, 420px);
+}
+
+.fitpic-linked-item-suggestion {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
 }
 
 .fitpic-metadata-panel {
@@ -3087,7 +3428,7 @@ button:disabled {
 }
 
 .preview-overlay-backdrop {
-  z-index: 48;
+  z-index: 96;
   display: grid;
   place-items: center;
   padding: 20px;
@@ -3137,7 +3478,7 @@ button:disabled {
 .preview-overlay-fitpic-image {
   display: block;
   max-width: 100%;
-  max-height: calc(100vh - 64px);
+  max-height: min(72vh, calc(100vh - 220px));
   object-fit: contain;
   margin: 0 auto;
 }
@@ -3250,6 +3591,12 @@ button:disabled {
 
 .saved-outfit-form textarea {
   resize: vertical;
+}
+
+.saved-outfit-favorite-field {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .wardrobe-panel {

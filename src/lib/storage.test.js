@@ -323,6 +323,138 @@ test("IndexedDB upgrade creates sync stores without breaking existing stores", a
   assert.deepEqual(storeNames, ["appState", "items", "syncMetadata", "syncState"]);
 });
 
+test("appState save and load preserves additive fitpic and saved outfit secondary-entity fields", async () => {
+  await saveAppState({
+    savedOutfits: [
+      {
+        id: "saved_1",
+        outfitUuid: "outfit-uuid-1",
+        name: "Saved outfit",
+        description: "",
+        tags: ["Evening"],
+        favorite: true,
+        createdAt: "2024-04-01T00:00:00.000Z",
+        updatedAt: "2024-04-02T00:00:00.000Z",
+        outfit: { TopInner: "top_1" },
+        outfitItemUuids: { TopInner: "item-uuid-1" },
+        layering: false
+      }
+    ],
+    fitpics: [
+      {
+        id: "fitpic_1",
+        fitpicUuid: "fitpic-uuid-1",
+        name: "Fitpic",
+        imageData: "data:image/png;base64,fitpic-primary",
+        primaryImageUuid: "fitpic-image-uuid-2",
+        fitpicImages: [
+          {
+            fitpicImageUuid: "fitpic-image-uuid-2",
+            parentFitpicUuid: "fitpic-uuid-1",
+            order: 0,
+            imageData: "data:image/png;base64,fitpic-primary",
+            images: {
+              preview: "data:image/png;base64,fitpic-primary",
+              original: "",
+              thumbnail: ""
+            },
+            importedAt: "2024-03-01T00:00:00.000Z",
+            sourceOriginalFilename: "fitpic-primary.png",
+            sourceFileSize: 124,
+            sourceImageWidth: 640,
+            sourceImageHeight: 800,
+            sourceLastModified: "2024-03-01T00:00:00.000Z",
+            importSource: "file-upload",
+            sourceNamespace: "",
+            sourceRelativePath: "",
+            relinkStatus: "unknown",
+            sourceFileExtension: "png",
+            sourceMimeType: "image/png",
+            sourceAspectRatio: 0.8,
+            sourceOrientation: "portrait",
+            sourceCapturedAt: "",
+            sourceOriginalCreatedAt: "",
+            sourceCameraMake: "",
+            sourceCameraModel: "",
+            sourceLensModel: "",
+            imageKind: ""
+          },
+          {
+            fitpicImageUuid: "fitpic-image-uuid-1",
+            parentFitpicUuid: "fitpic-uuid-1",
+            order: 1,
+            imageData: "data:image/png;base64,fitpic-secondary",
+            images: {
+              preview: "data:image/png;base64,fitpic-secondary",
+              original: "",
+              thumbnail: ""
+            },
+            importedAt: "2024-03-01T00:00:00.000Z",
+            sourceOriginalFilename: "fitpic-secondary.png",
+            sourceFileSize: 123,
+            sourceImageWidth: 640,
+            sourceImageHeight: 800,
+            sourceLastModified: "2024-03-01T00:00:00.000Z",
+            importSource: "file-upload",
+            sourceNamespace: "",
+            sourceRelativePath: "",
+            relinkStatus: "unknown",
+            sourceFileExtension: "png",
+            sourceMimeType: "image/png",
+            sourceAspectRatio: 0.8,
+            sourceOrientation: "portrait",
+            sourceCapturedAt: "",
+            sourceOriginalCreatedAt: "",
+            sourceCameraMake: "",
+            sourceCameraModel: "",
+            sourceLensModel: "",
+            imageKind: ""
+          }
+        ],
+        fitDate: "2024-03-01T00:00:00.000Z",
+        linkedItemUuids: ["item-uuid-1"],
+        linkedItemIds: ["top_1"],
+        savedOutfitUuid: "outfit-uuid-1",
+        savedOutfitId: "saved_1"
+      }
+    ]
+  });
+
+  const appState = await loadAppState();
+
+  assert.deepEqual(appState.savedOutfits[0].tags, ["Evening"]);
+  assert.equal(appState.savedOutfits[0].favorite, true);
+  assert.equal(appState.savedOutfits[0].createdAt, "2024-04-01T00:00:00.000Z");
+  assert.equal(appState.savedOutfits[0].updatedAt, "2024-04-02T00:00:00.000Z");
+  assert.equal(appState.fitpics[0].fitDate, "2024-03-01T00:00:00.000Z");
+  assert.deepEqual(appState.fitpics[0].linkedItemUuids, ["item-uuid-1"]);
+  assert.deepEqual(appState.fitpics[0].linkedItemIds, ["top_1"]);
+  assert.equal(appState.fitpics[0].savedOutfitUuid, "outfit-uuid-1");
+  assert.equal(appState.fitpics[0].savedOutfitId, "saved_1");
+  assert.equal(appState.fitpics[0].primaryImageUuid, "fitpic-image-uuid-2");
+  assert.equal(appState.fitpics[0].imageData, "data:image/png;base64,fitpic-primary");
+  assert.equal(appState.fitpics[0].fitpicImages.length, 2);
+  assert.deepEqual(
+    appState.fitpics[0].fitpicImages.map((fitpicImage) => ({
+      fitpicImageUuid: fitpicImage.fitpicImageUuid,
+      parentFitpicUuid: fitpicImage.parentFitpicUuid,
+      order: fitpicImage.order
+    })),
+    [
+      {
+        fitpicImageUuid: "fitpic-image-uuid-2",
+        parentFitpicUuid: "fitpic-uuid-1",
+        order: 0
+      },
+      {
+        fitpicImageUuid: "fitpic-image-uuid-1",
+        parentFitpicUuid: "fitpic-uuid-1",
+        order: 1
+      }
+    ]
+  );
+});
+
 test("deviceId is created and then reused", async () => {
   const firstDeviceId = await getOrCreateDeviceId();
   const secondDeviceId = await getOrCreateDeviceId();
@@ -529,6 +661,10 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
     outfitUuid: "outfit-uuid-1",
     name: "Saved outfit",
     description: "",
+    tags: [],
+    favorite: false,
+    createdAt: "2024-04-01T00:00:00.000Z",
+    updatedAt: "2024-04-01T00:00:00.000Z",
     outfit: { TopInner: "top_1" },
     outfitItemUuids: { TopInner: "item-uuid-1" },
     layering: false
@@ -558,17 +694,25 @@ test("saved outfit create edit and delete dirty marking updates one metadata row
       {
         ...savedOutfit,
         name: "Edited outfit",
-        description: "Updated"
+        description: "Updated",
+        tags: ["Evening", "Black"],
+        favorite: true,
+        updatedAt: "2024-04-02T00:00:00.000Z"
       }
     ]
   });
 
   const editedMetadata = await getSyncMetadata("oa:savedOutfit:outfit-uuid-1");
+  const editedState = await loadAppState();
   assert.equal(editedMetadata.recordVersion, 4);
   assert.equal(editedMetadata.syncStatus, "pending_upload");
   assert.equal(editedMetadata.pendingDelete, false);
   assert.equal(editedMetadata.lastSyncedAt, "2024-04-01T00:00:00.000Z");
   assert.equal(editedMetadata.lastLocalChangeAt.length > 0, true);
+  assert.equal(editedState.savedOutfits[0].createdAt, "2024-04-01T00:00:00.000Z");
+  assert.equal(editedState.savedOutfits[0].updatedAt, "2024-04-02T00:00:00.000Z");
+  assert.deepEqual(editedState.savedOutfits[0].tags, ["Evening", "Black"]);
+  assert.equal(editedState.savedOutfits[0].favorite, true);
 
   await saveAppState({
     savedOutfits: []

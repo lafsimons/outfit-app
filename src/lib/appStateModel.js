@@ -14,6 +14,36 @@ const MIN_EDITOR_WIDTH = 344;
 const MAX_EDITOR_WIDTH = 520;
 const DEFAULT_EDITOR_WIDTH = 396;
 
+function normalizeTimestampLike(value) {
+  const timestamp = typeof value === "string" ? value : "";
+  return Number.isFinite(Date.parse(timestamp)) ? timestamp : "";
+}
+
+function normalizeOptionalTimestamp(value) {
+  return normalizeTimestampLike(value) || null;
+}
+
+function normalizeSavedOutfitTags(tags) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  return tags.reduce((normalized, tag) => {
+    const trimmed = typeof tag === "string" ? tag.trim() : "";
+    const key = trimmed.toLowerCase();
+
+    if (!trimmed || seen.has(key)) {
+      return normalized;
+    }
+
+    seen.add(key);
+    normalized.push(trimmed);
+    return normalized;
+  }, []);
+}
+
 export function normalizeEditorWindowState(windowStateLike, fallbackWidth = DEFAULT_EDITOR_WIDTH) {
   const numericWidth = Number(windowStateLike?.width);
   const normalizedFallbackWidth = Number.isFinite(fallbackWidth) ? fallbackWidth : DEFAULT_EDITOR_WIDTH;
@@ -84,11 +114,18 @@ export function backfillOutfitItemUuids(outfit, outfitItemUuids, itemsById) {
 }
 
 export function normalizeSavedOutfit(savedOutfit, { createOutfitUuid: createUuid = createOutfitUuid } = {}) {
+  const createdAt = normalizeOptionalTimestamp(savedOutfit?.createdAt);
+  const updatedAt = normalizeOptionalTimestamp(savedOutfit?.updatedAt) ?? createdAt;
+
   return {
     id: savedOutfit.id,
     outfitUuid: normalizeOutfitUuid(savedOutfit.outfitUuid, createUuid),
     name: savedOutfit.name ?? "Saved outfit",
     description: savedOutfit.description ?? "",
+    tags: normalizeSavedOutfitTags(savedOutfit?.tags),
+    favorite: Boolean(savedOutfit?.favorite),
+    createdAt,
+    updatedAt,
     outfit: savedOutfit.outfit ?? {},
     outfitItemUuids: normalizeOutfitItemUuids(savedOutfit.outfitItemUuids),
     layering: Boolean(savedOutfit.layering)

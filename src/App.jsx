@@ -112,10 +112,38 @@ import {
   normalizeSavedOutfits
 } from "./lib/appStateModel";
 import {
+  createFitpicImageUuid,
+  createImportedGroupedFitpicFromFiles,
   createImportedFitpicFromFile,
+  getFitpicImages,
+  getPrimaryFitpicImage,
   normalizeFitpic,
-  replaceFitpicImageFromFile
+  normalizeFitpicImage
 } from "./lib/fitpics";
+import {
+  addFitpicImagesToDraft,
+  addFitpicTagsToDraft,
+  addLinkedItemToFitpicDraft,
+  applyFitpicDateInput,
+  getFitpicDateInputValue,
+  moveFitpicImageInDraft,
+  removeFitpicTagFromDraft,
+  removeFitpicImageFromDraft,
+  removeLinkedItemFromFitpicDraft,
+  resolveFitpicLinkedItems,
+  setPrimaryFitpicImageInDraft,
+  syncFitpicLinkedItemSidecars
+} from "./lib/fitpicEditorModel";
+import {
+  filterAndSortFitpics,
+  getFitpicLinkedItemFilterOptions,
+  getFitpicPreviewDirectionForKey,
+  getFitpicPreviewNavigation
+} from "./lib/fitpicLibrary";
+import {
+  filterAndSortSavedOutfits,
+  getSavedOutfitTagFilterOptions
+} from "./lib/savedOutfitLibrary";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -945,10 +973,16 @@ function formatFitpicImportMeta(fitpic) {
 }
 
 function parseFitpicTagsInput(value) {
-  return value
+  return [...new Set(value
     .split(",")
     .map((tag) => tag.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((tag) => tag.toLowerCase()))].map((normalizedTag) =>
+      value
+        .split(",")
+        .map((tag) => tag.trim())
+        .find((tag) => tag && tag.toLowerCase() === normalizedTag)
+    ).filter(Boolean);
 }
 
 function getFallbackPaletteColor(item) {
@@ -1266,7 +1300,9 @@ export default function App() {
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
   const fitpicUploadInputRef = useRef(null);
+  const fitpicGroupedUploadInputRef = useRef(null);
   const fitpicReplaceInputRef = useRef(null);
+  const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
   const inlineEditorResizeRef = useRef(null);
@@ -1300,21 +1336,51 @@ export default function App() {
   const [controlsOpen, setControlsOpen] = useState(false);
   const [activePanel, setActivePanel] = useState(null);
   const [activeOutfitsTab, setActiveOutfitsTab] = useState("saved");
-  const [selectedSavedOutfitId, setSelectedSavedOutfitId] = useState(null);
+  const [selectedSavedOutfitIds, setSelectedSavedOutfitIds] = useState([]);
+  const [savedOutfitSelectionAnchorId, setSavedOutfitSelectionAnchorId] = useState(null);
   const [editingSavedOutfitId, setEditingSavedOutfitId] = useState(null);
-  const [savedOutfitDraft, setSavedOutfitDraft] = useState({ name: "", description: "" });
+  const [savedOutfitDraft, setSavedOutfitDraft] = useState({
+    name: "",
+    description: "",
+    tagsText: "",
+    favorite: false
+  });
+  const [savedOutfitSearch, setSavedOutfitSearch] = useState("");
+  const [savedOutfitSort, setSavedOutfitSort] = useState("updatedNewest");
+  const [savedOutfitFavoritesOnly, setSavedOutfitFavoritesOnly] = useState(false);
+  const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
   const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
   const [fitpicPreview, setFitpicPreview] = useState(null);
+  const [fitpicPreviewImageIndex, setFitpicPreviewImageIndex] = useState(0);
   const [editingFitpicId, setEditingFitpicId] = useState(null);
-  const [fitpicDraft, setFitpicDraft] = useState({ name: "", description: "", tagsText: "", favorite: false });
+  const [fitpicDraft, setFitpicDraft] = useState({
+    name: "",
+    description: "",
+    tags: [],
+    tagInput: "",
+    favorite: false,
+    fitDate: "",
+    fitpicImages: [],
+    primaryImageUuid: null,
+    linkedItemUuids: [],
+    linkedItemIds: [],
+    linkedItemSearch: ""
+  });
   const [fitpicImportError, setFitpicImportError] = useState("");
   const [fitpicImporting, setFitpicImporting] = useState(false);
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
+  const [fitpicSearch, setFitpicSearch] = useState("");
+  const [fitpicSort, setFitpicSort] = useState("fitDateNewest");
+  const [fitpicFavoritesOnly, setFitpicFavoritesOnly] = useState(false);
+  const [fitpicLinkedItemFilter, setFitpicLinkedItemFilter] = useState("");
+  const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
+  const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
+  const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
@@ -1363,6 +1429,10 @@ export default function App() {
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const savedOutfitSelectClickTimeoutRef = useRef(null);
+  const savedOutfitPendingSelectionRef = useRef(null);
+  const fitpicSelectClickTimeoutRef = useRef(null);
+  const fitpicPendingSelectionRef = useRef(null);
   const outfitItemPreviewClickTimeoutRef = useRef(null);
   const pendingOutfitItemPreviewRef = useRef(null);
   const fitpicDropDepthRef = useRef(0);
@@ -1371,11 +1441,170 @@ export default function App() {
     () => Object.fromEntries(items.map((item) => [item.id, item])),
     [items]
   );
+  const fitpicsById = useMemo(
+    () => Object.fromEntries(fitpics.map((fitpic) => [fitpic.id, fitpic])),
+    [fitpics]
+  );
+  const savedOutfitsById = useMemo(
+    () => Object.fromEntries(savedOutfits.map((savedOutfit) => [savedOutfit.id, savedOutfit])),
+    [savedOutfits]
+  );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
   const isWardrobePreviewItemEquipped = wardrobePreviewItem
     ? Object.values(outfit).includes(wardrobePreviewItem.id)
     : false;
   const editingFitpic = editingFitpicId ? fitpics.find((fitpic) => fitpic.id === editingFitpicId) ?? null : null;
+  const editingFitpicLinkedItems = useMemo(
+    () => resolveFitpicLinkedItems(fitpicDraft.linkedItemUuids, fitpicDraft.linkedItemIds, items),
+    [fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, items]
+  );
+  const fitpicPreviewLinkedItems = useMemo(
+    () => fitpicPreview
+      ? resolveFitpicLinkedItems(fitpicPreview.linkedItemUuids, fitpicPreview.linkedItemIds, items)
+      : [],
+    [fitpicPreview, items]
+  );
+  const editingFitpicImages = useMemo(
+    () => Array.isArray(fitpicDraft.fitpicImages) ? fitpicDraft.fitpicImages : [],
+    [fitpicDraft.fitpicImages]
+  );
+  const editingFitpicPrimaryImage = useMemo(
+    () => editingFitpicImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === fitpicDraft.primaryImageUuid)
+      ?? editingFitpicImages[0]
+      ?? null,
+    [editingFitpicImages, fitpicDraft.primaryImageUuid]
+  );
+  const fitpicPreviewImages = useMemo(
+    () => (fitpicPreview ? getFitpicImages(fitpicPreview) : []),
+    [fitpicPreview]
+  );
+  const fitpicPreviewPrimaryImage = useMemo(
+    () => (fitpicPreview ? getPrimaryFitpicImage(fitpicPreview) : null),
+    [fitpicPreview]
+  );
+  const activePreviewFitpicImage = fitpicPreviewImages[fitpicPreviewImageIndex]
+    ?? fitpicPreviewPrimaryImage
+    ?? fitpicPreviewImages[0]
+    ?? null;
+  const fitpicLinkedItemSearch = fitpicDraft.linkedItemSearch.trim().toLowerCase();
+  const fitpicLinkedItemSuggestions = useMemo(() => {
+    if (!editingFitpic) {
+      return [];
+    }
+
+    return items
+      .filter((item) => {
+        const alreadyLinkedByUuid = item.itemUuid && fitpicDraft.linkedItemUuids.includes(item.itemUuid);
+        const alreadyLinkedById = fitpicDraft.linkedItemIds.includes(item.id);
+
+        if (alreadyLinkedByUuid || alreadyLinkedById) {
+          return false;
+        }
+
+        if (!fitpicLinkedItemSearch) {
+          return false;
+        }
+
+        const searchText = `${buildDisplayName(item)} ${item.id} ${getWardrobeSearchText(item)}`.toLowerCase();
+        return searchText.includes(fitpicLinkedItemSearch);
+      })
+      .slice(0, 8);
+  }, [editingFitpic, fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, fitpicLinkedItemSearch, items]);
+  const fitpicLinkedItemFilterOptions = useMemo(
+    () => getFitpicLinkedItemFilterOptions(fitpics, items),
+    [fitpics, items]
+  );
+  const selectedFitpicLinkedItemFilterLabel = useMemo(
+    () => fitpicLinkedItemFilterOptions.find((option) => option.value === fitpicLinkedItemFilter)?.label ?? "",
+    [fitpicLinkedItemFilter, fitpicLinkedItemFilterOptions]
+  );
+  const selectedFitpicSortLabel = useMemo(() => {
+    switch (fitpicSort) {
+      case "fitDateOldest":
+        return "Fit date oldest";
+      case "createdNewest":
+        return "Created newest";
+      case "importedNewest":
+        return "Imported newest";
+      case "titleAz":
+        return "Title A-Z";
+      case "fitDateNewest":
+      default:
+        return "Fit date newest";
+    }
+  }, [fitpicSort]);
+  const visibleFitpics = useMemo(
+    () =>
+      filterAndSortFitpics(
+        fitpics,
+        {
+          search: fitpicSearch,
+          sort: fitpicSort,
+          favoritesOnly: fitpicFavoritesOnly,
+          linkedItemFilter: fitpicLinkedItemFilter
+        },
+        items
+      ),
+    [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
+  );
+  const visibleFitpicIds = useMemo(
+    () => visibleFitpics.map((fitpic) => fitpic.id),
+    [visibleFitpics]
+  );
+  const fitpicPreviewNavigation = useMemo(
+    () => getFitpicPreviewNavigation(visibleFitpicIds, fitpicPreview?.id ?? null),
+    [fitpicPreview?.id, visibleFitpicIds]
+  );
+  const hasActiveFitpicControls = Boolean(
+    fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
+  );
+  const selectedFitpics = useMemo(
+    () => selectedFitpicIds.map((fitpicId) => fitpicsById[fitpicId]).filter(Boolean),
+    [fitpicsById, selectedFitpicIds]
+  );
+  const selectedFitpicCount = selectedFitpicIds.length;
+  const hasFitpicSelection = selectedFitpicCount > 0;
+  const isSingleFitpicSelected = selectedFitpicCount === 1;
+  const areAllSelectedFitpicsFavorite = useMemo(
+    () => selectedFitpics.length > 0 && selectedFitpics.every((fitpic) => Boolean(fitpic.favorite)),
+    [selectedFitpics]
+  );
+  const fitpicFavoriteActionLabel = areAllSelectedFitpicsFavorite ? "Unfavorite" : "Favorite";
+  const savedOutfitTagFilterOptions = useMemo(
+    () => getSavedOutfitTagFilterOptions(savedOutfits),
+    [savedOutfits]
+  );
+  const selectedSavedOutfitTagFilterLabel = useMemo(
+    () => savedOutfitTagFilterOptions.find((option) => option.value === savedOutfitTagFilter)?.label ?? "",
+    [savedOutfitTagFilter, savedOutfitTagFilterOptions]
+  );
+  const selectedSavedOutfitSortLabel = useMemo(() => {
+    switch (savedOutfitSort) {
+      case "createdNewest":
+        return "Created newest";
+      case "titleAz":
+        return "Title A-Z";
+      case "updatedNewest":
+      default:
+        return "Updated newest";
+    }
+  }, [savedOutfitSort]);
+  const visibleSavedOutfits = useMemo(
+    () =>
+      filterAndSortSavedOutfits(savedOutfits, {
+        search: savedOutfitSearch,
+        sort: savedOutfitSort,
+        favoritesOnly: savedOutfitFavoritesOnly,
+        tagFilter: savedOutfitTagFilter
+      }),
+    [savedOutfitFavoritesOnly, savedOutfitSearch, savedOutfitSort, savedOutfitTagFilter, savedOutfits]
+  );
+  const hasActiveSavedOutfitControls = Boolean(
+    savedOutfitSearch.trim()
+    || savedOutfitFavoritesOnly
+    || savedOutfitTagFilter
+    || savedOutfitSort !== "updatedNewest"
+  );
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
@@ -1388,6 +1617,35 @@ export default function App() {
     const nextPreview = fitpics.find((fitpic) => fitpic.id === fitpicPreview.id) ?? null;
     setFitpicPreview(nextPreview);
   }, [fitpicPreview, fitpics]);
+
+  useEffect(() => {
+    if (!fitpicPreview) {
+      setFitpicPreviewImageIndex(0);
+      return;
+    }
+
+    const primaryImageUuid = fitpicPreviewPrimaryImage?.fitpicImageUuid ?? "";
+    const primaryImageIndex = primaryImageUuid
+      ? fitpicPreviewImages.findIndex((fitpicImage) => fitpicImage.fitpicImageUuid === primaryImageUuid)
+      : -1;
+
+    setFitpicPreviewImageIndex(primaryImageIndex >= 0 ? primaryImageIndex : 0);
+  }, [fitpicPreview?.id]);
+
+  useEffect(() => {
+    if (!fitpicPreviewImages.length) {
+      if (fitpicPreviewImageIndex !== 0) {
+        setFitpicPreviewImageIndex(0);
+      }
+      return;
+    }
+
+    if (fitpicPreviewImageIndex < fitpicPreviewImages.length) {
+      return;
+    }
+
+    setFitpicPreviewImageIndex(fitpicPreviewImages.length - 1);
+  }, [fitpicPreviewImageIndex, fitpicPreviewImages]);
 
   function noteInteractionModality(event) {
     if (event.type === "pointerdown") {
@@ -1507,6 +1765,16 @@ export default function App() {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       }
       wardrobePendingSelectionRef.current = null;
+
+      if (savedOutfitSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      }
+      savedOutfitPendingSelectionRef.current = null;
+
+      if (fitpicSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      }
+      fitpicPendingSelectionRef.current = null;
 
       if (outfitItemPreviewClickTimeoutRef.current !== null) {
         window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
@@ -2406,6 +2674,22 @@ export default function App() {
     () => selectedWardrobeItemIds.map((itemId) => itemsById[itemId]).filter(Boolean),
     [itemsById, selectedWardrobeItemIds]
   );
+  const visibleSavedOutfitIds = useMemo(
+    () => visibleSavedOutfits.map((savedOutfit) => savedOutfit.id),
+    [visibleSavedOutfits]
+  );
+  const selectedSavedOutfits = useMemo(
+    () => selectedSavedOutfitIds.map((savedOutfitId) => savedOutfitsById[savedOutfitId]).filter(Boolean),
+    [savedOutfitsById, selectedSavedOutfitIds]
+  );
+  const selectedSavedOutfitCount = selectedSavedOutfitIds.length;
+  const hasSavedOutfitSelection = selectedSavedOutfitCount > 0;
+  const isSingleSavedOutfitSelected = selectedSavedOutfitCount === 1;
+  const areAllSelectedSavedOutfitsFavorite = useMemo(
+    () => selectedSavedOutfits.length > 0 && selectedSavedOutfits.every((savedOutfit) => Boolean(savedOutfit.favorite)),
+    [selectedSavedOutfits]
+  );
+  const savedOutfitFavoriteActionLabel = areAllSelectedSavedOutfitsFavorite ? "Unfavorite" : "Favorite";
   const areAllSelectedWardrobeItemsFavorite = useMemo(
     () => selectedWardrobeItems.length > 0 && selectedWardrobeItems.every((item) => Boolean(item.favorite)),
     [selectedWardrobeItems]
@@ -2454,7 +2738,7 @@ export default function App() {
     }
 
     if (!visibleWardrobeItemIds.includes(wardrobePreviewItemId)) {
-      setWardrobePreviewItemId(null);
+      closeWardrobePreview();
     }
   }, [visibleWardrobeItemIds, wardrobePreviewItemId]);
   const wardrobePreviewMeta = useMemo(() => {
@@ -2764,7 +3048,11 @@ export default function App() {
       const next = current.map((savedOutfit) => syncSavedOutfitItemUuids(savedOutfit, itemsById));
       return JSON.stringify(next) === JSON.stringify(current) ? current : next;
     });
-  }, [itemsById, outfit, loading]);
+    setFitpics((current) => {
+      const next = current.map((fitpic) => syncFitpicLinkedItemSidecars(fitpic, items));
+      return JSON.stringify(next) === JSON.stringify(current) ? current : next;
+    });
+  }, [items, itemsById, outfit, loading]);
 
   useEffect(() => {
     const validIds = items.map((item) => item.id);
@@ -2772,6 +3060,13 @@ export default function App() {
     setSelectedWardrobeItemIds((current) => pruneSelectedIds(current, validIds));
     setWardrobeSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
   }, [items]);
+
+  useEffect(() => {
+    const validIds = fitpics.map((fitpic) => fitpic.id);
+
+    setSelectedFitpicIds((current) => pruneSelectedIds(current, validIds));
+    setFitpicSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
+  }, [fitpics]);
 
   useEffect(() => {
     if (!itemListOptions.includes(bulkListDraft)) {
@@ -2791,18 +3086,24 @@ export default function App() {
       return;
     }
 
-    setWardrobePreviewItemId(null);
+    closeWardrobePreview();
   }, [itemsById, wardrobePreviewItemId]);
 
   useEffect(() => {
-    if (!selectedSavedOutfitId) {
+    const validIds = savedOutfits.map((savedOutfit) => savedOutfit.id);
+
+    setSelectedSavedOutfitIds((current) => pruneSelectedIds(current, validIds));
+    setSavedOutfitSelectionAnchorId((current) => (current && validIds.includes(current) ? current : null));
+  }, [savedOutfits]);
+
+  useEffect(() => {
+    if (activeOutfitsTab === "saved") {
       return;
     }
 
-    if (activeOutfitsTab !== "saved" || !savedOutfits.some((savedOutfit) => savedOutfit.id === selectedSavedOutfitId)) {
-      setSelectedSavedOutfitId(null);
-    }
-  }, [activeOutfitsTab, savedOutfits, selectedSavedOutfitId]);
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
+  }, [activeOutfitsTab]);
 
   useEffect(() => {
     if (!activeOutfitSlot && !activeAccessorySlot && !selectedOutfitSlot && !selectedAccessorySlot) {
@@ -2910,6 +3211,26 @@ export default function App() {
         }
       }
 
+      if (fitpicPreview) {
+        const navigationDirection = getFitpicPreviewDirectionForKey(event);
+
+        if (navigationDirection && !isEditableKeyboardTarget(event.target)) {
+          const nextFitpicId = navigationDirection === "previous"
+            ? fitpicPreviewNavigation.previousFitpicId
+            : fitpicPreviewNavigation.nextFitpicId;
+          const nextFitpic = nextFitpicId
+            ? fitpics.find((fitpic) => fitpic.id === nextFitpicId) ?? null
+            : null;
+
+          if (nextFitpic) {
+            event.preventDefault();
+            blurRetainedPointerFocus();
+            setFitpicPreview(nextFitpic);
+            return;
+          }
+        }
+      }
+
       if (event.key !== "Escape") {
         return;
       }
@@ -2931,7 +3252,7 @@ export default function App() {
       if (wardrobePreviewItemId) {
         event.preventDefault();
         blurRetainedPointerFocus();
-        setWardrobePreviewItemId(null);
+        closeWardrobePreview();
         return;
       }
 
@@ -2977,6 +3298,20 @@ export default function App() {
         return;
       }
 
+      if (selectedSavedOutfitCount) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        clearSavedOutfitSelection();
+        return;
+      }
+
+      if (selectedFitpicCount) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        clearFitpicSelection();
+        return;
+      }
+
       if (generationListsOpen) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -3001,6 +3336,10 @@ export default function App() {
     editingId,
     bulkMetadataEditorOpen,
     fitpicPreview,
+    selectedFitpicCount,
+    selectedSavedOutfitCount,
+    fitpicPreviewNavigation.nextFitpicId,
+    fitpicPreviewNavigation.previousFitpicId,
     wardrobePreviewNavigation.nextItemId,
     wardrobePreviewNavigation.previousItemId,
     wardrobePreviewItemId,
@@ -3695,13 +4034,36 @@ export default function App() {
   }
 
   function openWardrobePreview(itemId) {
+    if (!itemId) {
+      return;
+    }
+
     closeUtilityWindows();
+    setWardrobePreviewReturnFitpicPreview(null);
     setFitpicPreview(null);
     setWardrobePreviewItemId(itemId);
   }
 
-  function closeWardrobePreview() {
+  function openWardrobePreviewFromFitpicPreview(itemId) {
+    if (!itemId) {
+      return;
+    }
+
+    closeUtilityWindows();
+    setWardrobePreviewReturnFitpicPreview(fitpicPreview);
+    setFitpicPreview(null);
+    setWardrobePreviewItemId(itemId);
+  }
+
+  function closeWardrobePreview({ restoreFitpicPreview = true } = {}) {
+    const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
+
+    if (restoreFitpicPreview && returnFitpicPreview) {
+      setFitpicPreview(returnFitpicPreview);
+    }
+
+    setWardrobePreviewReturnFitpicPreview(null);
   }
 
   function showPreviousWardrobePreviewItem() {
@@ -3743,13 +4105,97 @@ export default function App() {
     openWardrobePreview(item.id);
   }
 
+  function handleFitpicCardClick(fitpic, event) {
+    registerPointerActivatedControl(event);
+    const shiftKey = event.shiftKey;
+    const toggleKey = event.metaKey || event.ctrlKey;
+    const pendingSelection = fitpicPendingSelectionRef.current;
+
+    if (pendingSelection && pendingSelection.fitpic.id !== fitpic.id) {
+      flushPendingFitpicSelection();
+    }
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+    }
+
+    fitpicPendingSelectionRef.current = {
+      fitpic,
+      shiftKey,
+      toggleKey
+    };
+
+    fitpicSelectClickTimeoutRef.current = window.setTimeout(() => {
+      flushPendingFitpicSelection();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+
+    blurPointerActivatedControl(event);
+  }
+
+  function handleFitpicSelection(fitpic, shiftKey, toggleKey) {
+    const nextSelectionState = getNextSelectionState({
+      selectedIds: selectedFitpicIds,
+      orderedIds: visibleFitpicIds,
+      clickedId: fitpic.id,
+      anchorId: fitpicSelectionAnchorId,
+      shiftKey,
+      toggleKey
+    });
+
+    setSelectedFitpicIds(nextSelectionState.selectedIds);
+    setFitpicSelectionAnchorId(nextSelectionState.anchorId);
+  }
+
+  function flushPendingFitpicSelection() {
+    const pendingSelection = fitpicPendingSelectionRef.current;
+
+    if (!pendingSelection) {
+      return;
+    }
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+
+    fitpicPendingSelectionRef.current = null;
+    handleFitpicSelection(pendingSelection.fitpic, pendingSelection.shiftKey, pendingSelection.toggleKey);
+  }
+
+  function handleFitpicCardDoubleClick(fitpic, event) {
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
+
+    event.currentTarget.blur();
+    openFitpicPreview(fitpic);
+  }
+
+  function handleFitpicCardKeyDown(fitpic, event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+
+    fitpicPendingSelectionRef.current = null;
+    openFitpicPreview(fitpic);
+  }
+
   function editWardrobePreviewItem() {
     if (!wardrobePreviewItem) {
       return;
     }
 
     const previewedItem = wardrobePreviewItem;
-    closeWardrobePreview();
+    closeWardrobePreview({ restoreFitpicPreview: false });
     startEdit(previewedItem, {
       returnTarget: activePanel === "wardrobe" ? "wardrobe" : "outfit"
     });
@@ -4666,12 +5112,18 @@ export default function App() {
         return current.filter((savedOutfit) => savedOutfit.id !== existingSavedOutfit.id);
       }
 
+      const timestamp = new Date().toISOString();
+
       return [
         normalizeSavedOutfit({
           id: `saved_outfit_${Date.now()}`,
           outfitUuid: createOutfitUuid(),
           name: createSavedOutfitName(current),
           description: "",
+          tags: [],
+          favorite: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
           outfit: { ...outfit },
           outfitItemUuids: syncOutfitItemUuids(outfit, outfitItemUuids, itemsById),
           layering
@@ -4870,14 +5322,24 @@ export default function App() {
       setWardrobeFiltersOpen(false);
       setDashboardFiltersOpen(false);
       setWardrobeManageOpen(false);
+      closeWardrobePreview({ restoreFitpicPreview: false });
       setFitpicPreview(null);
       cancelEditFitpic();
-      setWardrobePreviewItemId(null);
       if (wardrobeSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
         wardrobeSelectClickTimeoutRef.current = null;
       }
       wardrobePendingSelectionRef.current = null;
+      if (savedOutfitSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+        savedOutfitSelectClickTimeoutRef.current = null;
+      }
+      savedOutfitPendingSelectionRef.current = null;
+      if (fitpicSelectClickTimeoutRef.current !== null) {
+        window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+        fitpicSelectClickTimeoutRef.current = null;
+      }
+      fitpicPendingSelectionRef.current = null;
       cancelEditSavedOutfit();
       setBulkMetadataEditorOpen(false);
       setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -4896,9 +5358,9 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
+    closeWardrobePreview({ restoreFitpicPreview: false });
     setFitpicPreview(null);
     cancelEditFitpic();
-    setWardrobePreviewItemId(null);
     setOutfitFiltersOpen(false);
     setGenerationListsOpen(false);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
@@ -4906,6 +5368,16 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     cancelEdit();
   }
@@ -4933,6 +5405,16 @@ export default function App() {
       wardrobeSelectClickTimeoutRef.current = null;
     }
     wardrobePendingSelectionRef.current = null;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
+    if (fitpicSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(fitpicSelectClickTimeoutRef.current);
+      fitpicSelectClickTimeoutRef.current = null;
+    }
+    fitpicPendingSelectionRef.current = null;
     cancelEditSavedOutfit();
     setBulkMetadataEditorOpen(false);
     setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -5052,25 +5534,37 @@ export default function App() {
 
   function loadAndCloseSavedOutfit(savedOutfit) {
     loadSavedOutfit(savedOutfit);
-    setSelectedSavedOutfitId(null);
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
     cancelEditSavedOutfit();
     setActivePanel(null);
   }
 
   function handleSavedOutfitClick(savedOutfit, event) {
-    if (isMobileViewport) {
-      loadAndCloseSavedOutfit(savedOutfit);
-      return;
+    registerPointerActivatedControl(event);
+    const shiftKey = event.shiftKey;
+    const toggleKey = event.metaKey || event.ctrlKey;
+    const pendingSelection = savedOutfitPendingSelectionRef.current;
+
+    if (pendingSelection && pendingSelection.savedOutfit.id !== savedOutfit.id) {
+      flushPendingSavedOutfitSelection();
     }
 
-    if (event?.detail === 0) {
-      loadAndCloseSavedOutfit(savedOutfit);
-      return;
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
     }
 
-    if (event?.detail <= 1) {
-      setSelectedSavedOutfitId(savedOutfit.id);
-    }
+    savedOutfitPendingSelectionRef.current = {
+      savedOutfit,
+      shiftKey,
+      toggleKey
+    };
+
+    savedOutfitSelectClickTimeoutRef.current = window.setTimeout(() => {
+      flushPendingSavedOutfitSelection();
+    }, WARDROBE_PREVIEW_DOUBLE_CLICK_MS);
+
+    blurPointerActivatedControl(event);
   }
 
   function handleSavedOutfitDoubleClick(savedOutfit, event) {
@@ -5078,7 +5572,61 @@ export default function App() {
       event.preventDefault();
     }
 
-    setSelectedSavedOutfitId(null);
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+    savedOutfitPendingSelectionRef.current = null;
+    loadAndCloseSavedOutfit(savedOutfit);
+  }
+
+  function handleSavedOutfitSelection(savedOutfit, shiftKey, toggleKey) {
+    const nextSelectionState = getNextSelectionState({
+      selectedIds: selectedSavedOutfitIds,
+      orderedIds: visibleSavedOutfitIds,
+      clickedId: savedOutfit.id,
+      anchorId: savedOutfitSelectionAnchorId,
+      shiftKey,
+      toggleKey
+    });
+
+    setSelectedSavedOutfitIds(nextSelectionState.selectedIds);
+    setSavedOutfitSelectionAnchorId(nextSelectionState.anchorId);
+  }
+
+  function flushPendingSavedOutfitSelection() {
+    const pendingSelection = savedOutfitPendingSelectionRef.current;
+
+    if (!pendingSelection) {
+      return;
+    }
+
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+
+    savedOutfitPendingSelectionRef.current = null;
+    handleSavedOutfitSelection(
+      pendingSelection.savedOutfit,
+      pendingSelection.shiftKey,
+      pendingSelection.toggleKey
+    );
+  }
+
+  function handleSavedOutfitKeyDown(savedOutfit, event) {
+    if (event.key !== "Enter") {
+      return;
+    }
+
+    event.preventDefault();
+
+    if (savedOutfitSelectClickTimeoutRef.current !== null) {
+      window.clearTimeout(savedOutfitSelectClickTimeoutRef.current);
+      savedOutfitSelectClickTimeoutRef.current = null;
+    }
+
+    savedOutfitPendingSelectionRef.current = null;
     loadAndCloseSavedOutfit(savedOutfit);
   }
 
@@ -5241,11 +5789,152 @@ export default function App() {
             <p>Save an outfit you like and it will appear here.</p>
           </div>
         ) : (
-          <div className="saved-outfits-list">
-            {savedOutfits.map((savedOutfit) => {
+          <>
+            <div className="saved-outfit-controls" aria-label="Saved outfit controls">
+              <div className="saved-outfit-controls-header">
+                <p className="saved-outfit-controls-count">
+                  {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
+                </p>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={resetSavedOutfitControls}
+                  disabled={!hasActiveSavedOutfitControls}
+                >
+                  Clear filters
+                </button>
+              </div>
+              <label>
+                Search
+                <input
+                  type="search"
+                  value={savedOutfitSearch}
+                  onChange={(event) => setSavedOutfitSearch(event.target.value)}
+                  placeholder="Search saved outfits"
+                />
+              </label>
+              <label>
+                Sort
+                <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)}>
+                  <option value="updatedNewest">Updated newest</option>
+                  <option value="createdNewest">Created newest</option>
+                  <option value="titleAz">Title A-Z</option>
+                </select>
+              </label>
+              <label>
+                Tag
+                <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)}>
+                  <option value="">All tags</option>
+                  {savedOutfitTagFilterOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="saved-outfit-controls-toggle">
+                <input
+                  type="checkbox"
+                  checked={savedOutfitFavoritesOnly}
+                  onChange={(event) => setSavedOutfitFavoritesOnly(event.target.checked)}
+                />
+                <span>Favorites only</span>
+              </label>
+            </div>
+            {hasSavedOutfitSelection ? (
+              <div className="wardrobe-toolbar saved-outfit-toolbar" aria-label="Saved outfit library actions">
+                <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
+                  <span className="wardrobe-results-count">
+                    {visibleSavedOutfits.length} saved outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="wardrobe-toolbar-context">
+                  <div className="wardrobe-selection-summary fitpic-selection-summary">
+                    <div className="wardrobe-selection-count wardrobe-selection-chip">
+                      <span>{selectedSavedOutfitCount} selected</span>
+                      <button
+                        type="button"
+                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+                        onMouseDown={preventMouseButtonFocus}
+                        onClick={clearSavedOutfitSelection}
+                        aria-label="Clear saved outfit selection"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                  <div className="wardrobe-toolbar-context-actions">
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={editSelectedSavedOutfit}
+                      disabled={!isSingleSavedOutfitSelected}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button ${areAllSelectedSavedOutfitsFavorite ? "is-active" : ""}`}
+                      onClick={toggleSelectedSavedOutfitFavorites}
+                    >
+                      {savedOutfitFavoriteActionLabel}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button danger"
+                      onClick={deleteSelectedSavedOutfits}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {hasActiveSavedOutfitControls ? (
+              <div className="active-filter-summary saved-outfit-controls-summary" aria-label="Active saved outfit controls">
+                <span>Local controls:</span>
+                <div className="active-filter-list">
+                  {savedOutfitSearch.trim() ? (
+                    <span className="active-filter-pill">
+                      Search:
+                      {" "}
+                      {savedOutfitSearch.trim()}
+                    </span>
+                  ) : null}
+                  {savedOutfitFavoritesOnly ? (
+                    <span className="active-filter-pill">Favorites only</span>
+                  ) : null}
+                  {savedOutfitTagFilter ? (
+                    <span className="active-filter-pill">
+                      Tag:
+                      {" "}
+                      {selectedSavedOutfitTagFilterLabel || savedOutfitTagFilter}
+                    </span>
+                  ) : null}
+                  {savedOutfitSort !== "updatedNewest" ? (
+                    <span className="active-filter-pill">
+                      Sort:
+                      {" "}
+                      {selectedSavedOutfitSortLabel}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+            {!visibleSavedOutfits.length ? (
+              <div className="editor-placeholder saved-outfits-empty">
+                <p>No saved outfits match the current local search and filters.</p>
+                <p>Clear the controls or save more outfits.</p>
+                <button type="button" className="ghost-button" onClick={resetSavedOutfitControls}>
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+            <div className="saved-outfits-list">
+              {visibleSavedOutfits.map((savedOutfit) => {
               const savedOutfitKey = getOutfitKey(savedOutfit.outfit, savedOutfit.layering);
               const isSavedOutfitLiked = Boolean(likedOutfitKeys[savedOutfitKey]);
-              const isSelected = selectedSavedOutfitId === savedOutfit.id;
+              const isSelected = selectedSavedOutfitIds.includes(savedOutfit.id);
 
               return (
                 <article key={savedOutfit.id} className={`saved-outfit-card ${isSelected ? "is-selected" : ""}`}>
@@ -5279,6 +5968,32 @@ export default function App() {
                           rows="3"
                         />
                       </label>
+                      <label>
+                        Tags
+                        <input
+                          value={savedOutfitDraft.tagsText}
+                          onChange={(event) =>
+                            setSavedOutfitDraft((current) => ({
+                              ...current,
+                              tagsText: event.target.value
+                            }))
+                          }
+                          placeholder="casual, summer, black"
+                        />
+                      </label>
+                      <label className="saved-outfit-favorite-field">
+                        <input
+                          type="checkbox"
+                          checked={savedOutfitDraft.favorite}
+                          onChange={(event) =>
+                            setSavedOutfitDraft((current) => ({
+                              ...current,
+                              favorite: event.target.checked
+                            }))
+                          }
+                        />
+                        <span>Favorite</span>
+                      </label>
                       <div className="saved-outfit-actions">
                         <button type="submit" className="primary-button">Save</button>
                         <button type="button" className="ghost-button" onClick={cancelEditSavedOutfit}>
@@ -5293,6 +6008,9 @@ export default function App() {
                         className="saved-outfit-load"
                         onClick={(event) => handleSavedOutfitClick(savedOutfit, event)}
                         onDoubleClick={(event) => handleSavedOutfitDoubleClick(savedOutfit, event)}
+                        onKeyDown={(event) => handleSavedOutfitKeyDown(savedOutfit, event)}
+                        aria-pressed={isSelected}
+                        aria-label={`Select ${savedOutfit.name}. Double-click or press Enter to load.`}
                       >
                         {renderSavedOutfitPreview(savedOutfit)}
                         <strong>{savedOutfit.name}</strong>
@@ -5309,27 +6027,15 @@ export default function App() {
                         >
                           {isSavedOutfitLiked ? "Liked" : "Like"}
                         </button>
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => startEditSavedOutfit(savedOutfit)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button danger"
-                          onClick={() => deleteSavedOutfit(savedOutfit.id)}
-                        >
-                          Delete
-                        </button>
                       </div>
                     </>
                   )}
                 </article>
               );
-            })}
-          </div>
+              })}
+            </div>
+            )}
+          </>
         )}
       </section>
     );
@@ -5347,18 +6053,26 @@ export default function App() {
         >
           <div className="fitpic-dropzone-copy">
             <p className="eyebrow">Import fitpics</p>
-            <h3>Drop one or more images here</h3>
-            <p>Imported fitpics keep their existing records, appear here immediately, and can be edited afterward.</p>
             {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
           </div>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => fitpicUploadInputRef.current?.click()}
-            disabled={fitpicImporting}
-          >
-            {fitpicImporting ? "Importing…" : "Choose images"}
-          </button>
+          <div className="fitpic-dropzone-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => fitpicUploadInputRef.current?.click()}
+              disabled={fitpicImporting}
+            >
+              {fitpicImporting ? "Importing…" : "Choose images"}
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => fitpicGroupedUploadInputRef.current?.click()}
+              disabled={fitpicImporting}
+            >
+              {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
+            </button>
+          </div>
           <input
             ref={fitpicUploadInputRef}
             type="file"
@@ -5366,6 +6080,14 @@ export default function App() {
             multiple
             className="fitpic-file-input"
             onChange={handleFitpicUpload}
+          />
+          <input
+            ref={fitpicGroupedUploadInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="fitpic-file-input"
+            onChange={handleGroupedFitpicUpload}
           />
         </div>
 
@@ -5375,43 +6097,192 @@ export default function App() {
             <p>Import outfit photos here to build an editable visual archive.</p>
           </div>
         ) : (
-          <div className="fitpic-list">
-            {fitpics.map((fitpic) => (
-              <article key={fitpic.id} className="fitpic-card">
+          <>
+            <div className="fitpic-controls" aria-label="Fitpic controls">
+              <div className="fitpic-controls-header">
+                <p className="fitpic-controls-count">
+                  {visibleFitpics.length} of {fitpics.length} fitpics
+                </p>
                 <button
                   type="button"
-                  className="fitpic-image-button"
-                  onClick={() => openFitpicPreview(fitpic)}
+                  className="ghost-button"
+                  onClick={resetFitpicControls}
+                  disabled={!hasActiveFitpicControls}
                 >
-                  <img src={fitpic.imageData} alt={fitpic.name} />
+                  Clear filters
                 </button>
-                <div className="fitpic-card-copy">
-                  <strong title={fitpic.name}>{fitpic.name}</strong>
-                  <span>{formatFitpicImportMeta(fitpic) || formatFitpicDate(fitpic.createdAt)}</span>
-                  {fitpic.tags.length ? (
-                    <span className="fitpic-card-tags" title={fitpic.tags.join(", ")}>
-                      {fitpic.tags.join(", ")}
+              </div>
+              <label>
+                <span className="eyebrow">Search</span>
+                <input
+                  value={fitpicSearch}
+                  onChange={(event) => setFitpicSearch(event.target.value)}
+                  placeholder="Search fitpics"
+                />
+              </label>
+              <label>
+                <span className="eyebrow">Sort</span>
+                <select value={fitpicSort} onChange={(event) => setFitpicSort(event.target.value)}>
+                  <option value="fitDateNewest">Fit date newest</option>
+                  <option value="fitDateOldest">Fit date oldest</option>
+                  <option value="createdNewest">Created newest</option>
+                  <option value="importedNewest">Imported newest</option>
+                  <option value="titleAz">Title A-Z</option>
+                </select>
+              </label>
+              <label>
+                <span className="eyebrow">Linked item</span>
+                <select
+                  value={fitpicLinkedItemFilter}
+                  onChange={(event) => setFitpicLinkedItemFilter(event.target.value)}
+                >
+                  <option value="">All linked items</option>
+                  {fitpicLinkedItemFilterOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="fitpic-controls-toggle">
+                <input
+                  type="checkbox"
+                  checked={fitpicFavoritesOnly}
+                  onChange={(event) => setFitpicFavoritesOnly(event.target.checked)}
+                />
+                <span>Favorites only</span>
+              </label>
+            </div>
+            <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
+              <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} fitpic{visibleFitpics.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="wardrobe-toolbar-context">
+                {hasFitpicSelection ? (
+                  <>
+                    <div className="wardrobe-selection-summary fitpic-selection-summary">
+                      <div className="wardrobe-selection-count wardrobe-selection-chip">
+                        <span>{selectedFitpicCount} selected</span>
+                        <button
+                          type="button"
+                          className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+                          onMouseDown={preventMouseButtonFocus}
+                          onClick={clearFitpicSelection}
+                          aria-label="Clear fitpic selection"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                    <div className="wardrobe-toolbar-context-actions">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={editSelectedFitpic}
+                        disabled={!isSingleFitpicSelected}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
+                        onClick={toggleSelectedFitpicFavorites}
+                      >
+                        {fitpicFavoriteActionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button danger"
+                        onClick={deleteSelectedFitpics}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            {hasActiveFitpicControls ? (
+              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic controls">
+                <div className="active-filter-chips">
+                  {fitpicSearch.trim() ? (
+                    <span className="active-filter-chip">
+                      <span>Search</span>
+                      {fitpicSearch.trim()}
+                    </span>
+                  ) : null}
+                  {fitpicFavoritesOnly ? (
+                    <span className="active-filter-chip">
+                      <span>Filter</span>
+                      Favorites only
+                    </span>
+                  ) : null}
+                  {fitpicLinkedItemFilter ? (
+                    <span className="active-filter-chip">
+                      <span>Linked</span>
+                      {selectedFitpicLinkedItemFilterLabel}
+                    </span>
+                  ) : null}
+                  {fitpicSort !== "fitDateNewest" ? (
+                    <span className="active-filter-chip">
+                      <span>Sort</span>
+                      {selectedFitpicSortLabel}
                     </span>
                   ) : null}
                 </div>
-                <div className="fitpic-card-actions">
-                  <button
-                    type="button"
-                    className={`ghost-button ${fitpic.favorite ? "is-active" : ""}`}
-                    onClick={() => toggleFitpicFavorite(fitpic.id)}
+              </div>
+            ) : null}
+
+            {!visibleFitpics.length ? (
+              <div className="editor-placeholder fitpics-empty-state">
+                <p>No fitpics match the current local search and filters.</p>
+                <p>Clear the controls or import more fitpics.</p>
+                <button type="button" className="ghost-button" onClick={resetFitpicControls}>
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <div className="fitpic-list">
+                {visibleFitpics.map((fitpic) => {
+                  const isSelected = selectedFitpicIds.includes(fitpic.id);
+                  const fitpicCardDateLabel = formatFitpicDate(fitpic.fitDate || fitpic.createdAt);
+                  const fitpicCardAccessibleLabel = [
+                    `Select ${fitpic.name}.`,
+                    fitpicCardDateLabel ? `${fitpicCardDateLabel}.` : "",
+                    "Double-click or press Enter to preview."
+                  ]
+                    .filter(Boolean)
+                    .join(" ");
+
+                  return (
+                  <article
+                    key={fitpic.id}
+                    className={`fitpic-card ${isSelected ? "is-selected" : ""}`}
                   >
-                    {fitpic.favorite ? "Favorited" : "Favorite"}
-                  </button>
-                  <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpic)}>
-                    Edit
-                  </button>
-                  <button type="button" className="ghost-button danger" onClick={() => deleteFitpic(fitpic.id)}>
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
+                    <button
+                      type="button"
+                      className="fitpic-image-button"
+                      onClick={(event) => handleFitpicCardClick(fitpic, event)}
+                      onDoubleClick={(event) => handleFitpicCardDoubleClick(fitpic, event)}
+                      onKeyDown={(event) => handleFitpicCardKeyDown(fitpic, event)}
+                      aria-pressed={isSelected}
+                      aria-label={fitpicCardAccessibleLabel}
+                    >
+                      <div className="fitpic-card-image-frame">
+                        <img src={fitpic.imageData} alt="" />
+                      </div>
+                      <div className="fitpic-card-copy">
+                        <strong title={fitpic.name}>{fitpic.name}</strong>
+                      </div>
+                    </button>
+                  </article>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </section>
     );
@@ -5737,17 +6608,25 @@ export default function App() {
   }
 
   function startEditSavedOutfit(savedOutfit) {
-    setSelectedSavedOutfitId(savedOutfit.id);
+    setSelectedSavedOutfitIds([savedOutfit.id]);
+    setSavedOutfitSelectionAnchorId(savedOutfit.id);
     setEditingSavedOutfitId(savedOutfit.id);
     setSavedOutfitDraft({
       name: savedOutfit.name ?? "",
-      description: savedOutfit.description ?? ""
+      description: savedOutfit.description ?? "",
+      tagsText: Array.isArray(savedOutfit.tags) ? savedOutfit.tags.join(", ") : "",
+      favorite: Boolean(savedOutfit.favorite)
     });
   }
 
   function cancelEditSavedOutfit() {
     setEditingSavedOutfitId(null);
-    setSavedOutfitDraft({ name: "", description: "" });
+    setSavedOutfitDraft({
+      name: "",
+      description: "",
+      tagsText: "",
+      favorite: false
+    });
   }
 
   function submitSavedOutfit(event, savedOutfitId) {
@@ -5755,6 +6634,8 @@ export default function App() {
 
     const trimmedName = savedOutfitDraft.name.trim();
     const trimmedDescription = savedOutfitDraft.description.trim();
+    const nextTags = parseFitpicTagsInput(savedOutfitDraft.tagsText);
+    const updatedAt = new Date().toISOString();
 
     setSavedOutfits((current) =>
       current.map((savedOutfit) =>
@@ -5762,7 +6643,10 @@ export default function App() {
           ? {
               ...savedOutfit,
               name: trimmedName || savedOutfit.name,
-              description: trimmedDescription
+              description: trimmedDescription,
+              tags: nextTags,
+              favorite: savedOutfitDraft.favorite,
+              updatedAt
             }
           : savedOutfit
       )
@@ -5771,10 +6655,60 @@ export default function App() {
     cancelEditSavedOutfit();
   }
 
-  async function deleteSavedOutfit(savedOutfitId) {
+  function clearSavedOutfitSelection() {
+    setSelectedSavedOutfitIds([]);
+    setSavedOutfitSelectionAnchorId(null);
+  }
+
+  function resetSavedOutfitControls() {
+    setSavedOutfitSearch("");
+    setSavedOutfitSort("updatedNewest");
+    setSavedOutfitFavoritesOnly(false);
+    setSavedOutfitTagFilter("");
+  }
+
+  function editSelectedSavedOutfit() {
+    if (selectedSavedOutfits.length !== 1) {
+      return;
+    }
+
+    startEditSavedOutfit(selectedSavedOutfits[0]);
+  }
+
+  function toggleSelectedSavedOutfitFavorites() {
+    if (!selectedSavedOutfitIds.length) {
+      return;
+    }
+
+    const selectedIdSet = new Set(selectedSavedOutfitIds);
+    const shouldFavorite = !areAllSelectedSavedOutfitsFavorite;
+    const updatedAt = new Date().toISOString();
+
+    setSavedOutfits((current) =>
+      current.map((savedOutfit) =>
+        selectedIdSet.has(savedOutfit.id)
+          ? {
+              ...savedOutfit,
+              favorite: shouldFavorite,
+              updatedAt
+            }
+          : savedOutfit
+      )
+    );
+  }
+
+  async function deleteSavedOutfitsById(savedOutfitIds) {
+    const uniqueSavedOutfitIds = [...new Set((savedOutfitIds ?? []).filter(Boolean))];
+
+    if (!uniqueSavedOutfitIds.length) {
+      return;
+    }
+
     const confirmed = await requestConfirmation({
-      title: "Delete outfit?",
-      message: "This saved outfit will be removed from this browser.",
+      title: uniqueSavedOutfitIds.length === 1 ? "Delete outfit?" : "Delete outfits?",
+      message: uniqueSavedOutfitIds.length === 1
+        ? "This saved outfit will be removed from this browser."
+        : `${uniqueSavedOutfitIds.length} saved outfits will be removed from this browser.`,
       confirmLabel: "Delete"
     });
 
@@ -5782,21 +6716,62 @@ export default function App() {
       return;
     }
 
-    setSavedOutfits((current) => current.filter((savedOutfit) => savedOutfit.id !== savedOutfitId));
+    const deletedIdSet = new Set(uniqueSavedOutfitIds);
 
-    if (editingSavedOutfitId === savedOutfitId) {
+    setSavedOutfits((current) => current.filter((savedOutfit) => !deletedIdSet.has(savedOutfit.id)));
+    setSelectedSavedOutfitIds((current) => current.filter((savedOutfitId) => !deletedIdSet.has(savedOutfitId)));
+
+    if (editingSavedOutfitId && deletedIdSet.has(editingSavedOutfitId)) {
       cancelEditSavedOutfit();
     }
+  }
 
-    if (selectedSavedOutfitId === savedOutfitId) {
-      setSelectedSavedOutfitId(null);
-    }
+  async function deleteSelectedSavedOutfits() {
+    await deleteSavedOutfitsById(selectedSavedOutfitIds);
+  }
+
+  async function deleteSavedOutfit(savedOutfitId) {
+    await deleteSavedOutfitsById([savedOutfitId]);
   }
 
   function openFitpicPreview(fitpic) {
     closeUtilityWindows();
     setEditingFitpicId(null);
+    setFitpicPreviewImageIndex(0);
     setFitpicPreview(fitpic);
+  }
+
+  function stepFitpicPreview(direction) {
+    const nextFitpicId = direction === "previous"
+      ? fitpicPreviewNavigation.previousFitpicId
+      : fitpicPreviewNavigation.nextFitpicId;
+
+    if (!nextFitpicId) {
+      return;
+    }
+
+    const nextFitpic = fitpics.find((fitpic) => fitpic.id === nextFitpicId) ?? null;
+
+    if (!nextFitpic) {
+      return;
+    }
+
+    setFitpicPreviewImageIndex(0);
+    setFitpicPreview(nextFitpic);
+  }
+
+  function stepFitpicPreviewImage(direction) {
+    if (fitpicPreviewImages.length <= 1) {
+      return;
+    }
+
+    setFitpicPreviewImageIndex((current) => {
+      if (direction === "previous") {
+        return current === 0 ? fitpicPreviewImages.length - 1 : current - 1;
+      }
+
+      return current === fitpicPreviewImages.length - 1 ? 0 : current + 1;
+    });
   }
 
   function startEditFitpic(fitpic) {
@@ -5807,15 +6782,34 @@ export default function App() {
     setFitpicDraft({
       name: fitpic.name ?? "",
       description: fitpic.description ?? "",
-      tagsText: Array.isArray(fitpic.tags) ? fitpic.tags.join(", ") : "",
-      favorite: Boolean(fitpic.favorite)
+      tags: Array.isArray(fitpic.tags) ? fitpic.tags : [],
+      tagInput: "",
+      favorite: Boolean(fitpic.favorite),
+      fitDate: getFitpicDateInputValue(fitpic.fitDate),
+      fitpicImages: getFitpicImages(fitpic),
+      primaryImageUuid: getPrimaryFitpicImage(fitpic)?.fitpicImageUuid ?? null,
+      linkedItemUuids: Array.isArray(fitpic.linkedItemUuids) ? fitpic.linkedItemUuids : [],
+      linkedItemIds: Array.isArray(fitpic.linkedItemIds) ? fitpic.linkedItemIds : [],
+      linkedItemSearch: ""
     });
   }
 
   function cancelEditFitpic() {
     setEditingFitpicId(null);
     setFitpicImportError("");
-    setFitpicDraft({ name: "", description: "", tagsText: "", favorite: false });
+    setFitpicDraft({
+      name: "",
+      description: "",
+      tags: [],
+      tagInput: "",
+      favorite: false,
+      fitDate: "",
+      fitpicImages: [],
+      primaryImageUuid: null,
+      linkedItemUuids: [],
+      linkedItemIds: [],
+      linkedItemSearch: ""
+    });
   }
 
   function saveFitpicDraft(event) {
@@ -5827,7 +6821,7 @@ export default function App() {
     }
 
     const trimmedName = fitpicDraft.name.trim();
-    const nextTags = parseFitpicTagsInput(fitpicDraft.tagsText);
+    const nextTags = Array.isArray(fitpicDraft.tags) ? fitpicDraft.tags : [];
     const updatedAt = new Date().toISOString();
     const nextFitpic = normalizeFitpic({
       ...editingFitpic,
@@ -5835,6 +6829,11 @@ export default function App() {
       description: fitpicDraft.description.trim(),
       tags: nextTags,
       favorite: fitpicDraft.favorite,
+      fitDate: applyFitpicDateInput(editingFitpic.fitDate, fitpicDraft.fitDate),
+      fitpicImages: fitpicDraft.fitpicImages,
+      primaryImageUuid: fitpicDraft.primaryImageUuid,
+      linkedItemUuids: fitpicDraft.linkedItemUuids,
+      linkedItemIds: fitpicDraft.linkedItemIds,
       updatedAt
     });
 
@@ -5842,6 +6841,20 @@ export default function App() {
       current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
     );
     cancelEditFitpic();
+  }
+
+  function commitFitpicTagInput() {
+    const normalizedInput = typeof fitpicDraft.tagInput === "string" ? fitpicDraft.tagInput.trim() : "";
+
+    if (!normalizedInput) {
+      return;
+    }
+
+    setFitpicDraft((current) => addFitpicTagsToDraft(current, current.tagInput));
+  }
+
+  function removeTagFromEditingFitpic(tag) {
+    setFitpicDraft((current) => removeFitpicTagFromDraft(current, tag));
   }
 
   async function importFitpicFiles(fileList) {
@@ -5887,6 +6900,50 @@ export default function App() {
   async function handleFitpicUpload(event) {
     try {
       await importFitpicFiles(event.target.files);
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function importGroupedFitpicFiles(fileList) {
+    const files = [...(fileList ?? [])];
+
+    if (!files.length) {
+      return;
+    }
+
+    const imageFiles = files.filter((file) => file?.type?.startsWith("image/"));
+
+    if (!imageFiles.length) {
+      setFitpicImportError("No image files were found.");
+      return;
+    }
+
+    try {
+      setFitpicImporting(true);
+      setFitpicImportError("");
+      const nextFitpic = await createImportedGroupedFitpicFromFiles(imageFiles, {
+        createId: createFitpicId,
+        readFileAsDataUrl,
+        loadImage,
+        compressImageSource
+      });
+
+      setFitpics((current) => [nextFitpic, ...current]);
+
+      if (imageFiles.length !== files.length) {
+        setFitpicImportError("Created a grouped fitpic from the image files and ignored non-image files.");
+      }
+    } catch (error) {
+      setFitpicImportError(error?.message || "These images could not be imported together.");
+    } finally {
+      setFitpicImporting(false);
+    }
+  }
+
+  async function handleGroupedFitpicUpload(event) {
+    try {
+      await importGroupedFitpicFiles(event.target.files);
     } finally {
       event.target.value = "";
     }
@@ -5941,19 +6998,205 @@ export default function App() {
 
     try {
       setFitpicImportError("");
-      const nextFitpic = await replaceFitpicImageFromFile(editingFitpic, file, {
+      const importMetadata = await readImageFileMetadata(file, {
         readFileAsDataUrl,
-        loadImage,
-        compressImageSource
+        loadImage
       });
-      setFitpics((current) =>
-        current.map((fitpic) => (fitpic.id === nextFitpic.id ? nextFitpic : fitpic))
-      );
+      const imageData = await compressImageSource(file);
+
+      setFitpicDraft((current) => {
+        const currentImages = Array.isArray(current.fitpicImages) ? current.fitpicImages : [];
+        const primaryImageUuid = current.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
+
+        return {
+          ...current,
+          fitpicImages: currentImages.map((fitpicImage, index) =>
+            fitpicImage.fitpicImageUuid === primaryImageUuid
+              ? normalizeFitpicImage(
+                  {
+                    ...fitpicImage,
+                    imageData,
+                    images: {
+                      ...(fitpicImage.images ?? {}),
+                      preview: imageData
+                    },
+                    ...importMetadata
+                  },
+                  {
+                    createUuid: createFitpicImageUuid,
+                    fallbackTimestamp: importMetadata.importedAt,
+                    fallbackOrder: index,
+                    parentFitpicUuid: editingFitpic.fitpicUuid
+                  }
+                )
+              : fitpicImage
+          )
+        };
+      });
     } catch (error) {
       setFitpicImportError(error?.message || "This image could not be used.");
     } finally {
       event.target.value = "";
     }
+  }
+
+  async function addImagesToEditingFitpic(event) {
+    const files = [...(event.target.files ?? [])];
+
+    if (!files.length || !editingFitpic) {
+      return;
+    }
+
+    try {
+      setFitpicImportError("");
+      const imageFiles = files.filter((file) => file?.type?.startsWith("image/"));
+
+      if (!imageFiles.length) {
+        setFitpicImportError("No image files were found.");
+        return;
+      }
+
+      const nextFitpicImages = await Promise.all(
+        imageFiles.map(async (file, index) => {
+          const importMetadata = await readImageFileMetadata(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
+          const imageData = await compressImageSource(file);
+
+          return normalizeFitpicImage(
+            {
+              fitpicImageUuid: createFitpicImageUuid(),
+              parentFitpicUuid: editingFitpic.fitpicUuid,
+              order: editingFitpicImages.length + index,
+              imageData,
+              images: {
+                preview: imageData
+              },
+              ...importMetadata
+            },
+            {
+              createUuid: createFitpicImageUuid,
+              fallbackTimestamp: importMetadata.importedAt,
+              fallbackOrder: editingFitpicImages.length + index,
+              parentFitpicUuid: editingFitpic.fitpicUuid
+            }
+          );
+        })
+      );
+
+      setFitpicDraft((current) => addFitpicImagesToDraft(current, nextFitpicImages));
+
+      if (imageFiles.length !== files.length) {
+        setFitpicImportError("Added the image files and ignored non-image files.");
+      }
+    } catch (error) {
+      setFitpicImportError(error?.message || "These images could not be added.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  function removeImageFromEditingFitpic(fitpicImageUuid) {
+    setFitpicDraft((current) => removeFitpicImageFromDraft(current, fitpicImageUuid));
+  }
+
+  function setPrimaryImageForEditingFitpic(fitpicImageUuid) {
+    setFitpicDraft((current) => setPrimaryFitpicImageInDraft(current, fitpicImageUuid));
+  }
+
+  function moveEditingFitpicImage(fitpicImageUuid, direction) {
+    setFitpicDraft((current) => moveFitpicImageInDraft(current, fitpicImageUuid, direction));
+  }
+
+  function resetFitpicControls() {
+    setFitpicSearch("");
+    setFitpicSort("fitDateNewest");
+    setFitpicFavoritesOnly(false);
+    setFitpicLinkedItemFilter("");
+  }
+
+  function clearFitpicSelection() {
+    setSelectedFitpicIds([]);
+    setFitpicSelectionAnchorId(null);
+  }
+
+  function editSelectedFitpic() {
+    if (selectedFitpics.length !== 1) {
+      return;
+    }
+
+    startEditFitpic(selectedFitpics[0]);
+  }
+
+  function toggleSelectedFitpicFavorites() {
+    if (!selectedFitpicIds.length) {
+      return;
+    }
+
+    const selectedIdSet = new Set(selectedFitpicIds);
+    const shouldFavorite = !areAllSelectedFitpicsFavorite;
+    const updatedAt = new Date().toISOString();
+
+    setFitpics((current) =>
+      current.map((fitpic) =>
+        selectedIdSet.has(fitpic.id)
+          ? normalizeFitpic({
+              ...fitpic,
+              favorite: shouldFavorite,
+              updatedAt
+            })
+          : fitpic
+      )
+    );
+  }
+
+  async function deleteFitpicsById(fitpicIds) {
+    const uniqueFitpicIds = [...new Set((fitpicIds ?? []).filter(Boolean))];
+
+    if (!uniqueFitpicIds.length) {
+      return;
+    }
+
+    const confirmed = await requestConfirmation({
+      title: uniqueFitpicIds.length === 1 ? "Delete fitpic?" : "Delete fitpics?",
+      message: uniqueFitpicIds.length === 1
+        ? "This fitpic will be removed from this browser."
+        : `${uniqueFitpicIds.length} fitpics will be removed from this browser.`,
+      confirmLabel: "Delete"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const deletedIdSet = new Set(uniqueFitpicIds);
+
+    setFitpics((current) => current.filter((fitpic) => !deletedIdSet.has(fitpic.id)));
+    setSelectedFitpicIds((current) => current.filter((fitpicId) => !deletedIdSet.has(fitpicId)));
+
+    if (fitpicPreview?.id && deletedIdSet.has(fitpicPreview.id)) {
+      setFitpicPreview(null);
+    }
+
+    if (editingFitpicId && deletedIdSet.has(editingFitpicId)) {
+      cancelEditFitpic();
+    }
+  }
+
+  async function deleteSelectedFitpics() {
+    await deleteFitpicsById(selectedFitpicIds);
+  }
+
+  function addWardrobeItemToEditingFitpic(item) {
+    setFitpicDraft((current) => ({
+      ...addLinkedItemToFitpicDraft(current, item),
+      linkedItemSearch: ""
+    }));
+  }
+
+  function removeWardrobeItemFromEditingFitpic(linkedEntry) {
+    setFitpicDraft((current) => removeLinkedItemFromFitpicDraft(current, linkedEntry));
   }
 
   function toggleFitpicFavorite(fitpicId) {
@@ -5973,25 +7216,7 @@ export default function App() {
   }
 
   async function deleteFitpic(fitpicId) {
-    const confirmed = await requestConfirmation({
-      title: "Delete fitpic?",
-      message: "This fitpic will be removed from this browser.",
-      confirmLabel: "Delete"
-    });
-
-    if (!confirmed) {
-      return;
-    }
-
-    setFitpics((current) => current.filter((fitpic) => fitpic.id !== fitpicId));
-
-    if (fitpicPreview?.id === fitpicId) {
-      setFitpicPreview(null);
-    }
-
-    if (editingFitpicId === fitpicId) {
-      cancelEditFitpic();
-    }
+    await deleteFitpicsById([fitpicId]);
   }
 
   function removeAccessoryFromSlot(slot) {
@@ -7585,12 +8810,6 @@ export default function App() {
         {activePanel === "outfits" ? (
         <section className="insights-stack">
           <div className="panel fitpics-panel outfits-panel">
-            <div className="panel-header">
-              <div>
-                <p className="eyebrow">Outfits</p>
-                <h2>Outfit archive</h2>
-              </div>
-            </div>
             <div className="outfits-panel-tabs" role="tablist" aria-label="Outfits sections">
               {outfitSectionTabs.map(([tab, label]) => (
                 <button
@@ -7733,12 +8952,31 @@ export default function App() {
 
         <PreviewOverlay
           open={Boolean(fitpicPreview)}
-          eyebrow="Fitpic"
+          eyebrow=""
           title={fitpicPreview?.name ?? ""}
-          meta={fitpicPreview ? formatFitpicImportMeta(fitpicPreview) || formatFitpicDate(fitpicPreview.createdAt) : null}
-          onClose={() => setFitpicPreview(null)}
+          meta={fitpicPreview ? formatFitpicDate(fitpicPreview.fitDate || fitpicPreview.createdAt) : null}
+          onClose={() => {
+            setFitpicPreviewImageIndex(0);
+            setFitpicPreview(null);
+          }}
           actions={fitpicPreview ? (
             <>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => stepFitpicPreview("previous")}
+                disabled={!fitpicPreviewNavigation.previousFitpicId}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => stepFitpicPreview("next")}
+                disabled={!fitpicPreviewNavigation.nextFitpicId}
+              >
+                Next
+              </button>
               <button type="button" className="ghost-button" onClick={() => startEditFitpic(fitpicPreview)}>
                 Edit
               </button>
@@ -7754,11 +8992,68 @@ export default function App() {
         >
           {fitpicPreview ? (
             <div className="fitpic-preview-content">
-              <img className="preview-overlay-fitpic-image" src={fitpicPreview.imageData} alt={fitpicPreview.name} />
-              {(fitpicPreview.description || fitpicPreview.tags.length) ? (
+              <div className="fitpic-preview-image-frame">
+                {fitpicPreviewImages.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="preview-overlay-nav preview-overlay-nav-left"
+                      onClick={() => stepFitpicPreviewImage("previous")}
+                      aria-label="Previous image in fitpic"
+                      title="Previous image"
+                    >
+                      <span aria-hidden="true">‹</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-nav preview-overlay-nav-right"
+                      onClick={() => stepFitpicPreviewImage("next")}
+                      aria-label="Next image in fitpic"
+                      title="Next image"
+                    >
+                      <span aria-hidden="true">›</span>
+                    </button>
+                    <div className="fitpic-preview-image-indicator" aria-label="Current fitpic image">
+                      {fitpicPreviewImageIndex + 1} / {fitpicPreviewImages.length}
+                    </div>
+                  </>
+                ) : null}
+                {activePreviewFitpicImage ? (
+                  <img
+                    className="preview-overlay-fitpic-image"
+                    src={activePreviewFitpicImage.imageData}
+                    alt={fitpicPreview.name}
+                  />
+                ) : (
+                  <div className="fitpic-preview-image-empty">Image unavailable.</div>
+                )}
+              </div>
+              {(fitpicPreview.description || fitpicPreview.tags.length || fitpicPreviewLinkedItems.length) ? (
                 <div className="fitpic-preview-copy">
-                  {fitpicPreview.description ? <p>{fitpicPreview.description}</p> : null}
-                  {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(", ")}</p> : null}
+                  {fitpicPreview.description ? <p className="fitpic-preview-description">{fitpicPreview.description}</p> : null}
+                  {fitpicPreview.tags.length ? <p className="fitpic-preview-tags">{fitpicPreview.tags.join(" · ")}</p> : null}
+                  {fitpicPreviewLinkedItems.length ? (
+                    <div className="fitpic-preview-linked-items">
+                      <div className="fitpic-preview-linked-list">
+                        {fitpicPreviewLinkedItems.map((linkedEntry) =>
+                          linkedEntry.missing ? (
+                            <span key={linkedEntry.key} className="fitpic-preview-linked-item is-missing">
+                              Missing wardrobe item
+                            </span>
+                          ) : (
+                            <button
+                              key={linkedEntry.key}
+                              type="button"
+                              className="fitpic-preview-linked-item"
+                              onClick={() => openWardrobePreviewFromFitpicPreview(linkedEntry.itemId)}
+                            >
+                              {linkedEntry.label}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -7788,7 +9083,11 @@ export default function App() {
           {editingFitpic ? (
             <form id="fitpic-editor-form" className="fitpic-editor" onSubmit={saveFitpicDraft}>
               <div className="fitpic-editor-media">
-                <img className="fitpic-editor-image" src={editingFitpic.imageData} alt={editingFitpic.name} />
+                <img
+                  className="fitpic-editor-image"
+                  src={editingFitpicPrimaryImage?.imageData || editingFitpic.imageData}
+                  alt={editingFitpic.name}
+                />
                 <div className="fitpic-editor-media-actions">
                   <button
                     type="button"
@@ -7797,6 +9096,13 @@ export default function App() {
                   >
                     Replace image
                   </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={() => fitpicAddImagesInputRef.current?.click()}
+                  >
+                    Add image
+                  </button>
                   <input
                     ref={fitpicReplaceInputRef}
                     type="file"
@@ -7804,6 +9110,77 @@ export default function App() {
                     className="fitpic-file-input"
                     onChange={replaceEditingFitpicImage}
                   />
+                  <input
+                    ref={fitpicAddImagesInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="fitpic-file-input"
+                    onChange={addImagesToEditingFitpic}
+                  />
+                </div>
+                <div className="fitpic-editor-image-list" aria-label="Fitpic images">
+                  {editingFitpicImages.map((fitpicImage, index) => {
+                    const isPrimary = fitpicImage.fitpicImageUuid === fitpicDraft.primaryImageUuid;
+                    const imageFilename = fitpicImage.sourceOriginalFilename || `Image ${fitpicImage.order + 1}`;
+                    const canRemove = editingFitpicImages.length > 1;
+                    const canMoveUp = index > 0;
+                    const canMoveDown = index < editingFitpicImages.length - 1;
+
+                    return (
+                      <div
+                        key={fitpicImage.fitpicImageUuid}
+                        className={`fitpic-editor-image-row ${isPrimary ? "is-primary" : ""}`}
+                      >
+                        <img
+                          className="fitpic-editor-image-thumb"
+                          src={fitpicImage.images?.thumbnail || fitpicImage.images?.preview || fitpicImage.imageData}
+                          alt={imageFilename}
+                        />
+                        <div className="fitpic-editor-image-copy">
+                          <strong>{imageFilename}</strong>
+                          <span>{isPrimary ? "Primary image" : `Image ${fitpicImage.order + 1}`}</span>
+                        </div>
+                        <div className="fitpic-editor-image-actions">
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => moveEditingFitpicImage(fitpicImage.fitpicImageUuid, "up")}
+                            disabled={!canMoveUp}
+                          >
+                            Move up
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => moveEditingFitpicImage(fitpicImage.fitpicImageUuid, "down")}
+                            disabled={!canMoveDown}
+                          >
+                            Move down
+                          </button>
+                          {!isPrimary ? (
+                            <button
+                              type="button"
+                              className="ghost-button"
+                              onClick={() => setPrimaryImageForEditingFitpic(fitpicImage.fitpicImageUuid)}
+                            >
+                              Set primary
+                            </button>
+                          ) : (
+                            <span className="fitpic-editor-image-primary-indicator">Primary</span>
+                          )}
+                          <button
+                            type="button"
+                            className="ghost-button danger"
+                            onClick={() => removeImageFromEditingFitpic(fitpicImage.fitpicImageUuid)}
+                            disabled={!canRemove}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -7811,6 +9188,7 @@ export default function App() {
                 <label>
                   <span className="editor-label-row"><span>Name / title</span></span>
                   <input
+                    className="fitpic-editor-title-input"
                     value={fitpicDraft.name}
                     onChange={(event) =>
                       setFitpicDraft((current) => ({
@@ -7824,7 +9202,8 @@ export default function App() {
                 <label>
                   <span className="editor-label-row"><span>Description</span></span>
                   <textarea
-                    rows="4"
+                    className="fitpic-editor-description-input"
+                    rows="6"
                     value={fitpicDraft.description}
                     onChange={(event) =>
                       setFitpicDraft((current) => ({
@@ -7837,15 +9216,62 @@ export default function App() {
 
                 <label>
                   <span className="editor-label-row"><span>Tags</span></span>
+                  <div className="fitpic-tag-editor">
+                    {fitpicDraft.tags.length ? (
+                      <div className="fitpic-tag-chip-list" aria-label="Fitpic tags">
+                        {fitpicDraft.tags.map((tag) => (
+                          <span key={tag} className="fitpic-tag-chip">
+                            <span>{tag}</span>
+                            <button
+                              type="button"
+                              className="fitpic-tag-chip-remove"
+                              onClick={() => removeTagFromEditingFitpic(tag)}
+                              aria-label={`Remove ${tag} tag`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <input
+                      value={fitpicDraft.tagInput}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+
+                        if (nextValue.includes(",")) {
+                          setFitpicDraft((current) => addFitpicTagsToDraft(current, nextValue));
+                          return;
+                        }
+
+                        setFitpicDraft((current) => ({
+                          ...current,
+                          tagInput: nextValue
+                        }));
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitFitpicTagInput();
+                        }
+                      }}
+                      onBlur={commitFitpicTagInput}
+                      placeholder="Type a tag and press Enter"
+                    />
+                  </div>
+                </label>
+
+                <label>
+                  <span className="editor-label-row"><span>Fit date</span></span>
                   <input
-                    value={fitpicDraft.tagsText}
+                    type="date"
+                    value={fitpicDraft.fitDate}
                     onChange={(event) =>
                       setFitpicDraft((current) => ({
                         ...current,
-                        tagsText: event.target.value
+                        fitDate: event.target.value
                       }))
                     }
-                    placeholder="casual, summer, black"
                   />
                 </label>
 
@@ -7862,6 +9288,65 @@ export default function App() {
                   />
                   <span>Favorite</span>
                 </label>
+
+                <div className="fitpic-linked-items">
+                  <div className="editor-label-row">
+                    <span>Linked wardrobe items</span>
+                  </div>
+                  {editingFitpicLinkedItems.length ? (
+                    <div className="fitpic-linked-items-list">
+                      {editingFitpicLinkedItems.map((linkedEntry) => (
+                        <div key={linkedEntry.key} className={`fitpic-linked-item ${linkedEntry.missing ? "is-missing" : ""}`}>
+                          <div className="fitpic-linked-item-copy">
+                            <strong>{linkedEntry.label}</strong>
+                            <span>{linkedEntry.missing ? "Missing wardrobe item" : "Linked wardrobe item"}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            onClick={() => removeWardrobeItemFromEditingFitpic(linkedEntry)}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="fitpic-linked-items-empty">No linked wardrobe items.</p>
+                  )}
+
+                  <label>
+                    <span className="editor-label-row"><span>Add wardrobe items</span></span>
+                    <input
+                      value={fitpicDraft.linkedItemSearch}
+                      onChange={(event) =>
+                        setFitpicDraft((current) => ({
+                          ...current,
+                          linkedItemSearch: event.target.value
+                        }))
+                      }
+                      placeholder="Search wardrobe items"
+                    />
+                  </label>
+
+                  {fitpicLinkedItemSuggestions.length ? (
+                    <div className="fitpic-linked-item-suggestions">
+                      {fitpicLinkedItemSuggestions.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="fitpic-linked-item-suggestion"
+                          onClick={() => addWardrobeItemToEditingFitpic(item)}
+                        >
+                          <strong>{buildDisplayName(item)}</strong>
+                          <span>{item.type || item.garmentType || "Wardrobe item"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : fitpicLinkedItemSearch ? (
+                    <p className="fitpic-linked-items-empty">No matching wardrobe items.</p>
+                  ) : null}
+                </div>
 
                 {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
 
