@@ -3013,7 +3013,10 @@ button:disabled {
 .fitpic-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  grid-auto-rows: max-content;
   gap: 12px;
+  align-items: start;
+  align-content: start;
   max-height: calc(100vh - 176px - env(safe-area-inset-bottom));
   overflow: auto;
   padding-right: 0;
@@ -3161,6 +3164,7 @@ button:disabled {
 .fitpic-card {
   display: flex;
   position: relative;
+  align-self: start;
   min-height: 0;
   padding: 6px;
   border: 1px solid var(--border-soft);
