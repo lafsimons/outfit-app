@@ -6627,6 +6627,13 @@ export default function App() {
                       </div>
                       <div className="fitpic-card-copy">
                         <strong title={fitpic.name}>{fitpic.name}</strong>
+                        {fitpic.tags?.length ? (
+                          <div className="fitpic-card-tags" aria-hidden="true">
+                            {fitpic.tags.map((tag) => (
+                              <span key={`${fitpic.id}-${tag}`} className="fitpic-card-tag">{tag}</span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </button>
                   </article>
