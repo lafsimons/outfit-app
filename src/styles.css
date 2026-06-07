@@ -1513,6 +1513,8 @@ button:disabled {
 
 .slot-action-chips {
   grid-auto-rows: max-content;
+  width: max-content;
+  justify-items: end;
 }
 
 .outfit-slot-hover-button {
@@ -1558,20 +1560,25 @@ button:disabled {
 }
 
 .slot-actions-inline-tools {
-  display: grid;
-  gap: 5px;
-  grid-template-columns: repeat(3, minmax(0, max-content));
-  padding-top: 7px;
-  border-top: 1px solid rgba(40, 48, 56, 0.12);
-  justify-content: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  left: calc(100% + 8px);
+  width: max-content;
+  margin-top: -34px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(40, 48, 56, 0.12);
+  justify-content: flex-start;
+  flex-wrap: nowrap;
 }
 
 .slot-action-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   border-color: rgba(40, 48, 56, 0.12);
   background: rgba(255, 255, 255, 0.5);
@@ -1593,8 +1600,8 @@ button:disabled {
 }
 
 .slot-action-icon-button svg {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   display: block;
 }
 
@@ -4756,10 +4763,6 @@ button:disabled {
     flex: 1 1 auto;
     padding: 6px 7px;
     font-size: 0.66rem;
-  }
-
-  .slot-actions-inline-tools {
-    grid-template-columns: repeat(3, minmax(0, max-content));
   }
 
   .current-outfit-actions {
