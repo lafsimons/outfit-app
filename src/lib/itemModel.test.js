@@ -3,10 +3,15 @@ import assert from "node:assert/strict";
 
 import {
   createUniqueItemId,
+  getActiveWardrobeItemImage,
+  getActiveWardrobeItemImageAsset,
+  getWardrobeItemImages,
   getWardrobePreviewMetadata,
   itemNeedsDescriptionMigration,
+  itemNeedsImageContractMigration,
   itemNeedsImportMetadataMigration,
   itemNeedsItemUuidMigration,
+  mirrorActiveWardrobeImageAssetToLegacyAliases,
   normalizeCollections,
   normalizeItem
 } from "./itemModel.js";
@@ -32,6 +37,8 @@ const baseEmptyForm = {
     preview: { src: "" },
     thumbnail: { src: "" }
   },
+  itemImages: [],
+  activeItemImageUuid: null,
   originalPreserved: false,
   imageScale: 100,
   imageFrameScale: 100,
@@ -92,6 +99,7 @@ test("normalizeItem preserves timestamps and applies default metadata correction
     },
     {
       emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
       resolveImageUrl: (value) => value,
       normalizeImageFrameScale: (value) => value ?? 100,
       normalizeImageScale: (value) => value ?? 100,
@@ -130,6 +138,7 @@ test("normalizeItem does not let metadata corrections override an explicit incom
     },
     {
       emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
       resolveImageUrl: (value) => value,
       normalizeImageFrameScale: (value) => value ?? 100,
       normalizeImageScale: (value) => value ?? 100,
@@ -153,6 +162,7 @@ test("normalizeItem migrates legacy list into status and normalizes collections"
     },
     {
       emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
       resolveImageUrl: (value) => value,
       normalizeImageFrameScale: (value) => value ?? 100,
       normalizeImageScale: (value) => value ?? 100,
@@ -179,6 +189,7 @@ test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl witho
     },
     {
       emptyForm: baseEmptyForm,
+      createItemUuid: () => "generated-item-uuid",
       resolveImageUrl: (value) => value,
       normalizeImageFrameScale: (value) => value ?? 100,
       normalizeImageScale: (value) => value ?? 100,
@@ -191,6 +202,11 @@ test("normalizeItem synthesizes preview and thumbnail from legacy imageUrl witho
   assert.equal(normalized.images.original.src, "");
   assert.equal(normalized.images.preview.src, "data:image/png;base64,legacy");
   assert.equal(normalized.images.thumbnail.src, "data:image/png;base64,legacy");
+  assert.equal(normalized.activeItemImageUuid, "generated-item-uuid:item-image:0");
+  assert.equal(normalized.itemImages.length, 1);
+  assert.equal(normalized.itemImages[0].canonicalAsset.assetUuid, "generated-item-uuid:item-image:0:image-asset:canonical:0");
+  assert.equal(normalized.itemImages[0].canonicalAsset.imageUrl, "data:image/png;base64,legacy");
+  assert.deepEqual(normalized.itemImages[0].derivedAssets, []);
   assert.equal(normalized.originalPreserved, false);
 });
 
@@ -224,7 +240,145 @@ test("normalizeItem preserves canonical images fields and mirrors preview src in
   assert.equal(normalized.images.thumbnail.src, "data:image/png;base64,thumb");
   assert.equal(normalized.images.thumbnail.blurHash, "abc123");
   assert.deepEqual(normalized.images.extra, { note: "keep" });
+  assert.equal(normalized.itemImages[0].canonicalAsset.images.original.src, "data:image/png;base64,original");
   assert.equal(normalized.originalPreserved, true);
+});
+
+test("activeImageAssetUuid selects a derived render over the canonical asset", () => {
+  const normalized = normalizeItem(
+    {
+      id: "multi_asset_item",
+      itemUuid: "item-uuid-1",
+      itemImages: [
+        {
+          itemImageUuid: "item-image-1",
+          order: 0,
+          canonicalAsset: {
+            assetUuid: "asset-canonical",
+            imageUrl: "data:image/png;base64,canonical",
+            images: {
+              preview: { src: "data:image/png;base64,canonical" },
+              thumbnail: { src: "data:image/png;base64,canonical-thumb" }
+            }
+          },
+          derivedAssets: [
+            {
+              assetUuid: "asset-derived-1",
+              imageUrl: "data:image/png;base64,derived",
+              images: {
+                preview: { src: "data:image/png;base64,derived" },
+                thumbnail: { src: "data:image/png;base64,derived-thumb" }
+              }
+            }
+          ],
+          activeImageAssetUuid: "asset-derived-1"
+        }
+      ]
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(getActiveWardrobeItemImage(normalized)?.itemImageUuid, "item-image-1");
+  assert.equal(getActiveWardrobeItemImageAsset(normalized)?.assetUuid, "asset-derived-1");
+  assert.equal(normalized.imageUrl, "data:image/png;base64,derived");
+  assert.equal(normalized.images.preview.src, "data:image/png;base64,derived");
+});
+
+test("invalid activeImageAssetUuid falls back to the canonical asset", () => {
+  const normalized = normalizeItem(
+    {
+      id: "multi_asset_item",
+      itemUuid: "item-uuid-1",
+      itemImages: [
+        {
+          itemImageUuid: "item-image-1",
+          order: 0,
+          canonicalAsset: {
+            assetUuid: "asset-canonical",
+            imageUrl: "data:image/png;base64,canonical",
+            images: {
+              preview: { src: "data:image/png;base64,canonical" },
+              thumbnail: { src: "data:image/png;base64,canonical-thumb" }
+            }
+          },
+          derivedAssets: [
+            {
+              assetUuid: "asset-derived-1",
+              imageUrl: "data:image/png;base64,derived",
+              images: {
+                preview: { src: "data:image/png;base64,derived" }
+              }
+            }
+          ],
+          activeImageAssetUuid: "missing-derived"
+        }
+      ]
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(getActiveWardrobeItemImageAsset(normalized)?.assetUuid, "asset-canonical");
+  assert.equal(normalized.imageUrl, "data:image/png;base64,canonical");
+});
+
+test("invalid activeItemImageUuid falls back to the first ordered item image", () => {
+  const normalized = normalizeItem(
+    {
+      id: "multi_image_item",
+      itemUuid: "item-uuid-1",
+      activeItemImageUuid: "missing-item-image",
+      itemImages: [
+        {
+          itemImageUuid: "item-image-2",
+          order: 2,
+          canonicalAsset: {
+            assetUuid: "asset-late",
+            imageUrl: "data:image/png;base64,late",
+            images: { preview: { src: "data:image/png;base64,late" } }
+          }
+        },
+        {
+          itemImageUuid: "item-image-1",
+          order: 1,
+          canonicalAsset: {
+            assetUuid: "asset-first",
+            imageUrl: "data:image/png;base64,first",
+            images: { preview: { src: "data:image/png;base64,first" } }
+          }
+        }
+      ]
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.deepEqual(
+    getWardrobeItemImages(normalized).map((itemImage) => itemImage.itemImageUuid),
+    ["item-image-1", "item-image-2"]
+  );
+  assert.equal(getActiveWardrobeItemImage(normalized)?.itemImageUuid, "item-image-1");
+  assert.equal(normalized.activeItemImageUuid, "item-image-1");
+  assert.equal(normalized.imageUrl, "data:image/png;base64,first");
 });
 
 test("normalizeItem defaults legacy descriptions and preserves explicit item descriptions", () => {
@@ -477,6 +631,77 @@ test("import metadata migration detection catches additive source identity backf
   assert.equal(normalized.sourceRelativePath, "");
   assert.equal(normalized.relinkStatus, "unknown");
   assert.equal(itemNeedsImportMetadataMigration(originalItem, normalized), true);
+});
+
+test("image contract migration stays false for ordinary legacy item synthesis without persistence need", () => {
+  const originalItem = {
+    id: "legacy_item",
+    itemUuid: "item-uuid-1",
+    imageUrl: "data:image/png;base64,preview",
+    images: {
+      original: { src: "" },
+      preview: { src: "data:image/png;base64,preview" },
+      thumbnail: { src: "data:image/png;base64,preview" }
+    },
+    originalPreserved: false
+  };
+  const normalized = normalizeItem(originalItem, {
+    emptyForm: baseEmptyForm,
+    resolveImageUrl: (value) => value,
+    normalizeImageFrameScale: (value) => value ?? 100,
+    normalizeImageScale: (value) => value ?? 100,
+    normalizeImageOffset: (value) => value ?? 0,
+    getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+  });
+
+  assert.equal(itemNeedsImageContractMigration(originalItem, normalized), false);
+});
+
+test("mirrorActiveWardrobeImageAssetToLegacyAliases mirrors active asset aliases", () => {
+  const mirrored = mirrorActiveWardrobeImageAssetToLegacyAliases({
+    imageUrl: "data:image/png;base64,legacy",
+    images: {
+      original: { src: "" },
+      preview: { src: "data:image/png;base64,legacy" },
+      thumbnail: { src: "data:image/png;base64,legacy" }
+    },
+    itemImages: [
+      {
+        itemImageUuid: "item-image-1",
+        parentItemUuid: "item-uuid-1",
+        order: 0,
+        canonicalAsset: {
+          assetUuid: "asset-canonical",
+          parentItemImageUuid: "item-image-1",
+          kind: "canonical",
+          order: 0,
+          imageUrl: "data:image/png;base64,canonical",
+          images: {
+            preview: { src: "data:image/png;base64,canonical" },
+            thumbnail: { src: "data:image/png;base64,canonical-thumb" }
+          }
+        },
+        derivedAssets: [
+          {
+            assetUuid: "asset-derived",
+            parentItemImageUuid: "item-image-1",
+            kind: "derived",
+            order: 1,
+            imageUrl: "data:image/png;base64,derived",
+            images: {
+              preview: { src: "data:image/png;base64,derived" },
+              thumbnail: { src: "data:image/png;base64,derived-thumb" }
+            }
+          }
+        ],
+        activeImageAssetUuid: "asset-derived"
+      }
+    ],
+    activeItemImageUuid: "item-image-1"
+  });
+
+  assert.equal(mirrored.imageUrl, "data:image/png;base64,derived");
+  assert.equal(mirrored.images.preview.src, "data:image/png;base64,derived");
 });
 
 test("getWardrobePreviewMetadata returns basic display fields without empty placeholders", () => {

@@ -27,6 +27,8 @@ export const emptyForm = {
     preview: { src: "" },
     thumbnail: { src: "" }
   },
+  itemImages: [],
+  activeItemImageUuid: null,
   originalPreserved: false,
   imageScale: 100,
   imageFrameScale: 100,

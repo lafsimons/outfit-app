@@ -74,11 +74,14 @@ import {
 } from "./lib/generation";
 import {
   buildDisplayName,
+  getActiveWardrobeItemImageAsset,
   createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
   formatCurrency,
   garmentTypes,
+  getActiveWardrobeItemImage,
+  getWardrobeItemImages,
   getNumericValue,
   getWorthCategory,
   itemNeedsClimateTagMigration,
@@ -96,6 +99,7 @@ import {
   itemNeedsTagMigration,
   itemNeedsTimestampMigration,
   itemNeedsWeightMigration,
+  mirrorActiveWardrobeImageAssetToLegacyAliases,
   normalizeCollections,
   normalizeItem,
   normalizeItemColor,
@@ -134,6 +138,14 @@ import {
   setPrimaryFitpicImageInDraft,
   syncFitpicLinkedItemSidecars
 } from "./lib/fitpicEditorModel";
+import {
+  addWardrobeItemImagesToDraft,
+  createImportedWardrobeItemImage,
+  moveWardrobeItemImageInDraft,
+  removeWardrobeItemImageFromDraft,
+  replaceActiveWardrobeItemImageAssetInDraft,
+  setActiveWardrobeItemImageInDraft
+} from "./lib/wardrobeItemImageEditorModel";
 import {
   filterAndSortFitpics,
   getFitpicLinkedItemFilterOptions,
@@ -203,6 +215,7 @@ import {
 } from "./lib/imagePresentation";
 import {
   getWardrobePreviewDirectionForKey,
+  getWardrobePreviewImageNavigation,
   getWardrobePreviewNavigation
 } from "./lib/wardrobePreviewNavigation";
 
@@ -1380,6 +1393,7 @@ export default function App() {
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
+  const [wardrobePreviewItemImageUuid, setWardrobePreviewItemImageUuid] = useState(null);
   const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
@@ -1450,6 +1464,41 @@ export default function App() {
     [savedOutfits]
   );
   const wardrobePreviewItem = wardrobePreviewItemId ? itemsById[wardrobePreviewItemId] ?? null : null;
+  const wardrobePreviewImages = useMemo(
+    () => (wardrobePreviewItem ? getWardrobeItemImages(wardrobePreviewItem) : []),
+    [wardrobePreviewItem]
+  );
+  const wardrobePreviewActiveImage = useMemo(
+    () => (wardrobePreviewItem ? getActiveWardrobeItemImage(wardrobePreviewItem) : null),
+    [wardrobePreviewItem]
+  );
+  const wardrobePreviewImageNavigation = useMemo(
+    () => getWardrobePreviewImageNavigation(wardrobePreviewImages, wardrobePreviewItemImageUuid),
+    [wardrobePreviewImages, wardrobePreviewItemImageUuid]
+  );
+  const activeWardrobePreviewItemImage = wardrobePreviewImageNavigation.currentItemImage;
+  const wardrobePreviewDisplayItem = useMemo(() => {
+    if (!wardrobePreviewItem || !activeWardrobePreviewItemImage) {
+      return null;
+    }
+
+    return mirrorActiveWardrobeImageAssetToLegacyAliases({
+      ...wardrobePreviewItem,
+      itemImages: wardrobePreviewImages,
+      activeItemImageUuid: activeWardrobePreviewItemImage.itemImageUuid
+    });
+  }, [activeWardrobePreviewItemImage, wardrobePreviewImages, wardrobePreviewItem]);
+  const wardrobePreviewDisplayAsset = useMemo(() => {
+    if (!wardrobePreviewItem || !activeWardrobePreviewItemImage) {
+      return null;
+    }
+
+    return getActiveWardrobeItemImageAsset({
+      ...wardrobePreviewItem,
+      itemImages: wardrobePreviewImages,
+      activeItemImageUuid: activeWardrobePreviewItemImage.itemImageUuid
+    });
+  }, [activeWardrobePreviewItemImage, wardrobePreviewImages, wardrobePreviewItem]);
   const isWardrobePreviewItemEquipped = wardrobePreviewItem
     ? Object.values(outfit).includes(wardrobePreviewItem.id)
     : false;
@@ -1608,6 +1657,15 @@ export default function App() {
   const activeEditorWindowStateKey = getEditorWindowStateKey(editingId, editorReturnTarget);
   const activeEditorWidth = windowState[activeEditorWindowStateKey]?.width
     ?? defaultWindowState[activeEditorWindowStateKey].width;
+
+  useEffect(() => {
+    if (!wardrobePreviewItem) {
+      setWardrobePreviewItemImageUuid(null);
+      return;
+    }
+
+    setWardrobePreviewItemImageUuid(wardrobePreviewActiveImage?.itemImageUuid ?? null);
+  }, [wardrobePreviewActiveImage?.itemImageUuid, wardrobePreviewItem?.id]);
 
   useEffect(() => {
     if (!fitpicPreview) {
@@ -2100,6 +2158,8 @@ export default function App() {
       }),
     [dashboardItemListOptions, items, dashboardFilters]
   );
+  const draftWardrobeItemImages = getWardrobeItemImages(draft);
+  const activeDraftWardrobeItemImage = getActiveWardrobeItemImage(draft);
   const canRemoveDraftBackground = isLocalDataImage(draft.imageUrl);
   const activeWardrobeFilterCount = Object.entries(wardrobeFilters).reduce(
     (count, [key, value]) =>
@@ -4058,6 +4118,7 @@ export default function App() {
   function closeWardrobePreview({ restoreFitpicPreview = true } = {}) {
     const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
+    setWardrobePreviewItemImageUuid(null);
 
     if (restoreFitpicPreview && returnFitpicPreview) {
       setFitpicPreview(returnFitpicPreview);
@@ -4075,6 +4136,18 @@ export default function App() {
   function showNextWardrobePreviewItem() {
     if (wardrobePreviewNavigation.nextItemId) {
       setWardrobePreviewItemId(wardrobePreviewNavigation.nextItemId);
+    }
+  }
+
+  function showPreviousWardrobePreviewImage() {
+    if (wardrobePreviewImageNavigation.previousItemImageUuid) {
+      setWardrobePreviewItemImageUuid(wardrobePreviewImageNavigation.previousItemImageUuid);
+    }
+  }
+
+  function showNextWardrobePreviewImage() {
+    if (wardrobePreviewImageNavigation.nextItemImageUuid) {
+      setWardrobePreviewItemImageUuid(wardrobePreviewImageNavigation.nextItemImageUuid);
     }
   }
 
@@ -4883,54 +4956,111 @@ export default function App() {
     await persistDraftItem({ duplicate: true });
   }
 
-  async function ingestItemImageFile(file, options = {}) {
-    if (!file) {
+  function getWardrobeItemImageDisplayAsset(itemImage) {
+    if (!itemImage?.itemImageUuid) {
+      return null;
+    }
+
+    return getActiveWardrobeItemImageAsset({
+      itemImages: [itemImage],
+      activeItemImageUuid: itemImage.itemImageUuid
+    });
+  }
+
+  function ensureDraftItemUuid(currentDraft) {
+    const nextItemUuid = normalizeItemUuid(currentDraft?.itemUuid, createItemUuid);
+
+    if (nextItemUuid === currentDraft?.itemUuid) {
+      return currentDraft;
+    }
+
+    return {
+      ...currentDraft,
+      itemUuid: nextItemUuid
+    };
+  }
+
+  async function ingestItemImageFiles(files = []) {
+    const selectedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+
+    if (!selectedFiles.length) {
       return;
     }
 
-    if (!file.type?.startsWith("image/")) {
+    const imageFiles = selectedFiles.filter((file) => file.type?.startsWith("image/"));
+
+    if (!imageFiles.length) {
       setImageUploadError("Selected file is not an image.");
       return;
     }
 
     try {
+      setImageProcessing(true);
       setImageUploadError("");
-      const importMetadata = await readImageFileMetadata(file, {
-        readFileAsDataUrl,
-        loadImage
+      const nextDraftImages = await Promise.all(
+        imageFiles.map(async (file) => {
+          const importMetadata = await readImageFileMetadata(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
+          const imageUrl = await compressImageSource(file);
+
+          return {
+            imageUrl,
+            images: {
+              preview: { src: imageUrl },
+              thumbnail: { src: imageUrl }
+            },
+            importMetadata
+          };
+        })
+      );
+      setDraft((current) => {
+        const draftWithItemUuid = ensureDraftItemUuid(current);
+        const currentImageCount = getWardrobeItemImages(draftWithItemUuid).length;
+        const importedImages = nextDraftImages.map((entry, index) =>
+          createImportedWardrobeItemImage({
+            parentItemUuid: draftWithItemUuid.itemUuid,
+            order: currentImageCount + index,
+            imageUrl: entry.imageUrl,
+            images: entry.images,
+            importMetadata: entry.importMetadata
+          })
+        );
+        const nextDraft = addWardrobeItemImagesToDraft(draftWithItemUuid, importedImages);
+
+        if (currentImageCount > 0) {
+          return nextDraft;
+        }
+
+        return {
+          ...nextDraft,
+          imageFrameScale: 100,
+          imageScale: 100,
+          imageOffsetX: 0,
+          imageOffsetY: 0,
+          imageCropX: 0,
+          imageCropY: 0,
+          imageCropWidth: 100,
+          imageCropHeight: 100
+        };
       });
-      const imageUrl = await compressImageSource(file);
-      setDraft((current) => ({
-        ...current,
-        ...importMetadata,
-        importedAt: normalizeTimestamp(current.importedAt) || importMetadata.importedAt,
-        imageUrl,
-        imageFrameScale: 100,
-        imageScale: 100,
-        imageOffsetX: 0,
-        imageOffsetY: 0,
-        imageCropX: 0,
-        imageCropY: 0,
-        imageCropWidth: 100,
-        imageCropHeight: 100
-      }));
-      if (options.ignoredExtraFiles) {
-        setImageUploadError("Using the first image only. Additional files were ignored.");
-      }
     } catch (error) {
       setImageUploadError(error?.message || "This image could not be processed.");
+    } finally {
+      setImageProcessing(false);
     }
   }
 
   async function handleItemImageUpload(event) {
-    const [file] = event.target.files;
+    const files = Array.from(event.target.files ?? []);
 
-    if (!file) {
+    if (!files.length) {
       return;
     }
 
     try {
-      await ingestItemImageFile(file);
+      await ingestItemImageFiles(files);
     } finally {
       event.target.value = "";
     }
@@ -4974,31 +5104,36 @@ export default function App() {
       return;
     }
 
-    const firstImageFile = droppedFiles.find((file) => file.type?.startsWith("image/"));
+    const imageFiles = droppedFiles.filter((file) => file.type?.startsWith("image/"));
 
-    if (!firstImageFile) {
+    if (!imageFiles.length) {
       setImageUploadError("Selected file is not an image.");
       return;
     }
 
-    await ingestItemImageFile(firstImageFile, {
-      ignoredExtraFiles: droppedFiles.length > 1
-    });
+    await ingestItemImageFiles(imageFiles);
   }
 
-  function removeDraftImage() {
-    setDraft((current) => ({
-      ...current,
-      imageUrl: "",
-      imageFrameScale: 100,
-      imageScale: 100,
-      imageOffsetX: 0,
-      imageOffsetY: 0,
-      imageCropX: 0,
-      imageCropY: 0,
-      imageCropWidth: 100,
-      imageCropHeight: 100
-    }));
+  function setDraftActiveItemImage(itemImageUuid) {
+    setDraft((current) => setActiveWardrobeItemImageInDraft(current, itemImageUuid));
+    setImageUploadError("");
+  }
+
+  function moveDraftItemImage(itemImageUuid, direction) {
+    setDraft((current) => moveWardrobeItemImageInDraft(current, itemImageUuid, direction));
+    setImageUploadError("");
+  }
+
+  function removeDraftItemImage(itemImageUuid) {
+    setDraft((current) => {
+      const currentImages = getWardrobeItemImages(current);
+
+      if (currentImages.length <= 1) {
+        return current;
+      }
+
+      return removeWardrobeItemImageFromDraft(current, itemImageUuid);
+    });
     setImageUploadError("");
   }
 
@@ -5038,8 +5173,13 @@ export default function App() {
       });
       const compressedImageUrl = await compressImageSource(transparentBlob);
       setDraft((current) => ({
-        ...current,
-        imageUrl: compressedImageUrl,
+        ...replaceActiveWardrobeItemImageAssetInDraft(current, {
+          imageUrl: compressedImageUrl,
+          images: {
+            preview: { src: compressedImageUrl },
+            thumbnail: { src: compressedImageUrl }
+          }
+        }),
         imageFrameScale: 100,
         imageScale: 100,
         imageOffsetX: 0,
@@ -7599,8 +7739,8 @@ export default function App() {
         <div className="item-image-actions">
           <div className="item-image-action-group item-image-action-group-primary">
             <label className="upload-button">
-              {draft.imageUrl.trim() ? "Change image" : "Choose image"}
-              <input type="file" accept="image/*" onChange={handleItemImageUpload} disabled={imageProcessing} />
+              {draft.imageUrl.trim() ? "Add image" : "Choose image"}
+              <input type="file" accept="image/*" multiple onChange={handleItemImageUpload} disabled={imageProcessing} />
             </label>
             {draft.imageUrl.trim() ? (
               <button type="button" className="ghost-button" onClick={resetDraftImageCrop} disabled={imageProcessing}>
@@ -7617,11 +7757,6 @@ export default function App() {
             >
               {imageProcessing ? "Removing..." : "Remove background"}
             </button>
-            {draft.imageUrl.trim() ? (
-              <button type="button" className="ghost-button" onClick={removeDraftImage} disabled={imageProcessing}>
-                Remove image
-              </button>
-            ) : null}
           </div>
           <label className="image-size-field">
             Image size
@@ -7646,6 +7781,77 @@ export default function App() {
         </div>
         {imageUploadError ? <p className="form-error">{imageUploadError}</p> : null}
       </div>
+
+      {draftWardrobeItemImages.length ? (
+        <section className="editor-image-manager">
+          <div className="editor-image-manager-header">
+            <span>Item images</span>
+            <span className="editor-image-manager-count">{draftWardrobeItemImages.length}</span>
+          </div>
+          <div className="editor-image-manager-list">
+            {draftWardrobeItemImages.map((itemImage, index) => {
+              const displayAsset = getWardrobeItemImageDisplayAsset(itemImage);
+              const previewSrc =
+                displayAsset?.images?.thumbnail?.src
+                || displayAsset?.images?.preview?.src
+                || displayAsset?.imageUrl
+                || "";
+              const isActive = itemImage.itemImageUuid === activeDraftWardrobeItemImage?.itemImageUuid;
+
+              return (
+                <div
+                  key={itemImage.itemImageUuid}
+                  className={`editor-image-manager-row ${isActive ? "is-active" : ""}`}
+                >
+                  <div className="editor-image-manager-thumb">
+                    {previewSrc ? <img src={previewSrc} alt="" /> : <span>Image unavailable</span>}
+                  </div>
+                  <div className="editor-image-manager-body">
+                    <div className="editor-image-manager-meta">
+                      <span>{`Image ${index + 1}`}</span>
+                      {isActive ? <span className="editor-image-manager-badge">Active</span> : null}
+                    </div>
+                    <div className="editor-image-manager-actions">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => setDraftActiveItemImage(itemImage.itemImageUuid)}
+                        disabled={isActive || imageProcessing}
+                      >
+                        Set active
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => moveDraftItemImage(itemImage.itemImageUuid, "up")}
+                        disabled={index === 0 || imageProcessing}
+                      >
+                        Move up
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => moveDraftItemImage(itemImage.itemImageUuid, "down")}
+                        disabled={index === draftWardrobeItemImages.length - 1 || imageProcessing}
+                      >
+                        Move down
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => removeDraftItemImage(itemImage.itemImageUuid)}
+                        disabled={draftWardrobeItemImages.length <= 1 || imageProcessing}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <div className="editor-core-fields">
         <label>
@@ -8926,7 +9132,7 @@ export default function App() {
                   <span aria-hidden="true">‹</span>
                 </button>
                 <ManagedItemImage
-                  item={wardrobePreviewItem}
+                  item={wardrobePreviewDisplayItem ?? wardrobePreviewItem}
                   alt={buildDisplayName(wardrobePreviewItem)}
                   className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
@@ -8940,7 +9146,35 @@ export default function App() {
                 >
                   <span aria-hidden="true">›</span>
                 </button>
+                {wardrobePreviewDisplayAsset?.imageUrl?.trim() ? null : (
+                  <div className="wardrobe-item-preview-image-empty">Image unavailable.</div>
+                )}
               </div>
+              {wardrobePreviewImageNavigation.showCarousel ? (
+                <div className="wardrobe-item-preview-carousel" aria-label="Wardrobe item images">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={showPreviousWardrobePreviewImage}
+                    aria-label="Previous image for this wardrobe item"
+                    title="Previous image"
+                  >
+                    ◀
+                  </button>
+                  <div className="wardrobe-item-preview-image-indicator" aria-label="Current wardrobe item image">
+                    {wardrobePreviewImageNavigation.currentIndex + 1} / {wardrobePreviewImageNavigation.totalCount}
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={showNextWardrobePreviewImage}
+                    aria-label="Next image for this wardrobe item"
+                    title="Next image"
+                  >
+                    ▶
+                  </button>
+                </div>
+              ) : null}
               {wardrobePreviewItem.description?.trim() ? (
                 <div className="wardrobe-item-preview-copy">
                   <p>{wardrobePreviewItem.description.trim()}</p>

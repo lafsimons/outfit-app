@@ -107,6 +107,13 @@ test("prepareBackupImport normalizes legacy imageUrl-only items before persisten
   assert.equal(prepared.backup.items[0].images.original.src, "");
   assert.equal(prepared.backup.items[0].images.preview.src, "data:image/png;base64,legacy");
   assert.equal(prepared.backup.items[0].images.thumbnail.src, "data:image/png;base64,legacy");
+  assert.equal(prepared.backup.items[0].activeItemImageUuid, "generated-item-uuid:item-image:0");
+  assert.equal(prepared.backup.items[0].itemImages.length, 1);
+  assert.equal(prepared.backup.items[0].itemImages[0].canonicalAsset.imageUrl, "data:image/png;base64,legacy");
+  assert.equal(
+    prepared.backup.items[0].itemImages[0].activeImageAssetUuid,
+    "generated-item-uuid:item-image:0:image-asset:canonical:0"
+  );
 });
 
 test("prepareBackupImport backfills itemUuid and provenance metadata during import", async () => {
@@ -201,6 +208,53 @@ test("prepareBackupImport preserves custom user metadata while migrating importe
   assert.equal(prepared.backup.items[0].images.preview.dominantColor, "#112233");
   assert.equal(prepared.backup.items[0].images.thumbnail.blurHash, "abc123");
   assert.deepEqual(prepared.backup.items[0].images.extra, { note: "keep" });
+});
+
+test("prepareBackupImport preserves explicit wardrobe item images and active asset selection", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "multi_image_item",
+        itemUuid: "stable-item-uuid",
+        activeItemImageUuid: "item-image-1",
+        itemImages: [
+          {
+            itemImageUuid: "item-image-1",
+            order: 0,
+            canonicalAsset: {
+              assetUuid: "asset-canonical",
+              imageUrl: "data:image/png;base64,canonical",
+              images: {
+                preview: { src: "data:image/png;base64,canonical" },
+                thumbnail: { src: "data:image/png;base64,canonical-thumb" }
+              }
+            },
+            derivedAssets: [
+              {
+                assetUuid: "asset-derived",
+                imageUrl: "data:image/png;base64,derived",
+                images: {
+                  preview: { src: "data:image/png;base64,derived" },
+                  thumbnail: { src: "data:image/png;base64,derived-thumb" }
+                }
+              }
+            ],
+            activeImageAssetUuid: "asset-derived"
+          }
+        ],
+        createdAt: "2024-01-02T03:04:05.000Z"
+      }
+    ],
+    appState: {}
+  });
+
+  assert.equal(prepared.backup.items[0].activeItemImageUuid, "item-image-1");
+  assert.equal(prepared.backup.items[0].itemImages.length, 1);
+  assert.equal(prepared.backup.items[0].itemImages[0].activeImageAssetUuid, "asset-derived");
+  assert.equal(prepared.backup.items[0].imageUrl, "data:image/png;base64,derived");
+  assert.equal(prepared.backup.items[0].images.preview.src, "data:image/png;base64,derived");
 });
 
 test("prepareBackupImport preserves unknown future list values from backups", async () => {
