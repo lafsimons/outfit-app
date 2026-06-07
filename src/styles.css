@@ -1466,6 +1466,9 @@ button:disabled {
   border: none;
   box-shadow: none;
   position: relative;
+  display: grid;
+  grid-template-areas: "stack";
+  align-items: stretch;
 }
 
 .outfit-slot-headwear {
@@ -1490,20 +1493,12 @@ button:disabled {
 }
 
 .slot-actions-anchor {
-  position: absolute;
-  top: -14px;
-  right: -14px;
+  grid-area: stack;
+  position: relative;
+  justify-self: end;
+  align-self: start;
+  margin: 8px;
   z-index: 2;
-}
-
-.slot-actions-anchor.is-side {
-  top: 10px;
-  right: 8px;
-}
-
-.outfit-slot-headwear .slot-actions-anchor {
-  top: -8px;
-  right: -8px;
 }
 
 .outfit-slot-hover-actions {
@@ -1516,25 +1511,8 @@ button:disabled {
   gap: 6px;
 }
 
-.slot-actions-anchor.is-side .outfit-slot-hover-actions {
-  justify-items: end;
-}
-
-.outfit-slot-headwear .outfit-slot-hover-actions {
-  top: auto;
-  right: auto;
-}
-
-.slot-actions-anchor.is-below .slot-actions-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-}
-
-.slot-actions-anchor.is-side .slot-actions-popover {
-  position: absolute;
-  top: 0;
-  right: calc(100% + 8px);
+.slot-action-chips {
+  grid-auto-rows: max-content;
 }
 
 .outfit-slot-hover-button {
@@ -1579,45 +1557,45 @@ button:disabled {
   position: relative;
 }
 
-.slot-actions-popover {
-  z-index: 5;
+.slot-actions-inline-tools {
   display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(18px);
-  min-width: 182px;
-}
-
-.slot-actions-popover-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.slot-actions-popover-header strong {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.slot-actions-popover-grid {
-  display: grid;
+  gap: 5px;
   grid-template-columns: repeat(3, minmax(0, max-content));
-  gap: 6px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(40, 48, 56, 0.12);
+  justify-content: end;
 }
 
-.slot-actions-popover .ghost-button {
-  min-width: 0;
-  padding: 5px 7px;
-  font-size: 0.66rem;
+.slot-action-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  border-color: rgba(40, 48, 56, 0.12);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  box-shadow: none;
+  color: var(--text);
 }
 
-.slot-actions-close-button {
-  white-space: nowrap;
+.slot-action-icon-button:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.slot-action-icon-button.danger {
+  color: #7a3535;
+}
+
+.slot-action-icon-button:disabled {
+  opacity: 0.38;
+}
+
+.slot-action-icon-button svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 .top-layer-row {
@@ -1663,6 +1641,7 @@ button:disabled {
 }
 
 .outfit-slot .item-figure {
+  grid-area: stack;
   min-height: inherit;
   padding: 0;
   background: transparent;
@@ -4779,15 +4758,8 @@ button:disabled {
     font-size: 0.66rem;
   }
 
-  .slot-actions-popover {
-    top: 18px;
-    right: 50%;
-    transform: translateX(50%);
-  max-width: min(220px, calc(100vw - 32px));
-  }
-
-  .slot-actions-popover-grid {
-    grid-template-columns: repeat(2, minmax(0, max-content));
+  .slot-actions-inline-tools {
+    grid-template-columns: repeat(3, minmax(0, max-content));
   }
 
   .current-outfit-actions {

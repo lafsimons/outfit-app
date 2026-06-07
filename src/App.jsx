@@ -1313,6 +1313,61 @@ async function fetchWeatherForSavedLocation(settings) {
 }
 
 export default function App() {
+  function SlotActionIcon({ kind, locked: isLocked = false }) {
+    if (kind === "lock") {
+      return isLocked ? (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5.25 6V4.85a2.75 2.75 0 1 1 5.5 0V6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="3.5" y="6" width="9" height="6.75" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M10.8 6V4.9a2.75 2.75 0 1 0-5.5 0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10.8 6H6.4a1.7 1.7 0 0 0-1.7 1.7v3.35a1.7 1.7 0 0 0 1.7 1.7h5.15a1.7 1.7 0 0 0 1.7-1.7V7.7A1.7 1.7 0 0 0 11.55 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "reroll") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M12.5 5.75V2.9H9.65" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12.25 3.2A5.25 5.25 0 1 0 13 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "previous") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M9.75 3.75 5.25 8l4.5 4.25" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "next") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="m6.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "remove") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5 4.5h6.05M6.15 4.5l.45-1.2h2.8l.45 1.2M5.55 6.1v5.35M8 6.1v5.35M10.45 6.1v5.35M4.6 4.5h6.8v7a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4v-7Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="m4.25 4.25 7.5 7.5M11.75 4.25l-7.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
   const outfitSectionTabs = [
     ["saved", "Saved"],
     ["fitpics", "Fitpics"]
@@ -8371,9 +8426,6 @@ export default function App() {
     const item = itemsById[outfit[slot]];
     const isActive = activeOutfitSlot === slot || selectedOutfitSlot === slot;
     const isActionsOpen = activeSlotActionsSlot === slot;
-    const slotActionsPlacementClass = slot === "TopInner" || slot === "TopOuter"
-      ? "is-side"
-      : "is-below";
     return (
       <div key={slot} className="outfit-slot-wrap">
         <article
@@ -8389,8 +8441,8 @@ export default function App() {
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
           </button>
           {item ? (
-            <div className={`slot-actions-anchor ${slotActionsPlacementClass}`}>
-              <div className="outfit-slot-hover-actions">
+            <div className="slot-actions-anchor">
+              <div className="outfit-slot-hover-actions slot-action-chips">
                 <button
                   type="button"
                   className="outfit-slot-hover-button"
@@ -8421,91 +8473,71 @@ export default function App() {
                     event.stopPropagation();
                     toggleSlotActionsPopover(slot);
                   }}
-                  aria-haspopup="menu"
                   aria-expanded={isActionsOpen}
                   aria-label={`${getSlotLabel(slot)} actions`}
                   title="Actions"
                 >
                   Actions
                 </button>
-              </div>
-              {isActionsOpen ? (
-                <div
-                  ref={slotActionsPopoverRef}
-                  className={`slot-actions-popover ${slotActionsPlacementClass}`}
-                  role="menu"
-                  aria-label={`${getSlotLabel(slot)} actions`}
-                >
-                  <div className="slot-actions-popover-header">
-                    <strong>{getSlotLabel(slot)}</strong>
+                {isActionsOpen ? (
+                  <div
+                    ref={slotActionsPopoverRef}
+                    className="slot-actions-inline-tools"
+                    role="group"
+                    aria-label={`${getSlotLabel(slot)} actions`}
+                  >
                     <button
                       type="button"
-                      className="ghost-button slot-actions-close-button"
-                      onClick={() => setActiveSlotActionsSlot(null)}
-                      aria-label={`Close ${getSlotLabel(slot)} actions`}
-                      title="Close actions"
-                    >
-                      Close
-                    </button>
-                  </div>
-                  <div className="slot-actions-popover-grid">
-                    <button
-                      type="button"
-                      className={`ghost-button ${locked[slot] ? "is-active" : ""}`}
+                      className={`ghost-button slot-action-icon-button ${locked[slot] ? "is-active" : ""}`}
                       onClick={() => toggleLock(slot)}
                       aria-label={locked[slot] ? `Unlock ${getSlotLabel(slot)}` : `Lock ${getSlotLabel(slot)}`}
                       title={locked[slot] ? "Unlock" : "Lock"}
-                      role="menuitem"
                     >
-                      {locked[slot] ? "Unlock" : "Lock"}
+                      <SlotActionIcon kind="lock" locked={locked[slot]} />
                     </button>
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="ghost-button slot-action-icon-button"
                       onClick={() => handleReroll(slot)}
                       aria-label={`Reroll ${getSlotLabel(slot)}`}
                       title="Reroll"
-                      role="menuitem"
                       disabled={!item}
                     >
-                      Reroll
+                      <SlotActionIcon kind="reroll" />
                     </button>
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="ghost-button slot-action-icon-button"
                       onClick={() => cycleOutfitSlot(slot, -1)}
                       aria-label={`Previous item for ${getSlotLabel(slot)}`}
                       title="Previous"
-                      role="menuitem"
                       disabled={!item}
                     >
-                      Prev
+                      <SlotActionIcon kind="previous" />
                     </button>
                     <button
                       type="button"
-                      className="ghost-button"
+                      className="ghost-button slot-action-icon-button"
                       onClick={() => cycleOutfitSlot(slot, 1)}
                       aria-label={`Next item for ${getSlotLabel(slot)}`}
                       title="Next"
-                      role="menuitem"
                       disabled={!item}
                     >
-                      Next
+                      <SlotActionIcon kind="next" />
                     </button>
                     <button
                       type="button"
-                      className="ghost-button danger"
+                      className="ghost-button danger slot-action-icon-button"
                       onClick={() => removeOutfitSlot(slot)}
                       aria-label={`Remove item from ${getSlotLabel(slot)}`}
                       title="Remove"
-                      role="menuitem"
                       disabled={!item}
                     >
-                      Remove
+                      <SlotActionIcon kind="remove" />
                     </button>
                   </div>
-                </div>
-              ) : null}
+                ) : null}
+              </div>
             </div>
           ) : null}
         </article>
