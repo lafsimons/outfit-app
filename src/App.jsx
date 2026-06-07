@@ -156,6 +156,13 @@ import {
   filterAndSortSavedOutfits,
   getSavedOutfitTagFilterOptions
 } from "./lib/savedOutfitLibrary";
+import {
+  createEmptySelectorFilters,
+  DEFAULT_SELECTOR_SORT,
+  filterAndSortSelectorItems,
+  getSelectorFilterOptions,
+  hasActiveSelectorControls
+} from "./lib/outfitItemSelectorLibrary";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
@@ -1364,6 +1371,9 @@ export default function App() {
   const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
+  const [selectorSearch, setSelectorSearch] = useState("");
+  const [selectorSort, setSelectorSort] = useState(DEFAULT_SELECTOR_SORT);
+  const [selectorFilters, setSelectorFilters] = useState(createEmptySelectorFilters);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
   const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
@@ -1704,6 +1714,12 @@ export default function App() {
 
     setFitpicPreviewImageIndex(fitpicPreviewImages.length - 1);
   }, [fitpicPreviewImageIndex, fitpicPreviewImages]);
+
+  useEffect(() => {
+    setSelectorSearch("");
+    setSelectorSort(DEFAULT_SELECTOR_SORT);
+    setSelectorFilters(createEmptySelectorFilters());
+  }, [activeOutfitSlot]);
 
   function noteInteractionModality(event) {
     if (event.type === "pointerdown") {
@@ -2139,6 +2155,44 @@ export default function App() {
   const wardrobeSearchTextById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
     [items]
+  );
+  const activeSelectorPool = useMemo(
+    () => (activeOutfitSlot ? getSlotPickerOptions(activeOutfitSlot) : []),
+    [
+      activeOutfitSlot,
+      excluded,
+      generationLists,
+      generationSourceItems,
+      itemsById,
+      layering,
+      outfit,
+      outfitFilters,
+      weatherData
+    ]
+  );
+  const activeSelectorStatusOptions = useMemo(
+    () => getItemStatusOptions(activeSelectorPool.map((item) => item.status ?? item.list)),
+    [activeSelectorPool]
+  );
+  const selectorFilterOptions = useMemo(
+    () => getSelectorFilterOptions(activeSelectorPool, selectorFilters, {
+      itemStatusOptions: activeSelectorStatusOptions
+    }),
+    [activeSelectorPool, activeSelectorStatusOptions, selectorFilters]
+  );
+  const visibleSelectorItems = useMemo(
+    () =>
+      filterAndSortSelectorItems(activeSelectorPool, {
+        search: selectorSearch,
+        filters: selectorFilters,
+        sort: selectorSort,
+        searchTextById: wardrobeSearchTextById
+      }),
+    [activeSelectorPool, selectorFilters, selectorSearch, selectorSort, wardrobeSearchTextById]
+  );
+  const hasActiveSelectorLocalControls = useMemo(
+    () => hasActiveSelectorControls({ search: selectorSearch, filters: selectorFilters, sort: selectorSort }),
+    [selectorFilters, selectorSearch, selectorSort]
   );
   const wardrobeFilterOptions = useMemo(
     () =>
@@ -5435,6 +5489,20 @@ export default function App() {
     clearSelectedOutfitItem();
   }
 
+  function setSelectorFilterValue(key, value) {
+    setSelectorFilters((current) => ({
+      ...current,
+      [key]: value ? [value] : [],
+      [getExcludedFilterKey(key)]: []
+    }));
+  }
+
+  function clearSelectorControls() {
+    setSelectorSearch("");
+    setSelectorSort(DEFAULT_SELECTOR_SORT);
+    setSelectorFilters(createEmptySelectorFilters());
+  }
+
   function closeUtilityWindows() {
     setWeatherOpen(false);
     setOutfitFiltersOpen(false);
@@ -5775,9 +5843,10 @@ export default function App() {
       return null;
     }
 
-    const options = getSlotPickerOptions(activeOutfitSlot);
     const isLocked = Boolean(locked[activeOutfitSlot]);
     const currentItem = itemsById[outfit[activeOutfitSlot]];
+    const totalItemCount = activeSelectorPool.length;
+    const visibleItemCount = visibleSelectorItems.length;
 
     return (
       <div className="slot-picker">
@@ -5815,9 +5884,92 @@ export default function App() {
           </button>
         </div>
 
-        {options.length ? (
+        <div className="slot-picker-toolbar">
+          <div className="slot-picker-toolbar-row">
+            <div className="wardrobe-search-field slot-picker-search-field">
+              <input
+                type="search"
+                value={selectorSearch}
+                onChange={(event) => setSelectorSearch(event.target.value)}
+                placeholder="Search slot items"
+              />
+            </div>
+            <div className="wardrobe-sort-field slot-picker-sort-field">
+              <select value={selectorSort} onChange={(event) => setSelectorSort(event.target.value)}>
+                <option value="nameAz">A-Z</option>
+                <option value="nameZa">Z-A</option>
+                <option value="newest">Recently added</option>
+                <option value="oldest">Oldest added</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="slot-picker-toolbar-row">
+            <div className="slot-picker-filter-grid">
+              <select
+                value={selectorFilters.type[0] ?? ""}
+                onChange={(event) => setSelectorFilterValue("type", event.target.value)}
+                aria-label="Filter slot items by type"
+              >
+                <option value="">All types</option>
+                {selectorFilterOptions.type.map((type) => (
+                  <option key={type} value={type}>{type}</option>
+                ))}
+              </select>
+              <select
+                value={selectorFilters.status[0] ?? ""}
+                onChange={(event) => setSelectorFilterValue("status", event.target.value)}
+                aria-label="Filter slot items by status"
+              >
+                <option value="">All statuses</option>
+                {selectorFilterOptions.status.map((status) => (
+                  <option key={status} value={status}>{status}</option>
+                ))}
+              </select>
+              <select
+                value={selectorFilters.collections[0] ?? ""}
+                onChange={(event) => setSelectorFilterValue("collections", event.target.value)}
+                aria-label="Filter slot items by collection"
+              >
+                <option value="">All collections</option>
+                {selectorFilterOptions.collections.map((collection) => (
+                  <option key={collection} value={collection}>{collection}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className={`ghost-button slot-picker-favorite-toggle ${selectorFilters.favorite === "yes" ? "is-active" : ""}`}
+                onClick={() =>
+                  setSelectorFilters((current) => ({
+                    ...current,
+                    favorite: current.favorite === "yes" ? "" : "yes"
+                  }))
+                }
+                aria-pressed={selectorFilters.favorite === "yes"}
+              >
+                Favorites
+              </button>
+            </div>
+          </div>
+
+          <div className="slot-picker-toolbar-footer">
+            <span className="wardrobe-results-count">
+              {visibleItemCount} item{visibleItemCount === 1 ? "" : "s"}{hasActiveSelectorLocalControls ? ` of ${totalItemCount}` : ""}
+            </span>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={clearSelectorControls}
+              disabled={!hasActiveSelectorLocalControls}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+
+        {visibleSelectorItems.length ? (
           <div className="slot-picker-list">
-            {options.map((item) => {
+            {visibleSelectorItems.map((item) => {
               const isExcluded = Boolean(excluded[item.id]);
 
               return (
@@ -5850,7 +6002,8 @@ export default function App() {
           </div>
         ) : (
           <div className="editor-placeholder">
-            <p>No compatible items available for this slot.</p>
+            <p>{totalItemCount ? "No slot items match the current local controls." : "No compatible items available for this slot."}</p>
+            {hasActiveSelectorLocalControls ? <p>Clear the selector controls or try a different search.</p> : null}
           </div>
         )}
       </div>

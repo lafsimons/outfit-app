@@ -1204,12 +1204,16 @@ button:disabled {
   min-height: 0;
 }
 
+.slot-picker .editor-placeholder {
+  order: 3;
+}
+
 .accessory-picker-actions,
 .slot-picker-actions {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  order: 3;
+  order: 4;
   flex: 0 0 auto;
   position: sticky;
   bottom: 0;
@@ -1223,12 +1227,54 @@ button:disabled {
   flex: 1 1 auto;
 }
 
+.slot-picker-toolbar {
+  display: grid;
+  gap: 8px;
+  order: 2;
+  flex: 0 0 auto;
+}
+
+.slot-picker-toolbar-row {
+  display: grid;
+  gap: 8px;
+}
+
+.slot-picker-toolbar-row:first-child {
+  grid-template-columns: minmax(0, 1fr) 132px;
+}
+
+.slot-picker-search-field,
+.slot-picker-sort-field {
+  width: 100%;
+}
+
+.slot-picker-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.slot-picker-filter-grid select {
+  width: 100%;
+}
+
+.slot-picker-favorite-toggle {
+  min-height: 37px;
+}
+
+.slot-picker-toolbar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .accessory-picker-list,
 .slot-picker-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  order: 2;
+  order: 3;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -4568,11 +4614,25 @@ button:disabled {
     flex: 0 0 auto;
   }
 
+  .slot-picker-toolbar {
+    order: 2;
+  }
+
+  .slot-picker-toolbar-row:first-child,
+  .slot-picker-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slot-picker-toolbar-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .accessory-picker-list,
   .slot-picker-list,
   .accessory-picker .editor-placeholder,
   .slot-picker .editor-placeholder {
-    order: 2;
+    order: 3;
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -4584,7 +4644,7 @@ button:disabled {
 
   .accessory-picker-actions,
   .slot-picker-actions {
-    order: 3;
+    order: 4;
     flex: 0 0 auto;
     position: sticky;
     bottom: 0;
