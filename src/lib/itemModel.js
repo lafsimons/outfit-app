@@ -345,6 +345,241 @@ function normalizeImages(images, imageUrl) {
   };
 }
 
+function normalizeOrderedNumber(value, fallback = 0) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.max(0, Math.round(parsed));
+}
+
+function normalizeOptionalString(value, fallback = null) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || fallback;
+}
+
+function createWardrobeItemImageUuid(parentItemUuid, order = 0) {
+  return `${parentItemUuid}:item-image:${order}`;
+}
+
+function createWardrobeImageAssetUuid(parentItemImageUuid, kind = "canonical", order = 0) {
+  return `${parentItemImageUuid}:image-asset:${kind}:${order}`;
+}
+
+function buildLegacyWardrobeImageAsset(record) {
+  return {
+    imageUrl: record?.imageUrl,
+    images: record?.images,
+    importedAt: record?.importedAt,
+    sourceOriginalFilename: record?.sourceOriginalFilename,
+    sourceFileSize: record?.sourceFileSize,
+    sourceImageWidth: record?.sourceImageWidth,
+    sourceImageHeight: record?.sourceImageHeight,
+    sourceLastModified: record?.sourceLastModified,
+    importSource: record?.importSource,
+    sourceNamespace: record?.sourceNamespace,
+    sourceRelativePath: record?.sourceRelativePath,
+    relinkStatus: record?.relinkStatus,
+    sourceFileExtension: record?.sourceFileExtension,
+    sourceMimeType: record?.sourceMimeType,
+    sourceAspectRatio: record?.sourceAspectRatio,
+    sourceOrientation: record?.sourceOrientation,
+    sourceCapturedAt: record?.sourceCapturedAt,
+    sourceOriginalCreatedAt: record?.sourceOriginalCreatedAt,
+    sourceCameraMake: record?.sourceCameraMake,
+    sourceCameraModel: record?.sourceCameraModel,
+    sourceLensModel: record?.sourceLensModel
+  };
+}
+
+function sortWardrobeItemImages(itemImages) {
+  return [...itemImages].sort((left, right) => {
+    const leftOrder = normalizeOrderedNumber(left?.order);
+    const rightOrder = normalizeOrderedNumber(right?.order);
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return (left?.itemImageUuid ?? "").localeCompare(right?.itemImageUuid ?? "");
+  });
+}
+
+function sortWardrobeImageAssets(assets) {
+  return [...assets].sort((left, right) => {
+    const leftOrder = normalizeOrderedNumber(left?.order);
+    const rightOrder = normalizeOrderedNumber(right?.order);
+
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    return (left?.assetUuid ?? "").localeCompare(right?.assetUuid ?? "");
+  });
+}
+
+export function normalizeWardrobeImageAsset(
+  asset,
+  {
+    fallbackOrder = 0,
+    parentItemImageUuid = "",
+    kind = "canonical",
+    fallbackImportedAt = "",
+    resolveImageUrl = (value) => value ?? ""
+  } = {}
+) {
+  const normalizedAsset = isRecord(asset) ? asset : {};
+  const order = normalizeOrderedNumber(normalizedAsset.order, fallbackOrder);
+  const resolvedParentItemImageUuid = normalizeOptionalString(
+    normalizedAsset.parentItemImageUuid,
+    normalizeOptionalString(parentItemImageUuid, "")
+  );
+  const resolvedKind = normalizedAsset.kind === "derived" || kind === "derived" ? "derived" : "canonical";
+  const imageUrl = resolveImageUrl(
+    normalizedAsset.imageUrl ?? normalizedAsset.img ?? normalizedAsset.images?.preview?.src ?? ""
+  );
+  const importedAt = normalizeTimestamp(normalizedAsset.importedAt) || fallbackImportedAt;
+
+  return {
+    ...normalizedAsset,
+    assetUuid:
+      normalizeOptionalString(normalizedAsset.assetUuid)
+      || createWardrobeImageAssetUuid(resolvedParentItemImageUuid, resolvedKind, order),
+    kind: resolvedKind,
+    parentItemImageUuid: resolvedParentItemImageUuid,
+    parentAssetUuid: normalizeOptionalString(normalizedAsset.parentAssetUuid),
+    order,
+    imageUrl,
+    images: normalizeImages(normalizedAsset.images, imageUrl),
+    ...normalizeImportMetadataFields(normalizedAsset, importedAt)
+  };
+}
+
+export function normalizeWardrobeItemImage(
+  itemImage,
+  {
+    parentItemUuid = "",
+    fallbackOrder = 0,
+    fallbackImportedAt = "",
+    resolveImageUrl = (value) => value ?? ""
+  } = {}
+) {
+  const normalizedItemImage = isRecord(itemImage) ? itemImage : {};
+  const order = normalizeOrderedNumber(normalizedItemImage.order, fallbackOrder);
+  const resolvedParentItemUuid = normalizeOptionalString(
+    normalizedItemImage.parentItemUuid,
+    normalizeOptionalString(parentItemUuid, "")
+  );
+  const itemImageUuid =
+    normalizeOptionalString(normalizedItemImage.itemImageUuid)
+    || createWardrobeItemImageUuid(resolvedParentItemUuid, order);
+  const canonicalAsset = normalizeWardrobeImageAsset(
+    normalizedItemImage.canonicalAsset ?? buildLegacyWardrobeImageAsset(normalizedItemImage),
+    {
+      fallbackOrder: 0,
+      parentItemImageUuid: itemImageUuid,
+      kind: "canonical",
+      fallbackImportedAt,
+      resolveImageUrl
+    }
+  );
+  const derivedAssets = sortWardrobeImageAssets(
+    (Array.isArray(normalizedItemImage.derivedAssets) ? normalizedItemImage.derivedAssets : []).map((asset, index) =>
+      normalizeWardrobeImageAsset(asset, {
+        fallbackOrder: index + 1,
+        parentItemImageUuid: itemImageUuid,
+        kind: "derived",
+        fallbackImportedAt: canonicalAsset.importedAt || fallbackImportedAt,
+        resolveImageUrl
+      })
+    )
+  );
+  const activeImageAssetUuid = normalizeOptionalString(normalizedItemImage.activeImageAssetUuid);
+  const resolvedActiveAsset = [canonicalAsset, ...derivedAssets].find(
+    (asset) => asset.assetUuid === activeImageAssetUuid
+  ) ?? canonicalAsset;
+
+  return {
+    ...normalizedItemImage,
+    itemImageUuid,
+    parentItemUuid: resolvedParentItemUuid,
+    order,
+    canonicalAsset,
+    derivedAssets,
+    activeImageAssetUuid: resolvedActiveAsset.assetUuid
+  };
+}
+
+function getNormalizedWardrobeItemImages(
+  item,
+  {
+    itemUuid = normalizeItemUuid(item?.itemUuid),
+    fallbackImportedAt = "",
+    resolveImageUrl = (value) => value ?? ""
+  } = {}
+) {
+  const rawItemImages = Array.isArray(item?.itemImages) && item.itemImages.length
+    ? item.itemImages
+    : [buildLegacyWardrobeImageAsset(item)];
+
+  return sortWardrobeItemImages(
+    rawItemImages.map((itemImage, index) =>
+      normalizeWardrobeItemImage(itemImage, {
+        parentItemUuid: itemUuid,
+        fallbackOrder: index,
+        fallbackImportedAt,
+        resolveImageUrl
+      })
+    )
+  );
+}
+
+export function getWardrobeItemImages(item) {
+  return getNormalizedWardrobeItemImages(item);
+}
+
+export function getActiveWardrobeItemImage(item) {
+  const itemImages = getWardrobeItemImages(item);
+
+  if (!itemImages.length) {
+    return null;
+  }
+
+  const activeItemImageUuid = normalizeOptionalString(item?.activeItemImageUuid);
+  return itemImages.find((itemImage) => itemImage.itemImageUuid === activeItemImageUuid) ?? itemImages[0];
+}
+
+export function getActiveWardrobeItemImageAsset(item) {
+  const activeItemImage = getActiveWardrobeItemImage(item);
+
+  if (!activeItemImage) {
+    return null;
+  }
+
+  const activeImageAssetUuid = normalizeOptionalString(activeItemImage.activeImageAssetUuid);
+  const candidateAssets = [activeItemImage.canonicalAsset, ...sortWardrobeImageAssets(activeItemImage.derivedAssets)];
+
+  return candidateAssets.find((asset) => asset.assetUuid === activeImageAssetUuid) ?? activeItemImage.canonicalAsset;
+}
+
+export function mirrorActiveWardrobeImageAssetToLegacyAliases(item) {
+  const activeItemImage = getActiveWardrobeItemImage(item);
+  const activeAsset = getActiveWardrobeItemImageAsset(item);
+  const legacyImageUrl = typeof item?.imageUrl === "string" ? item.imageUrl : "";
+  const legacyImages = normalizeImages(item?.images, legacyImageUrl);
+  const mirroredImages = activeAsset ? normalizeImages(activeAsset.images, activeAsset.imageUrl) : legacyImages;
+
+  return {
+    ...item,
+    itemImages: getWardrobeItemImages(item),
+    activeItemImageUuid: activeItemImage?.itemImageUuid ?? null,
+    imageUrl: activeAsset?.imageUrl ?? legacyImageUrl,
+    images: mirroredImages
+  };
+}
+
 export function normalizeItem(
   item,
   {
@@ -369,10 +604,15 @@ export function normalizeItem(
   const originalPreserved = item.originalPreserved === true;
   const itemUuid = normalizeItemUuid(item.itemUuid, createUuid);
   const importMetadata = normalizeImportMetadataFields(item, createdAt);
+  const itemImages = getNormalizedWardrobeItemImages(item, {
+    itemUuid,
+    fallbackImportedAt: importMetadata.importedAt,
+    resolveImageUrl
+  });
   const status = normalizeStatus(item.status ?? item.list ?? correction?.status ?? correction?.list);
   const collections = normalizeCollections(item.collections);
 
-  const normalizedItem = {
+  const normalizedItem = mirrorActiveWardrobeImageAssetToLegacyAliases({
     ...emptyForm,
     ...item,
     ...correction,
@@ -380,6 +620,7 @@ export function normalizeItem(
     retailValue: correction?.retailValue ?? retailValue,
     imageUrl,
     images,
+    itemImages,
     originalPreserved,
     description: typeof item.description === "string" ? item.description : "",
     imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
@@ -405,16 +646,25 @@ export function normalizeItem(
     itemUuid,
     createdAt,
     updatedAt
-  };
+  });
 
   return normalizedItem;
 }
 
 export function itemNeedsImageContractMigration(originalItem, normalizedItem) {
+  const originalHasExplicitWardrobeImages = Array.isArray(originalItem?.itemImages)
+    || Object.prototype.hasOwnProperty.call(originalItem ?? {}, "activeItemImageUuid");
+
   return (
     (originalItem.imageUrl ?? originalItem.img ?? originalItem.images?.preview?.src ?? "") !== normalizedItem.imageUrl ||
     JSON.stringify(isRecord(originalItem.images) ? originalItem.images : {}) !== JSON.stringify(normalizedItem.images) ||
-    originalItem.originalPreserved !== normalizedItem.originalPreserved
+    originalItem.originalPreserved !== normalizedItem.originalPreserved ||
+    (
+      originalHasExplicitWardrobeImages && (
+        JSON.stringify(Array.isArray(originalItem?.itemImages) ? originalItem.itemImages : []) !== JSON.stringify(normalizedItem.itemImages) ||
+        normalizeOptionalString(originalItem?.activeItemImageUuid) !== normalizedItem.activeItemImageUuid
+      )
+    )
   );
 }
 
