@@ -147,8 +147,11 @@ import {
   setActiveWardrobeItemImageInDraft
 } from "./lib/wardrobeItemImageEditorModel";
 import {
+  emptyFitpicFilters,
   filterAndSortFitpics,
-  getFitpicLinkedItemFilterOptions,
+  fitpicExcludedMultiValueFilterKeys,
+  fitpicMultiValueFilterKeys,
+  getFitpicFilterOptions,
   getFitpicPreviewDirectionForKey,
   getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
@@ -298,6 +301,16 @@ const defaultWardrobeFilterSectionsOpen = {
   collections: false,
   favorite: false,
   laundry: false
+};
+const defaultFitpicFilterSectionsOpen = {
+  tags: false,
+  linkedItem: false,
+  brand: false,
+  garmentType: false,
+  type: false,
+  status: false,
+  collections: false,
+  favorite: false
 };
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
@@ -1456,8 +1469,10 @@ export default function App() {
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
   const [fitpicSearch, setFitpicSearch] = useState("");
   const [fitpicSort, setFitpicSort] = useState("fitDateNewest");
-  const [fitpicFavoritesOnly, setFitpicFavoritesOnly] = useState(false);
-  const [fitpicLinkedItemFilter, setFitpicLinkedItemFilter] = useState("");
+  const [fitpicFiltersOpen, setFitpicFiltersOpen] = useState(false);
+  const [fitpicFilterSearch, setFitpicFilterSearch] = useState("");
+  const [fitpicFilterSectionsOpen, setFitpicFilterSectionsOpen] = useState(defaultFitpicFilterSectionsOpen);
+  const [fitpicFilters, setFitpicFilters] = useState(emptyFitpicFilters);
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
@@ -1627,29 +1642,45 @@ export default function App() {
       })
       .slice(0, 8);
   }, [editingFitpic, fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, fitpicLinkedItemSearch, items]);
-  const fitpicLinkedItemFilterOptions = useMemo(
-    () => getFitpicLinkedItemFilterOptions(fitpics, items),
-    [fitpics, items]
+  const activeFitpicFilterCount = Object.entries(fitpicFilters).reduce(
+    (count, [key, value]) =>
+      count + (
+        fitpicMultiValueFilterKeys.includes(key) || fitpicExcludedMultiValueFilterKeys.includes(key)
+          ? value.length
+          : value
+            ? 1
+            : 0
+      ),
+    0
   );
-  const selectedFitpicLinkedItemFilterLabel = useMemo(
-    () => fitpicLinkedItemFilterOptions.find((option) => option.value === fitpicLinkedItemFilter)?.label ?? "",
-    [fitpicLinkedItemFilter, fitpicLinkedItemFilterOptions]
+  const hasActiveFitpicFilters = activeFitpicFilterCount > 0;
+  const fitpicFilterOptions = useMemo(
+    () => getFitpicFilterOptions(fitpics, items, fitpicFilters),
+    [fitpicFilters, fitpics, items]
   );
-  const selectedFitpicSortLabel = useMemo(() => {
-    switch (fitpicSort) {
-      case "fitDateOldest":
-        return "Fit date oldest";
-      case "createdNewest":
-        return "Created newest";
-      case "importedNewest":
-        return "Imported newest";
-      case "titleAz":
-        return "Title A-Z";
-      case "fitDateNewest":
-      default:
-        return "Fit date newest";
-    }
-  }, [fitpicSort]);
+  const fitpicFilterPanelSections = useMemo(
+    () => [
+      { label: "Tags", key: "tags", options: fitpicFilterOptions.tags, includeNone: true, kind: "multi" },
+      { label: "Linked item", key: "linkedItem", options: fitpicFilterOptions.linkedItem, includeNone: false, kind: "multi" },
+      { label: "Brand", key: "brand", options: fitpicFilterOptions.brand, includeNone: true, kind: "multi" },
+      { label: "Garment", key: "garmentType", options: fitpicFilterOptions.garmentType, includeNone: true, kind: "multi" },
+      { label: "Type", key: "type", options: fitpicFilterOptions.type, includeNone: true, kind: "multi" },
+      { label: "Status", key: "status", options: fitpicFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: fitpicFilterOptions.collections, includeNone: false, kind: "multi" },
+      {
+        label: "Favorite",
+        key: "favorite",
+        options: [
+          { label: "Favorites", value: "yes" },
+          { label: "Not favorites", value: "no" }
+        ],
+        includeNone: false,
+        kind: "single"
+      }
+    ],
+    [fitpicFilterOptions]
+  );
+  const normalizedFitpicFilterSearch = fitpicFilterSearch.trim().toLowerCase();
   const visibleFitpics = useMemo(
     () =>
       filterAndSortFitpics(
@@ -1657,12 +1688,11 @@ export default function App() {
         {
           search: fitpicSearch,
           sort: fitpicSort,
-          favoritesOnly: fitpicFavoritesOnly,
-          linkedItemFilter: fitpicLinkedItemFilter
+          filters: fitpicFilters
         },
         items
       ),
-    [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
+    [fitpicFilters, fitpicSearch, fitpicSort, fitpics, items]
   );
   const visibleFitpicIds = useMemo(
     () => visibleFitpics.map((fitpic) => fitpic.id),
@@ -1673,7 +1703,7 @@ export default function App() {
     [fitpicPreview?.id, visibleFitpicIds]
   );
   const hasActiveFitpicControls = Boolean(
-    fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
+    fitpicSearch.trim() || hasActiveFitpicFilters || fitpicSort !== "fitDateNewest"
   );
   const selectedFitpics = useMemo(
     () => selectedFitpicIds.map((fitpicId) => fitpicsById[fitpicId]).filter(Boolean),
@@ -2364,6 +2394,36 @@ export default function App() {
   }));
   const activeWardrobeFilterChips = buildActiveFilterChips(wardrobeFilters);
   const activeDashboardFilterChips = buildActiveFilterChips(dashboardFilters);
+  const activeFitpicFilterChips = [
+    ...[
+      ["Tags", "tags"],
+      ["Linked item", "linkedItem"],
+      ["Brand", "brand"],
+      ["Garment", "garmentType"],
+      ["Type", "type"],
+      ["Status", "status"],
+      ["Collections", "collections"]
+    ].flatMap(([label, key]) => [
+      ...getIncludedFilterValues(fitpicFilters, key).map((value) => ({ label, key, value, excluded: false })),
+      ...getExcludedFilterValues(fitpicFilters, key).map((value) => ({ label, key, value, excluded: true }))
+    ]),
+    ...(fitpicFilters.favorite ? [{ label: "Favorite", key: "favorite", value: fitpicFilters.favorite, excluded: false }] : [])
+  ].map((filter) => ({
+    ...filter,
+    rawValue: filter.value,
+    value:
+      filter.label === "Favorite"
+        ? filter.value === "yes"
+          ? "Favorites"
+          : "Not favorites"
+        : filter.value === "__none__"
+          ? filter.excluded
+            ? `Has ${filter.label.toLowerCase()}`
+            : `No ${filter.label.toLowerCase()}`
+          : filter.excluded
+            ? `Not ${filter.value}`
+            : filter.value
+  }));
   const wardrobeFilterPanelSections = useMemo(
     () => [
       { label: "Brand", key: "brand", options: wardrobeFilterOptions.brand, includeNone: true, kind: "multi" },
@@ -4683,6 +4743,11 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function clearFitpicFilters() {
+    setFitpicFilters(emptyFitpicFilters);
+    setFitpicFilterSearch("");
+  }
+
   function clearDashboardFilters() {
     setDashboardFilters(emptyWardrobeFilters);
     setDashboardFilterSearch("");
@@ -4697,6 +4762,13 @@ export default function App() {
 
   function toggleDashboardFilterSection(key) {
     setDashboardFilterSectionsOpen((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
+  function toggleFitpicFilterSection(key) {
+    setFitpicFilterSectionsOpen((current) => ({
       ...current,
       [key]: !current[key]
     }));
@@ -4718,6 +4790,10 @@ export default function App() {
     setDashboardFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
   }
 
+  function toggleFitpicFilterValueWithMode(key, value, shouldExclude = false) {
+    setFitpicFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
+  }
+
   function setWardrobeToggleFilter(key, value) {
     setWardrobeFilters((current) => ({
       ...current,
@@ -4727,6 +4803,13 @@ export default function App() {
 
   function setDashboardToggleFilter(key, value) {
     setDashboardFilters((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function setFitpicToggleFilter(key, value) {
+    setFitpicFilters((current) => ({
       ...current,
       [key]: value
     }));
@@ -5608,6 +5691,7 @@ export default function App() {
       clearSelectedOutfitItem();
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
+      setFitpicFiltersOpen(false);
       setDashboardFiltersOpen(false);
       setWardrobeManageOpen(false);
       closeWardrobePreview({ restoreFitpicPreview: false });
@@ -5722,6 +5806,11 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function dismissFitpicFilters() {
+    setFitpicFiltersOpen(false);
+    setFitpicFilterSearch("");
+  }
+
   function dismissDashboardFilters() {
     setDashboardFiltersOpen(false);
     setDashboardFilterSearch("");
@@ -5786,6 +5875,23 @@ export default function App() {
     });
   }
 
+  function openFitpicFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    setFitpicFiltersOpen((current) => {
+      const nextOpen = !current;
+
+      if (!nextOpen) {
+        setFitpicFilterSearch("");
+      }
+
+      return nextOpen;
+    });
+  }
+
   function openDashboardFilters(event) {
     if (event) {
       blurPointerActivatedControl(event);
@@ -5809,6 +5915,14 @@ export default function App() {
     }
 
     dismissWardrobeFilters();
+  }
+
+  function closeFitpicFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    dismissFitpicFilters();
   }
 
   function toggleWardrobeManage(event) {
@@ -6450,67 +6564,202 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className="fitpic-controls" aria-label="Fitpic controls">
-              <div className="fitpic-controls-header">
-                <p className="fitpic-controls-count">
-                  {visibleFitpics.length} of {fitpics.length} fitpics
-                </p>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={resetFitpicControls}
-                  disabled={!hasActiveFitpicControls}
-                >
-                  Clear filters
-                </button>
-              </div>
-              <label>
-                <span className="eyebrow">Search</span>
-                <input
-                  value={fitpicSearch}
-                  onChange={(event) => setFitpicSearch(event.target.value)}
-                  placeholder="Search fitpics"
-                />
-              </label>
-              <label>
-                <span className="eyebrow">Sort</span>
-                <select value={fitpicSort} onChange={(event) => setFitpicSort(event.target.value)}>
-                  <option value="fitDateNewest">Fit date newest</option>
-                  <option value="fitDateOldest">Fit date oldest</option>
-                  <option value="createdNewest">Created newest</option>
-                  <option value="importedNewest">Imported newest</option>
-                  <option value="titleAz">Title A-Z</option>
-                </select>
-              </label>
-              <label>
-                <span className="eyebrow">Linked item</span>
-                <select
-                  value={fitpicLinkedItemFilter}
-                  onChange={(event) => setFitpicLinkedItemFilter(event.target.value)}
-                >
-                  <option value="">All linked items</option>
-                  {fitpicLinkedItemFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="fitpic-controls-toggle">
-                <input
-                  type="checkbox"
-                  checked={fitpicFavoritesOnly}
-                  onChange={(event) => setFitpicFavoritesOnly(event.target.checked)}
-                />
-                <span>Favorites only</span>
-              </label>
-            </div>
             <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
               <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
-                <span className="wardrobe-results-count">
-                  {visibleFitpics.length} fitpic{visibleFitpics.length === 1 ? "" : "s"}
-                </span>
+                <div className="wardrobe-search-field">
+                  <input
+                    type="search"
+                    value={fitpicSearch}
+                    onPointerDown={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onChange={(event) => setFitpicSearch(event.target.value)}
+                    placeholder="Search fitpics"
+                  />
+                </div>
+                <div className={`wardrobe-filter-anchor ${fitpicFiltersOpen ? "is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className={`secondary-button filter-button ${fitpicFiltersOpen || hasActiveFitpicFilters ? "is-active" : ""}`}
+                    onClick={openFitpicFilters}
+                    aria-pressed={fitpicFiltersOpen}
+                    aria-expanded={fitpicFiltersOpen}
+                    title={
+                      hasActiveFitpicFilters
+                        ? `${activeFitpicFilterCount} active filter${activeFitpicFilterCount === 1 ? "" : "s"}`
+                        : "No active filters"
+                    }
+                  >
+                    {hasActiveFitpicFilters ? `Filters (${activeFitpicFilterCount})` : "Filter"}
+                  </button>
+                  <div className={`wardrobe-controls ${fitpicFiltersOpen ? "is-open" : ""}`} aria-label="Fitpic filters">
+                    <div className="wardrobe-controls-body">
+                      <div className="wardrobe-filter-search">
+                        <input
+                          type="search"
+                          value={fitpicFilterSearch}
+                          onChange={(event) => setFitpicFilterSearch(event.target.value)}
+                          placeholder="Search filter options"
+                        />
+                      </div>
+                      {fitpicFilterPanelSections.map((section) => {
+                        const selectedCount = section.kind === "multi"
+                          ? getSelectedFilterValueCount(fitpicFilters, section.key)
+                          : fitpicFilters[section.key]
+                            ? 1
+                            : 0;
+                        const groupMatchesSearch = !normalizedFitpicFilterSearch
+                          || section.label.toLowerCase().includes(normalizedFitpicFilterSearch);
+                        const resolvedOptions = section.options.map((option) => (
+                          typeof option === "string"
+                            ? { label: option, value: option }
+                            : option
+                        ));
+                        const filteredOptions = normalizedFitpicFilterSearch && !groupMatchesSearch
+                          ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedFitpicFilterSearch))
+                          : resolvedOptions;
+                        const noneLabel = `No ${section.label.toLowerCase()}`;
+                        const showNoneOption = section.includeNone && (
+                          !normalizedFitpicFilterSearch
+                          || groupMatchesSearch
+                          || noneLabel.includes(normalizedFitpicFilterSearch)
+                        );
+                        const isOpen = normalizedFitpicFilterSearch ? true : Boolean(fitpicFilterSectionsOpen[section.key]);
+
+                        if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
+                          return null;
+                        }
+
+                        return (
+                          <section key={section.key} className={`wardrobe-filter-group ${isOpen ? "is-open" : ""}`}>
+                            <button
+                              type="button"
+                              className="wardrobe-filter-group-toggle"
+                              onClick={() => toggleFitpicFilterSection(section.key)}
+                              aria-expanded={isOpen}
+                            >
+                              <span className="wardrobe-filter-group-copy">
+                                <strong>{section.label}</strong>
+                                {selectedCount ? (
+                                  <span className="wardrobe-filter-group-count">{selectedCount} selected</span>
+                                ) : null}
+                              </span>
+                              <span className="wardrobe-filter-group-icon" aria-hidden="true">
+                                {isOpen ? "−" : "+"}
+                              </span>
+                            </button>
+                            {isOpen ? (
+                              <div className="wardrobe-filter-options">
+                                {showNoneOption ? (
+                                  <button
+                                    type="button"
+                                    className={`list-toggle ${
+                                      getIncludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                        ? "is-active"
+                                        : getExcludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                          ? "is-active is-muted is-excluded"
+                                          : ""
+                                    }`}
+                                    onClick={(event) => toggleFitpicFilterValueWithMode(section.key, "__none__", event.shiftKey)}
+                                    aria-pressed={
+                                      getIncludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                      || getExcludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                    }
+                                  >
+                                    {noneLabel}
+                                  </button>
+                                ) : null}
+                                {filteredOptions.length ? filteredOptions.map((option) => {
+                                  const isIncluded = section.kind === "multi"
+                                    ? getIncludedFilterValues(fitpicFilters, section.key).includes(option.value)
+                                    : false;
+                                  const isExcluded = section.kind === "multi"
+                                    ? getExcludedFilterValues(fitpicFilters, section.key).includes(option.value)
+                                    : false;
+                                  const isSelected = section.kind === "multi"
+                                    ? isIncluded || isExcluded
+                                    : fitpicFilters[section.key] === option.value;
+
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                      onMouseDown={(event) => {
+                                        if (section.kind === "multi") {
+                                          event.preventDefault();
+                                        }
+                                      }}
+                                      onClick={(event) => {
+                                        if (section.kind === "multi") {
+                                          toggleFitpicFilterValueWithMode(section.key, option.value, event.shiftKey);
+                                          return;
+                                        }
+
+                                        setFitpicToggleFilter(
+                                          section.key,
+                                          fitpicFilters[section.key] === option.value ? "" : option.value
+                                        );
+                                      }}
+                                      aria-pressed={isSelected}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                }) : (
+                                  <p className="wardrobe-filter-empty">No matching options.</p>
+                                )}
+                              </div>
+                            ) : null}
+                          </section>
+                        );
+                      })}
+                    </div>
+                    <div className="wardrobe-controls-footer">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={clearFitpicFilters}
+                        disabled={!hasActiveFitpicFilters}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="wardrobe-sort-field">
+                  <select
+                    value={fitpicSort}
+                    onPointerDown={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onChange={(event) => setFitpicSort(event.target.value)}
+                  >
+                    <option value="fitDateNewest">Fit date newest</option>
+                    <option value="fitDateOldest">Fit date oldest</option>
+                    <option value="createdNewest">Created newest</option>
+                    <option value="importedNewest">Imported newest</option>
+                    <option value="titleAz">Title A-Z</option>
+                  </select>
+                </div>
               </div>
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} of {fitpics.length} fitpics
+                </span>
               <div className="wardrobe-toolbar-context">
                 {hasFitpicSelection ? (
                   <>
@@ -6556,34 +6805,39 @@ export default function App() {
                 ) : null}
               </div>
             </div>
-            {hasActiveFitpicControls ? (
-              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic controls">
+            {fitpicFiltersOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={closeFitpicFilters} />
+            ) : null}
+            {hasActiveFitpicFilters ? (
+              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic filters">
                 <div className="active-filter-chips">
-                  {fitpicSearch.trim() ? (
-                    <span className="active-filter-chip">
-                      <span>Search</span>
-                      {fitpicSearch.trim()}
+                  {activeFitpicFilterChips.map((filter) => (
+                    <span
+                      key={`${filter.key}-${filter.value}-${filter.excluded ? "excluded" : "included"}`}
+                      className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}
+                    >
+                      <span>{filter.label}</span>
+                      {filter.value}
+                      <button
+                        type="button"
+                        className="active-filter-chip-clear"
+                        onClick={() => clearSingleFitpicFilterValue(filter.key, filter.rawValue, filter.excluded)}
+                        aria-label={`Remove ${filter.label} filter ${filter.value}`}
+                        title={`Remove ${filter.label} filter ${filter.value}`}
+                      >
+                        ×
+                      </button>
                     </span>
-                  ) : null}
-                  {fitpicFavoritesOnly ? (
-                    <span className="active-filter-chip">
-                      <span>Filter</span>
-                      Favorites only
-                    </span>
-                  ) : null}
-                  {fitpicLinkedItemFilter ? (
-                    <span className="active-filter-chip">
-                      <span>Linked</span>
-                      {selectedFitpicLinkedItemFilterLabel}
-                    </span>
-                  ) : null}
-                  {fitpicSort !== "fitDateNewest" ? (
-                    <span className="active-filter-chip">
-                      <span>Sort</span>
-                      {selectedFitpicSortLabel}
-                    </span>
-                  ) : null}
+                  ))}
                 </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={clearFitpicFilters}
+                  disabled={!hasActiveFitpicFilters}
+                >
+                  Clear filters
+                </button>
               </div>
             ) : null}
 
@@ -7471,8 +7725,23 @@ export default function App() {
   function resetFitpicControls() {
     setFitpicSearch("");
     setFitpicSort("fitDateNewest");
-    setFitpicFavoritesOnly(false);
-    setFitpicLinkedItemFilter("");
+    clearFitpicFilters();
+  }
+
+  function clearSingleFitpicFilterValue(key, value, excluded = false) {
+    if (key === "favorite") {
+      setFitpicToggleFilter("favorite", "");
+      return;
+    }
+
+    setFitpicFilters((current) => {
+      const excludedKey = getExcludedFilterKey(key);
+      return {
+        ...current,
+        [key]: excluded ? current[key] : current[key].filter((currentValue) => currentValue !== value),
+        [excludedKey]: excluded ? current[excludedKey].filter((currentValue) => currentValue !== value) : current[excludedKey]
+      };
+    });
   }
 
   function clearFitpicSelection() {

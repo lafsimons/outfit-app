@@ -2525,6 +2525,27 @@ button:disabled {
   color: var(--muted);
 }
 
+.active-filter-chip-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.active-filter-chip-clear:hover,
+.active-filter-chip-clear:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text);
+}
+
 .active-filter-chip.is-excluded {
   border-style: dashed;
   border-color: rgba(168, 54, 54, 0.38);
