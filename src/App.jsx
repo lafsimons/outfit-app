@@ -1374,6 +1374,7 @@ export default function App() {
   const [selectorSearch, setSelectorSearch] = useState("");
   const [selectorSort, setSelectorSort] = useState(DEFAULT_SELECTOR_SORT);
   const [selectorFilters, setSelectorFilters] = useState(createEmptySelectorFilters);
+  const [selectorFiltersOpen, setSelectorFiltersOpen] = useState(false);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
   const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
@@ -1719,6 +1720,7 @@ export default function App() {
     setSelectorSearch("");
     setSelectorSort(DEFAULT_SELECTOR_SORT);
     setSelectorFilters(createEmptySelectorFilters());
+    setSelectorFiltersOpen(false);
   }, [activeOutfitSlot]);
 
   function noteInteractionModality(event) {
@@ -2193,6 +2195,15 @@ export default function App() {
   const hasActiveSelectorLocalControls = useMemo(
     () => hasActiveSelectorControls({ search: selectorSearch, filters: selectorFilters, sort: selectorSort }),
     [selectorFilters, selectorSearch, selectorSort]
+  );
+  const hasActiveSelectorLocalFilters = useMemo(
+    () => Boolean(
+      (selectorFilters.type ?? []).length
+      || (selectorFilters.status ?? []).length
+      || (selectorFilters.collections ?? []).length
+      || selectorFilters.favorite
+    ),
+    [selectorFilters]
   );
   const wardrobeFilterOptions = useMemo(
     () =>
@@ -5484,6 +5495,7 @@ export default function App() {
     setSelectorSearch("");
     setSelectorSort(DEFAULT_SELECTOR_SORT);
     setSelectorFilters(createEmptySelectorFilters());
+    setSelectorFiltersOpen(false);
   }
 
   function closeUtilityWindows() {
@@ -5887,67 +5899,79 @@ export default function App() {
             </div>
           </div>
 
-          <div className="slot-picker-toolbar-row">
-            <div className="slot-picker-filter-grid">
-              <select
-                value={selectorFilters.type[0] ?? ""}
-                onChange={(event) => setSelectorFilterValue("type", event.target.value)}
-                aria-label="Filter slot items by type"
-              >
-                <option value="">All types</option>
-                {selectorFilterOptions.type.map((type) => (
-                  <option key={type} value={type}>{type}</option>
-                ))}
-              </select>
-              <select
-                value={selectorFilters.status[0] ?? ""}
-                onChange={(event) => setSelectorFilterValue("status", event.target.value)}
-                aria-label="Filter slot items by status"
-              >
-                <option value="">All statuses</option>
-                {selectorFilterOptions.status.map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
-              <select
-                value={selectorFilters.collections[0] ?? ""}
-                onChange={(event) => setSelectorFilterValue("collections", event.target.value)}
-                aria-label="Filter slot items by collection"
-              >
-                <option value="">All collections</option>
-                {selectorFilterOptions.collections.map((collection) => (
-                  <option key={collection} value={collection}>{collection}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className={`ghost-button slot-picker-favorite-toggle ${selectorFilters.favorite === "yes" ? "is-active" : ""}`}
-                onClick={() =>
-                  setSelectorFilters((current) => ({
-                    ...current,
-                    favorite: current.favorite === "yes" ? "" : "yes"
-                  }))
-                }
-                aria-pressed={selectorFilters.favorite === "yes"}
-              >
-                Favorites
-              </button>
-            </div>
-          </div>
-
           <div className="slot-picker-toolbar-footer">
             <span className="wardrobe-results-count">
               {visibleItemCount} item{visibleItemCount === 1 ? "" : "s"}{hasActiveSelectorLocalControls ? ` of ${totalItemCount}` : ""}
             </span>
             <button
               type="button"
-              className="ghost-button"
-              onClick={clearSelectorControls}
-              disabled={!hasActiveSelectorLocalControls}
+              className={`ghost-button slot-picker-filters-toggle ${selectorFiltersOpen ? "is-active" : ""} ${hasActiveSelectorLocalFilters ? "has-active-filters" : ""}`}
+              onClick={() => setSelectorFiltersOpen((current) => !current)}
+              aria-expanded={selectorFiltersOpen}
             >
-              Clear
+              {hasActiveSelectorLocalFilters ? "Filters active" : "Filters"}
             </button>
           </div>
+
+          {selectorFiltersOpen ? (
+            <div className="slot-picker-filter-panel">
+              <div className="slot-picker-filter-grid">
+                <select
+                  value={selectorFilters.type[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("type", event.target.value)}
+                  aria-label="Filter slot items by type"
+                >
+                  <option value="">All types</option>
+                  {selectorFilterOptions.type.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectorFilters.status[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("status", event.target.value)}
+                  aria-label="Filter slot items by status"
+                >
+                  <option value="">All statuses</option>
+                  {selectorFilterOptions.status.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectorFilters.collections[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("collections", event.target.value)}
+                  aria-label="Filter slot items by collection"
+                >
+                  <option value="">All collections</option>
+                  {selectorFilterOptions.collections.map((collection) => (
+                    <option key={collection} value={collection}>{collection}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={`ghost-button slot-picker-favorite-toggle ${selectorFilters.favorite === "yes" ? "is-active" : ""}`}
+                  onClick={() =>
+                    setSelectorFilters((current) => ({
+                      ...current,
+                      favorite: current.favorite === "yes" ? "" : "yes"
+                    }))
+                  }
+                  aria-pressed={selectorFilters.favorite === "yes"}
+                >
+                  Favorites only
+                </button>
+              </div>
+              <div className="slot-picker-filter-panel-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={clearSelectorControls}
+                  disabled={!hasActiveSelectorLocalControls}
+                >
+                  Clear selector controls
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {visibleSelectorItems.length ? (
