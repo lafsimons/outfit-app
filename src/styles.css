@@ -1208,8 +1208,7 @@ button:disabled {
   order: 3;
 }
 
-.accessory-picker-actions,
-.slot-picker-actions {
+.accessory-picker-actions {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -1222,30 +1221,49 @@ button:disabled {
   background: var(--surface);
 }
 
-.accessory-picker-actions .ghost-button,
-.slot-picker-actions .ghost-button {
+.accessory-picker-actions .ghost-button {
   flex: 1 1 auto;
 }
 
 .slot-picker-toolbar {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   order: 2;
   flex: 0 0 auto;
 }
 
 .slot-picker-toolbar-row {
-  display: grid;
+  display: flex;
+  align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
-.slot-picker-toolbar-row:first-child {
-  grid-template-columns: minmax(0, 1fr) 144px;
+.slot-picker-toolbar-row-main {
+  flex-wrap: nowrap;
+}
+
+.slot-picker-title {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .slot-picker-search-field,
 .slot-picker-sort-field {
-  width: 100%;
+  width: auto;
+}
+
+.slot-picker-search-field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.slot-picker-sort-field {
+  flex: 0 0 144px;
 }
 
 .slot-picker-filter-panel {
@@ -1274,13 +1292,6 @@ button:disabled {
 .slot-picker-filter-panel-actions {
   display: flex;
   justify-content: flex-end;
-}
-
-.slot-picker-toolbar-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
 }
 
 .slot-picker-filters-toggle.has-active-filters::after {
@@ -1478,21 +1489,52 @@ button:disabled {
   filter: none;
 }
 
-.outfit-slot-hover-actions {
+.slot-actions-anchor {
   position: absolute;
   top: -14px;
   right: -14px;
   z-index: 2;
-  display: grid;
-  gap: 6px;
+}
+
+.slot-actions-anchor.is-side {
+  top: 10px;
+  right: 8px;
+}
+
+.outfit-slot-headwear .slot-actions-anchor {
+  top: -8px;
+  right: -8px;
+}
+
+.outfit-slot-hover-actions {
+  position: static;
+  z-index: auto;
   opacity: 0;
   pointer-events: none;
   transition: opacity 140ms ease;
+  display: grid;
+  gap: 6px;
+}
+
+.slot-actions-anchor.is-side .outfit-slot-hover-actions {
+  justify-items: end;
 }
 
 .outfit-slot-headwear .outfit-slot-hover-actions {
-  top: -8px;
-  right: -8px;
+  top: auto;
+  right: auto;
+}
+
+.slot-actions-anchor.is-below .slot-actions-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+}
+
+.slot-actions-anchor.is-side .slot-actions-popover {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
 }
 
 .outfit-slot-hover-button {
@@ -1508,6 +1550,12 @@ button:disabled {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   box-shadow: none;
+}
+
+.outfit-slot-hover-button.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
 }
 
 .outfit-slot:hover .outfit-slot-hover-actions,
@@ -1529,6 +1577,47 @@ button:disabled {
   gap: 14px;
   width: 100%;
   position: relative;
+}
+
+.slot-actions-popover {
+  z-index: 5;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(18px);
+  min-width: 182px;
+}
+
+.slot-actions-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.slot-actions-popover-header strong {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.slot-actions-popover-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  gap: 6px;
+}
+
+.slot-actions-popover .ghost-button {
+  min-width: 0;
+  padding: 5px 7px;
+  font-size: 0.66rem;
+}
+
+.slot-actions-close-button {
+  white-space: nowrap;
 }
 
 .top-layer-row {
@@ -4646,14 +4735,18 @@ button:disabled {
     order: 2;
   }
 
-  .slot-picker-toolbar-row:first-child,
+  .slot-picker-toolbar-row-main,
+  .slot-picker-filter-grid {
+    flex-wrap: wrap;
+  }
+
   .slot-picker-filter-grid {
     grid-template-columns: 1fr;
   }
 
-  .slot-picker-toolbar-footer {
-    align-items: stretch;
-    flex-direction: row;
+  .slot-picker-search-field,
+  .slot-picker-sort-field {
+    flex: 1 1 100%;
   }
 
   .accessory-picker-list,
@@ -4670,8 +4763,7 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .accessory-picker-actions,
-  .slot-picker-actions {
+  .accessory-picker-actions {
     order: 4;
     flex: 0 0 auto;
     position: sticky;
@@ -4681,11 +4773,21 @@ button:disabled {
     background: var(--surface);
   }
 
-  .accessory-picker-actions .ghost-button,
-  .slot-picker-actions .ghost-button {
+  .accessory-picker-actions .ghost-button {
     flex: 1 1 auto;
     padding: 6px 7px;
     font-size: 0.66rem;
+  }
+
+  .slot-actions-popover {
+    top: 18px;
+    right: 50%;
+    transform: translateX(50%);
+  max-width: min(220px, calc(100vw - 32px));
+  }
+
+  .slot-actions-popover-grid {
+    grid-template-columns: repeat(2, minmax(0, max-content));
   }
 
   .current-outfit-actions {

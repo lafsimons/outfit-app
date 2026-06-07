@@ -1325,6 +1325,7 @@ export default function App() {
   const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const slotActionsPopoverRef = useRef(null);
   const inlineEditorResizeRef = useRef(null);
   const outfitDebugRef = useRef(null);
   const generationListsRef = useRef(null);
@@ -1371,6 +1372,7 @@ export default function App() {
   const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
+  const [activeSlotActionsSlot, setActiveSlotActionsSlot] = useState(null);
   const [selectorSearch, setSelectorSearch] = useState("");
   const [selectorSort, setSelectorSort] = useState(DEFAULT_SELECTOR_SORT);
   const [selectorFilters, setSelectorFilters] = useState(createEmptySelectorFilters);
@@ -3267,6 +3269,16 @@ export default function App() {
   }, [activeAccessorySlot, activeOutfitSlot, selectedAccessorySlot, selectedOutfitSlot]);
 
   useEffect(() => {
+    if (!activeSlotActionsSlot) {
+      return;
+    }
+
+    if (!outfit[activeSlotActionsSlot]) {
+      setActiveSlotActionsSlot(null);
+    }
+  }, [activeSlotActionsSlot, outfit]);
+
+  useEffect(() => {
     if (!outfitDebugOpen) {
       return undefined;
     }
@@ -3395,6 +3407,13 @@ export default function App() {
         return;
       }
 
+      if (activeSlotActionsSlot) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        setActiveSlotActionsSlot(null);
+        return;
+      }
+
       if (selectedOutfitSlot || selectedAccessorySlot) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -3472,6 +3491,7 @@ export default function App() {
     wardrobeFiltersOpen,
     wardrobeManageOpen,
     generationListsOpen,
+    activeSlotActionsSlot,
     selectedAccessorySlot,
     selectedOutfitSlot
   ]);
@@ -3480,6 +3500,7 @@ export default function App() {
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    setActiveSlotActionsSlot(null);
     clearSelectedOutfitItem();
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
@@ -5427,6 +5448,7 @@ export default function App() {
 
   function openAccessoryPicker(slot) {
     closeUtilityWindows();
+    setActiveSlotActionsSlot(null);
     setActiveAccessorySlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -5444,6 +5466,7 @@ export default function App() {
 
   function openOutfitSlotPicker(slot) {
     closeUtilityWindows();
+    setActiveSlotActionsSlot(null);
     setActiveOutfitSlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -5483,6 +5506,10 @@ export default function App() {
     clearSelectedOutfitItem();
   }
 
+  function toggleSlotActionsPopover(slot) {
+    setActiveSlotActionsSlot((current) => current === slot ? null : slot);
+  }
+
   function setSelectorFilterValue(key, value) {
     setSelectorFilters((current) => ({
       ...current,
@@ -5520,6 +5547,7 @@ export default function App() {
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
+      setActiveSlotActionsSlot(null);
       clearSelectedOutfitItem();
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
@@ -5554,6 +5582,7 @@ export default function App() {
 
   function closeWorkspacePanel() {
     setActivePanel(null);
+    setActiveSlotActionsSlot(null);
     clearSelectedOutfitItem();
     if (!controlsOpen) {
       setDockExpanded(isMobileViewport ? false : true);
@@ -5596,6 +5625,7 @@ export default function App() {
 
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    setActiveSlotActionsSlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
@@ -5838,49 +5868,14 @@ export default function App() {
       return null;
     }
 
-    const isLocked = Boolean(locked[activeOutfitSlot]);
-    const currentItem = itemsById[outfit[activeOutfitSlot]];
     const totalItemCount = activeSelectorPool.length;
     const visibleItemCount = visibleSelectorItems.length;
 
     return (
       <div className="slot-picker">
-        <div className="slot-picker-header">
-          <strong>{getSlotLabel(activeOutfitSlot)}</strong>
-          <button type="button" className="ghost-button" onClick={closePickerOverlay}>
-            Close
-          </button>
-        </div>
-
-        <div className="slot-picker-actions">
-          <button
-            type="button"
-            className={`ghost-button ${isLocked ? "is-active" : ""}`}
-            onClick={() => toggleLock(activeOutfitSlot)}
-          >
-            {isLocked ? "Unlock" : "Lock"}
-          </button>
-          <button type="button" className="ghost-button" onClick={() => handleReroll(activeOutfitSlot)}>
-            Reroll
-          </button>
-          <button type="button" className="ghost-button" onClick={() => cycleOutfitSlot(activeOutfitSlot, -1)}>
-            Previous
-          </button>
-          <button type="button" className="ghost-button" onClick={() => cycleOutfitSlot(activeOutfitSlot, 1)}>
-            Next
-          </button>
-          {currentItem ? (
-            <button type="button" className="ghost-button" onClick={() => startFloatingEdit(currentItem)}>
-              Edit
-            </button>
-          ) : null}
-          <button type="button" className="ghost-button danger" onClick={() => removeOutfitSlot(activeOutfitSlot)}>
-            Remove
-          </button>
-        </div>
-
         <div className="slot-picker-toolbar">
-          <div className="slot-picker-toolbar-row">
+          <div className="slot-picker-toolbar-row slot-picker-toolbar-row-main">
+            <strong className="slot-picker-title">{getSlotLabel(activeOutfitSlot)}</strong>
             <div className="wardrobe-search-field slot-picker-search-field">
               <input
                 type="search"
@@ -5897,9 +5892,6 @@ export default function App() {
                 <option value="oldest">Oldest added</option>
               </select>
             </div>
-          </div>
-
-          <div className="slot-picker-toolbar-footer">
             <span className="wardrobe-results-count">
               {visibleItemCount} item{visibleItemCount === 1 ? "" : "s"}{hasActiveSelectorLocalControls ? ` of ${totalItemCount}` : ""}
             </span>
@@ -5910,6 +5902,9 @@ export default function App() {
               aria-expanded={selectorFiltersOpen}
             >
               {hasActiveSelectorLocalFilters ? "Filters active" : "Filters"}
+            </button>
+            <button type="button" className="ghost-button" onClick={closePickerOverlay}>
+              Close
             </button>
           </div>
 
@@ -8375,6 +8370,10 @@ export default function App() {
   function renderOutfitSlot(slot) {
     const item = itemsById[outfit[slot]];
     const isActive = activeOutfitSlot === slot || selectedOutfitSlot === slot;
+    const isActionsOpen = activeSlotActionsSlot === slot;
+    const slotActionsPlacementClass = slot === "TopInner" || slot === "TopOuter"
+      ? "is-side"
+      : "is-below";
     return (
       <div key={slot} className="outfit-slot-wrap">
         <article
@@ -8390,29 +8389,123 @@ export default function App() {
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
           </button>
           {item ? (
-            <div className="outfit-slot-hover-actions">
-              <button
-                type="button"
-                className="outfit-slot-hover-button"
-                onMouseDown={preventMouseButtonFocus}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  startFloatingEdit(item);
-                }}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="outfit-slot-hover-button"
-                onMouseDown={preventMouseButtonFocus}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openOutfitSlotPicker(slot);
-                }}
-              >
-                Select
-              </button>
+            <div className={`slot-actions-anchor ${slotActionsPlacementClass}`}>
+              <div className="outfit-slot-hover-actions">
+                <button
+                  type="button"
+                  className="outfit-slot-hover-button"
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    startFloatingEdit(item);
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="outfit-slot-hover-button"
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openOutfitSlotPicker(slot);
+                  }}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className={`outfit-slot-hover-button slot-actions-trigger ${isActionsOpen ? "is-active" : ""}`}
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSlotActionsPopover(slot);
+                  }}
+                  aria-haspopup="menu"
+                  aria-expanded={isActionsOpen}
+                  aria-label={`${getSlotLabel(slot)} actions`}
+                  title="Actions"
+                >
+                  Actions
+                </button>
+              </div>
+              {isActionsOpen ? (
+                <div
+                  ref={slotActionsPopoverRef}
+                  className={`slot-actions-popover ${slotActionsPlacementClass}`}
+                  role="menu"
+                  aria-label={`${getSlotLabel(slot)} actions`}
+                >
+                  <div className="slot-actions-popover-header">
+                    <strong>{getSlotLabel(slot)}</strong>
+                    <button
+                      type="button"
+                      className="ghost-button slot-actions-close-button"
+                      onClick={() => setActiveSlotActionsSlot(null)}
+                      aria-label={`Close ${getSlotLabel(slot)} actions`}
+                      title="Close actions"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="slot-actions-popover-grid">
+                    <button
+                      type="button"
+                      className={`ghost-button ${locked[slot] ? "is-active" : ""}`}
+                      onClick={() => toggleLock(slot)}
+                      aria-label={locked[slot] ? `Unlock ${getSlotLabel(slot)}` : `Lock ${getSlotLabel(slot)}`}
+                      title={locked[slot] ? "Unlock" : "Lock"}
+                      role="menuitem"
+                    >
+                      {locked[slot] ? "Unlock" : "Lock"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => handleReroll(slot)}
+                      aria-label={`Reroll ${getSlotLabel(slot)}`}
+                      title="Reroll"
+                      role="menuitem"
+                      disabled={!item}
+                    >
+                      Reroll
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => cycleOutfitSlot(slot, -1)}
+                      aria-label={`Previous item for ${getSlotLabel(slot)}`}
+                      title="Previous"
+                      role="menuitem"
+                      disabled={!item}
+                    >
+                      Prev
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      onClick={() => cycleOutfitSlot(slot, 1)}
+                      aria-label={`Next item for ${getSlotLabel(slot)}`}
+                      title="Next"
+                      role="menuitem"
+                      disabled={!item}
+                    >
+                      Next
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button danger"
+                      onClick={() => removeOutfitSlot(slot)}
+                      aria-label={`Remove item from ${getSlotLabel(slot)}`}
+                      title="Remove"
+                      role="menuitem"
+                      disabled={!item}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </article>
