@@ -5,11 +5,11 @@ import {
   DEFAULT_SELECTOR_SORT,
   createEmptySelectorFilters,
   filterAndSortSelectorItems,
+  getSelectorSearchText,
   getSelectorFilterOptions,
   hasActiveSelectorControls,
   normalizeSelectorSort
 } from "./outfitItemSelectorLibrary.js";
-import { getWardrobeSearchText } from "./wardrobeLibrary.js";
 
 const selectorItems = [
   {
@@ -20,7 +20,7 @@ const selectorItems = [
     garmentType: "Outerwear",
     status: "Wardrobe",
     collections: ["Winter"],
-    description: "Soft wool coat",
+    description: "Soft wool coat with muddy hem notes",
     styleTags: ["Relaxed"],
     climateTags: ["Cold"],
     favorite: true,
@@ -34,7 +34,7 @@ const selectorItems = [
     garmentType: "Top",
     status: "Wardrobe",
     collections: ["Travel"],
-    description: "Light cotton shirt",
+    description: "Light cotton shirt with mud-stained placket",
     styleTags: ["Relaxed"],
     climateTags: ["Warm"],
     favorite: false,
@@ -56,7 +56,7 @@ const selectorItems = [
   }
 ];
 
-const searchTextById = Object.fromEntries(selectorItems.map((item) => [item.id, getWardrobeSearchText(item)]));
+const searchTextById = Object.fromEntries(selectorItems.map((item) => [item.id, getSelectorSearchText(item)]));
 
 test("normalizeSelectorSort falls back to the selector default", () => {
   assert.equal(normalizeSelectorSort("bad-sort"), DEFAULT_SELECTOR_SORT);
@@ -65,7 +65,7 @@ test("normalizeSelectorSort falls back to the selector default", () => {
 
 test("filterAndSortSelectorItems applies selector-local search and filters", () => {
   const filtered = filterAndSortSelectorItems(selectorItems, {
-    search: "cotton",
+    search: "auralee",
     filters: {
       ...createEmptySelectorFilters(),
       type: ["Shirt"],
@@ -76,6 +76,32 @@ test("filterAndSortSelectorItems applies selector-local search and filters", () 
   });
 
   assert.deepEqual(filtered.map((item) => item.id), ["item_2"]);
+});
+
+test("filterAndSortSelectorItems matches selector identity fields and ignores descriptions", () => {
+  assert.deepEqual(
+    filterAndSortSelectorItems(selectorItems, {
+      search: "wrap",
+      searchTextById
+    }).map((item) => item.id),
+    ["item_1"]
+  );
+
+  assert.deepEqual(
+    filterAndSortSelectorItems(selectorItems, {
+      search: "lemaire",
+      searchTextById
+    }).map((item) => item.id),
+    ["item_1"]
+  );
+
+  assert.deepEqual(
+    filterAndSortSelectorItems(selectorItems, {
+      search: "mud",
+      searchTextById
+    }).map((item) => item.id),
+    []
+  );
 });
 
 test("filterAndSortSelectorItems supports favorites and selector-local sorting", () => {

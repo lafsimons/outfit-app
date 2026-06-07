@@ -1,4 +1,4 @@
-import { buildDisplayName } from "./itemModel.js";
+import { buildDisplayName, normalizeCollections } from "./itemModel.js";
 import {
   emptyWardrobeFilters,
   filterWardrobeItems,
@@ -22,6 +22,20 @@ export function normalizeSelectorSort(value) {
 
 function getSelectorItemName(item) {
   return buildDisplayName(item).toLowerCase();
+}
+
+export function getSelectorSearchText(item) {
+  return String([
+    item.id,
+    item.brand,
+    item.name,
+    item.type,
+    item.garmentType,
+    ...normalizeCollections(item.collections)
+  ].filter(Boolean).join(" "))
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function filterAndSortSelectorItems(

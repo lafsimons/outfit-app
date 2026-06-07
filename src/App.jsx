@@ -160,6 +160,7 @@ import {
   createEmptySelectorFilters,
   DEFAULT_SELECTOR_SORT,
   filterAndSortSelectorItems,
+  getSelectorSearchText,
   getSelectorFilterOptions,
   hasActiveSelectorControls
 } from "./lib/outfitItemSelectorLibrary";
@@ -167,14 +168,13 @@ import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
   emptyWardrobeFilters,
-  filterWardrobeItems,
+  getVisibleWardrobeItems,
   getExcludedFilterKey,
   getWardrobeFilterOptions,
   getWardrobeSearchText,
   matchesWardrobeFilters,
   normalizeWardrobeFilters,
   normalizeWardrobeSort,
-  sortWardrobeItems,
   wardrobeExcludedMultiValueFilterKeys,
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
@@ -2215,6 +2215,10 @@ export default function App() {
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
     [items]
   );
+  const selectorSearchTextById = useMemo(
+    () => Object.fromEntries(items.map((item) => [item.id, getSelectorSearchText(item)])),
+    [items]
+  );
   const activeSelectorPool = useMemo(
     () => (
       activeOutfitSlot
@@ -2245,9 +2249,9 @@ export default function App() {
         search: selectorSearch,
         filters: selectorFilters,
         sort: selectorSort,
-        searchTextById: wardrobeSearchTextById
+        searchTextById: selectorSearchTextById
       }),
-    [activeSelectorPool, selectorFilters, selectorSearch, selectorSort, wardrobeSearchTextById]
+    [activeSelectorPool, selectorFilters, selectorSearch, selectorSort, selectorSearchTextById]
   );
   const hasActiveSelectorLocalControls = useMemo(
     () => hasActiveSelectorControls({ search: selectorSearch, filters: selectorFilters, sort: selectorSort }),
@@ -2827,12 +2831,10 @@ export default function App() {
   }
 
   const visibleWardrobeItems = useMemo(() => {
-    const filtered = filterWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById);
-    return sortWardrobeItems(filtered, wardrobeSort);
+    return getVisibleWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById, wardrobeSort);
   }, [excluded, items, wardrobeFilters, wardrobeSearch, wardrobeSearchTextById, wardrobeSort]);
   const visibleDashboardItems = useMemo(() => {
-    const filtered = filterWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById);
-    return sortWardrobeItems(filtered, dashboardSort);
+    return getVisibleWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById, dashboardSort);
   }, [dashboardFilters, dashboardSort, excluded, items, wardrobeSearchTextById]);
   const visibleWardrobeItemIds = useMemo(
     () => visibleWardrobeItems.map((item) => item.id),

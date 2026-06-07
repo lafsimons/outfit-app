@@ -2,10 +2,57 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  emptyWardrobeFilters,
+  getVisibleWardrobeItems
+} from "./wardrobeLibrary.js";
+import {
   getWardrobePreviewDirectionForKey,
   getWardrobePreviewImageNavigation,
   getWardrobePreviewNavigation
 } from "./wardrobePreviewNavigation.js";
+
+const previewItems = [
+  {
+    id: "item-704-a",
+    brand: "Brand A",
+    name: "Lot 704 Indigo Jacket",
+    type: "Jacket",
+    garmentType: "Outerwear",
+    status: "Wardrobe",
+    collections: ["Archive"],
+    description: "First 704 item",
+    createdAt: "2024-01-01T00:00:00.000Z"
+  },
+  {
+    id: "item-704-b",
+    brand: "Brand B",
+    name: "Lot 704 Work Shirt",
+    type: "Shirt",
+    garmentType: "Top",
+    status: "Wishlist",
+    collections: ["Travel"],
+    description: "Second 704 item",
+    createdAt: "2024-03-01T00:00:00.000Z"
+  },
+  {
+    id: "item-601",
+    brand: "Brand C",
+    name: "Lot 601 Denim",
+    type: "Jeans",
+    garmentType: "Bottom",
+    status: "Wardrobe",
+    collections: ["Travel"],
+    description: "Travel item",
+    createdAt: "2024-02-01T00:00:00.000Z"
+  }
+];
+
+const previewSearchTextById = Object.fromEntries(
+  previewItems.map((item) => [
+    item.id,
+    `${item.id} ${item.brand} ${item.name} ${item.type} ${item.garmentType} ${item.status} ${item.collections.join(" ")} ${item.description}`.toLowerCase()
+  ])
+);
 
 test("wardrobe preview navigation returns next item in visible order", () => {
   assert.deepEqual(
@@ -87,6 +134,65 @@ test("wardrobe preview navigation reports no neighbors when the current item is 
     totalCount: 2,
     previousItemId: null,
     nextItemId: null
+  });
+});
+
+test("wardrobe preview navigation stays inside the current search result set", () => {
+  const visibleIds = getVisibleWardrobeItems(
+    previewItems,
+    emptyWardrobeFilters,
+    {},
+    "704",
+    previewSearchTextById,
+    "newest"
+  ).map((item) => item.id);
+
+  assert.deepEqual(visibleIds, ["item-704-b", "item-704-a"]);
+  assert.deepEqual(getWardrobePreviewNavigation(visibleIds, "item-704-b"), {
+    currentIndex: 0,
+    totalCount: 2,
+    previousItemId: "item-704-a",
+    nextItemId: "item-704-a"
+  });
+});
+
+test("wardrobe preview navigation stays inside collection and status result sets in sort order", () => {
+  const travelIds = getVisibleWardrobeItems(
+    previewItems,
+    {
+      ...emptyWardrobeFilters,
+      collections: ["Travel"]
+    },
+    {},
+    "",
+    previewSearchTextById,
+    "oldest"
+  ).map((item) => item.id);
+  const wishlistIds = getVisibleWardrobeItems(
+    previewItems,
+    {
+      ...emptyWardrobeFilters,
+      status: ["Wishlist"]
+    },
+    {},
+    "",
+    previewSearchTextById,
+    "newest"
+  ).map((item) => item.id);
+
+  assert.deepEqual(travelIds, ["item-601", "item-704-b"]);
+  assert.deepEqual(getWardrobePreviewNavigation(travelIds, "item-601"), {
+    currentIndex: 0,
+    totalCount: 2,
+    previousItemId: "item-704-b",
+    nextItemId: "item-704-b"
+  });
+  assert.deepEqual(wishlistIds, ["item-704-b"]);
+  assert.deepEqual(getWardrobePreviewNavigation(wishlistIds, "item-704-b"), {
+    currentIndex: 0,
+    totalCount: 1,
+    previousItemId: "item-704-b",
+    nextItemId: "item-704-b"
   });
 });
 
