@@ -53,9 +53,9 @@ import {
   getCurrentOutfitStyleChip,
   getEligibleSlotPool,
   getOtherTopSlot,
+  getManualSelectorSlotPool,
   getOutfitDominantStyle,
   getOutfitKey,
-  getPool,
   getGuidedBreakdownDisplayEntries,
   isEligibleForGeneration,
   isNonStackableTopType,
@@ -2157,17 +2157,17 @@ export default function App() {
     [items]
   );
   const activeSelectorPool = useMemo(
-    () => (activeOutfitSlot ? getSlotPickerOptions(activeOutfitSlot) : []),
+    () => (
+      activeOutfitSlot
+        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById)
+        : []
+    ),
     [
       activeOutfitSlot,
-      excluded,
-      generationLists,
-      generationSourceItems,
+      items,
       itemsById,
       layering,
-      outfit,
-      outfitFilters,
-      weatherData
+      outfit
     ]
   );
   const activeSelectorStatusOptions = useMemo(
@@ -3522,23 +3522,6 @@ export default function App() {
 
   function getSlotOptions(slot) {
     return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
-  }
-
-  function getSlotPickerOptions(slot) {
-    let pool = getPool(generationSourceItems, slot, {}, generationLists, layering);
-
-    if (layering && (slot === "TopInner" || slot === "TopOuter")) {
-      const otherTopSlot = getOtherTopSlot(slot);
-      const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-      if (otherItem?.layerType === "Both") {
-        pool = pool.filter((item) => item.layerType !== "Both");
-      }
-
-      pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
-    }
-
-    return pool;
   }
 
   function getAccessoryOptions(slot) {
