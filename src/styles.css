@@ -4215,6 +4215,112 @@ button:disabled {
   font-weight: 600;
 }
 
+.editor-image-manager {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.editor-image-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted-strong);
+}
+
+.editor-image-manager-count {
+  min-width: 24px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  text-align: center;
+  background: var(--surface-solid);
+}
+
+.editor-image-manager-list {
+  display: grid;
+  gap: 8px;
+}
+
+.editor-image-manager-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-panel);
+  background: var(--surface-solid);
+}
+
+.editor-image-manager-row.is-active {
+  border-color: var(--border-strong);
+}
+
+.editor-image-manager-thumb {
+  height: 56px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: linear-gradient(180deg, var(--preview-start), var(--preview-end));
+  color: var(--muted);
+  font-size: 0.58rem;
+  text-transform: uppercase;
+}
+
+.editor-image-manager-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.editor-image-manager-body {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.editor-image-manager-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 0.72rem;
+}
+
+.editor-image-manager-badge {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--soft);
+  color: var(--muted-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.editor-image-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.editor-image-manager-actions .ghost-button {
+  padding: 4px 6px;
+  font-size: 0.66rem;
+}
+
 .editor-form label {
   display: grid;
   gap: 3px;
@@ -4629,6 +4735,14 @@ button:disabled {
 
   .item-image-preview .managed-image {
     max-height: calc(130px * var(--managed-frame-scale, 1));
+  }
+
+  .editor-image-manager-row {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .editor-image-manager-thumb {
+    height: 48px;
   }
 
   .top-layer-row {

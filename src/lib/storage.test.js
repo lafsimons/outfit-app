@@ -655,6 +655,71 @@ test("item legacy-id rename preserves one metadata row keyed by itemUuid without
   assert.equal(metadata.recordVersion, 2);
 });
 
+test("item save and load preserves wardrobe itemImages and activeItemImageUuid", async () => {
+  const item = {
+    id: "item_wardrobe_images",
+    itemUuid: "item-uuid-images",
+    name: "Wardrobe item",
+    imageUrl: "data:image/png;base64,back",
+    images: {
+      original: { src: "" },
+      preview: { src: "data:image/png;base64,back" },
+      thumbnail: { src: "data:image/png;base64,back" }
+    },
+    activeItemImageUuid: "item-image-2",
+    itemImages: [
+      {
+        itemImageUuid: "item-image-1",
+        parentItemUuid: "item-uuid-images",
+        order: 0,
+        canonicalAsset: {
+          assetUuid: "asset-1",
+          kind: "canonical",
+          parentItemImageUuid: "item-image-1",
+          order: 0,
+          imageUrl: "data:image/png;base64,front",
+          images: {
+            original: { src: "" },
+            preview: { src: "data:image/png;base64,front" },
+            thumbnail: { src: "data:image/png;base64,front" }
+          }
+        },
+        derivedAssets: [],
+        activeImageAssetUuid: "asset-1"
+      },
+      {
+        itemImageUuid: "item-image-2",
+        parentItemUuid: "item-uuid-images",
+        order: 1,
+        canonicalAsset: {
+          assetUuid: "asset-2",
+          kind: "canonical",
+          parentItemImageUuid: "item-image-2",
+          order: 0,
+          imageUrl: "data:image/png;base64,back",
+          images: {
+            original: { src: "" },
+            preview: { src: "data:image/png;base64,back" },
+            thumbnail: { src: "data:image/png;base64,back" }
+          }
+        },
+        derivedAssets: [],
+        activeImageAssetUuid: "asset-2"
+      }
+    ]
+  };
+
+  await saveItem(item);
+
+  const [storedItem] = await loadItems();
+
+  assert.equal(storedItem.activeItemImageUuid, "item-image-2");
+  assert.equal(storedItem.itemImages.length, 2);
+  assert.equal(storedItem.itemImages[0].itemImageUuid, "item-image-1");
+  assert.equal(storedItem.itemImages[1].itemImageUuid, "item-image-2");
+  assert.equal(storedItem.itemImages[1].activeImageAssetUuid, "asset-2");
+});
+
 test("saved outfit create edit and delete dirty marking updates one metadata row", async () => {
   const savedOutfit = {
     id: "saved_1",
