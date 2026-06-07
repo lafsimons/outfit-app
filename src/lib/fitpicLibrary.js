@@ -14,6 +14,18 @@ export const fitpicMultiValueFilterKeys = [
 ];
 
 export const fitpicExcludedMultiValueFilterKeys = fitpicMultiValueFilterKeys.map(getExcludedFilterKey);
+export const fitpicTagFamilyOrder = [
+  "season",
+  "brand",
+  "source",
+  "subject",
+  "medium",
+  "platform",
+  "publisher",
+  "project",
+  "event",
+  "collab"
+];
 
 export const emptyFitpicFilters = {
   tags: [],
@@ -228,6 +240,50 @@ export function matchesFitpicFilters(fitpic, filters, items = [], ignoredKeys = 
 
 function mergeSelected(options, ...selectedGroups) {
   return [...new Set([...options, ...selectedGroups.flat()])].sort((left, right) => left.localeCompare(right));
+}
+
+function getTagFamilySortIndex(family) {
+  const index = fitpicTagFamilyOrder.indexOf(family);
+  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+export function getFitpicTagFilterGroups(tags = []) {
+  const grouped = new Map();
+
+  tags.forEach((tag) => {
+    const normalizedTag = normalizeFilterToken(tag);
+
+    if (!normalizedTag) {
+      return;
+    }
+
+    const separatorIndex = normalizedTag.indexOf("/");
+    const family = separatorIndex === -1 ? "other" : normalizedTag.slice(0, separatorIndex).trim().toLowerCase();
+    const valueLabel = separatorIndex === -1 ? normalizedTag : normalizedTag.slice(separatorIndex + 1).trim();
+    const familyLabel = family === "other" ? "other" : family;
+    const nextEntry = {
+      value: normalizedTag,
+      label: valueLabel || normalizedTag,
+      fullLabel: normalizedTag
+    };
+
+    if (!grouped.has(familyLabel)) {
+      grouped.set(familyLabel, []);
+    }
+
+    grouped.get(familyLabel).push(nextEntry);
+  });
+
+  return [...grouped.entries()]
+    .sort(([leftFamily], [rightFamily]) => (
+      getTagFamilySortIndex(leftFamily) - getTagFamilySortIndex(rightFamily)
+      || leftFamily.localeCompare(rightFamily)
+    ))
+    .map(([family, options]) => ({
+      family,
+      label: family === "other" ? "Other" : family,
+      options: options.sort((left, right) => left.label.localeCompare(right.label) || left.value.localeCompare(right.value))
+    }));
 }
 
 export function getFitpicFilterOptions(fitpics = [], items = [], filters = emptyFitpicFilters) {

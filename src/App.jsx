@@ -152,6 +152,7 @@ import {
   fitpicExcludedMultiValueFilterKeys,
   fitpicMultiValueFilterKeys,
   getFitpicFilterOptions,
+  getFitpicTagFilterGroups,
   getFitpicPreviewDirectionForKey,
   getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
@@ -1679,6 +1680,10 @@ export default function App() {
       }
     ],
     [fitpicFilterOptions]
+  );
+  const fitpicTagFilterGroups = useMemo(
+    () => getFitpicTagFilterGroups(fitpicFilterOptions.tags),
+    [fitpicFilterOptions.tags]
   );
   const normalizedFitpicFilterSearch = fitpicFilterSearch.trim().toLowerCase();
   const visibleFitpics = useMemo(
@@ -6632,8 +6637,26 @@ export default function App() {
                           || noneLabel.includes(normalizedFitpicFilterSearch)
                         );
                         const isOpen = normalizedFitpicFilterSearch ? true : Boolean(fitpicFilterSectionsOpen[section.key]);
+                        const groupedTagMatches = section.key === "tags"
+                          ? fitpicTagFilterGroups
+                            .map((group) => {
+                              const groupMatches = group.options.filter((option) => (
+                                !normalizedFitpicFilterSearch
+                                || group.label.toLowerCase().includes(normalizedFitpicFilterSearch)
+                                || option.label.toLowerCase().includes(normalizedFitpicFilterSearch)
+                                || option.fullLabel.toLowerCase().includes(normalizedFitpicFilterSearch)
+                              ));
 
-                        if (!groupMatchesSearch && !filteredOptions.length && !showNoneOption) {
+                              if (!groupMatches.length) {
+                                return null;
+                              }
+
+                              return { ...group, options: groupMatches };
+                            })
+                            .filter(Boolean)
+                          : [];
+
+                        if (!groupMatchesSearch && !filteredOptions.length && !groupedTagMatches.length && !showNoneOption) {
                           return null;
                         }
 
@@ -6676,7 +6699,36 @@ export default function App() {
                                     {noneLabel}
                                   </button>
                                 ) : null}
-                                {filteredOptions.length ? filteredOptions.map((option) => {
+                                {section.key === "tags" ? groupedTagMatches.length ? groupedTagMatches.map((group) => (
+                                      <div key={group.family} className="fitpic-tag-filter-family">
+                                        <div className="fitpic-tag-filter-family-header">
+                                          <strong>{group.label}</strong>
+                                          <span>{group.options.length}</span>
+                                        </div>
+                                        <div className="fitpic-tag-filter-family-options">
+                                          {group.options.map((option) => {
+                                            const isIncluded = getIncludedFilterValues(fitpicFilters, section.key).includes(option.value);
+                                            const isExcluded = getExcludedFilterValues(fitpicFilters, section.key).includes(option.value);
+
+                                            return (
+                                              <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                                onMouseDown={(event) => event.preventDefault()}
+                                                onClick={(event) => toggleFitpicFilterValueWithMode(section.key, option.value, event.shiftKey)}
+                                                aria-pressed={isIncluded || isExcluded}
+                                                title={option.fullLabel}
+                                              >
+                                                {option.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))
+                                  : <p className="wardrobe-filter-empty">No matching options.</p>
+                                : filteredOptions.length ? filteredOptions.map((option) => {
                                   const isIncluded = section.kind === "multi"
                                     ? getIncludedFilterValues(fitpicFilters, section.key).includes(option.value)
                                     : false;

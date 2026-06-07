@@ -6,6 +6,7 @@ import {
   emptyFitpicFilters,
   filterAndSortFitpics,
   getFitpicFilterOptions,
+  getFitpicTagFilterGroups,
   getFitpicPreviewDirectionForKey,
   getFitpicPreviewNavigation,
   matchesFitpicFilters
@@ -148,6 +149,56 @@ test("fitpic filter options include tags and linked wardrobe metadata", () => {
   assert.deepEqual(options.brand, ["3sixteen"]);
   assert.deepEqual(options.type, ["Shirt"]);
   assert.deepEqual(options.status, ["available"]);
+});
+
+test("fitpic tag filter groups nest taxonomy-style tags by family", () => {
+  const groups = getFitpicTagFilterGroups([
+    "brand/taiga takahashi",
+    "season/aw25",
+    "season/ss25",
+    "subject/garment",
+    "source/official",
+    "editorial"
+  ]);
+
+  assert.deepEqual(groups, [
+    {
+      family: "season",
+      label: "season",
+      options: [
+        { value: "season/aw25", label: "aw25", fullLabel: "season/aw25" },
+        { value: "season/ss25", label: "ss25", fullLabel: "season/ss25" }
+      ]
+    },
+    {
+      family: "brand",
+      label: "brand",
+      options: [
+        { value: "brand/taiga takahashi", label: "taiga takahashi", fullLabel: "brand/taiga takahashi" }
+      ]
+    },
+    {
+      family: "source",
+      label: "source",
+      options: [
+        { value: "source/official", label: "official", fullLabel: "source/official" }
+      ]
+    },
+    {
+      family: "subject",
+      label: "subject",
+      options: [
+        { value: "subject/garment", label: "garment", fullLabel: "subject/garment" }
+      ]
+    },
+    {
+      family: "other",
+      label: "Other",
+      options: [
+        { value: "editorial", label: "editorial", fullLabel: "editorial" }
+      ]
+    }
+  ]);
 });
 
 test("matchesFitpicFilters treats linked favorite as linked-item metadata, not fitpic favorite", () => {

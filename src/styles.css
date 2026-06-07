@@ -2016,6 +2016,40 @@ button:disabled {
   font-size: 0.7rem;
 }
 
+.fitpic-tag-filter-family {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.fitpic-tag-filter-family-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.fitpic-tag-filter-family-header strong {
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.fitpic-tag-filter-family-header span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.fitpic-tag-filter-family-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-left: 14px;
+}
+
 .wardrobe-controls.is-open,
 .wardrobe-manage-window.is-open {
   display: flex;
