@@ -3,16 +3,38 @@ import assert from "node:assert/strict";
 
 import {
   buildFitpicSearchText,
+  emptyFitpicFilters,
   filterAndSortFitpics,
-  fitpicMatchesLinkedItemFilter,
-  getFitpicLinkedItemFilterOptions,
+  getFitpicFilterOptions,
+  getFitpicTagFilterGroups,
   getFitpicPreviewDirectionForKey,
-  getFitpicPreviewNavigation
+  getFitpicPreviewNavigation,
+  matchesFitpicFilters
 } from "./fitpicLibrary.js";
 
 const items = [
-  { id: "shirt_old", itemUuid: "uuid-shirt", brand: "Brand", name: "Shirt Renamed" },
-  { id: "boots_1", itemUuid: "uuid-boots", brand: "Brand", name: "Boots" }
+  {
+    id: "shirt_old",
+    itemUuid: "uuid-shirt",
+    brand: "3sixteen",
+    name: "Shirt Renamed",
+    type: "Shirt",
+    garmentType: "Top",
+    status: "available",
+    collections: ["Core"],
+    favorite: true
+  },
+  {
+    id: "boots_1",
+    itemUuid: "uuid-boots",
+    brand: "Paraboot",
+    name: "Boots",
+    type: "Boots",
+    garmentType: "Footwear",
+    status: "storage",
+    collections: ["Rain"],
+    favorite: false
+  }
 ];
 
 const fitpics = [
@@ -54,37 +76,60 @@ const fitpics = [
   }
 ];
 
-test("buildFitpicSearchText includes linked wardrobe item labels through uuid-first resolution", () => {
+test("buildFitpicSearchText is limited to the fitpic title", () => {
   const text = buildFitpicSearchText(fitpics[0], items);
 
-  assert.equal(text.includes("shirt renamed"), true);
-  assert.equal(text.includes("soft tailoring"), true);
+  assert.equal(text.includes("morning look"), true);
+  assert.equal(text.includes("soft tailoring"), false);
+  assert.equal(text.includes("shirt renamed"), false);
+  assert.equal(text.includes("spring"), false);
 });
 
-test("linked wardrobe item filter survives item rename through uuid-first resolution", () => {
-  assert.equal(fitpicMatchesLinkedItemFilter(fitpics[0], "uuid:uuid-shirt", items), true);
-  assert.equal(fitpicMatchesLinkedItemFilter(fitpics[0], "id:shirt_old", items), true);
-  assert.equal(fitpicMatchesLinkedItemFilter(fitpics[0], "id:shirt_legacy", items), false);
-});
-
-test("linked wardrobe item filter options dedupe uuid/id sidecars into one current item", () => {
-  assert.deepEqual(getFitpicLinkedItemFilterOptions(fitpics, items), [
-    { value: "uuid:uuid-boots", label: "Brand Boots" },
-    { value: "uuid:uuid-shirt", label: "Brand Shirt Renamed" }
-  ]);
-});
-
-test("fitpic local search and favorite filter work together", () => {
+test("fitpic local search matches title only and ignores description or linked metadata", () => {
   const filtered = filterAndSortFitpics(
     fitpics,
     {
-      search: "shirt renamed",
-      favoritesOnly: true
+      search: "Morning"
     },
     items
   );
 
   assert.deepEqual(filtered.map((fitpic) => fitpic.id), ["fitpic_1"]);
+  assert.deepEqual(filterAndSortFitpics(fitpics, { search: "soft tailoring" }, items), []);
+  assert.deepEqual(filterAndSortFitpics(fitpics, { search: "shirt renamed" }, items), []);
+});
+
+test("fitpic tag filters and linked metadata filters use the fitpic filter architecture", () => {
+  const filtered = filterAndSortFitpics(
+    fitpics,
+    {
+      filters: {
+        ...emptyFitpicFilters,
+        tags: ["Spring"],
+        type: ["Shirt"],
+        collections: ["Core"],
+        favorite: "yes"
+      }
+    },
+    items
+  );
+
+  assert.deepEqual(filtered.map((fitpic) => fitpic.id), ["fitpic_1"]);
+});
+
+test("fitpic filters can exclude linked metadata values", () => {
+  const filtered = filterAndSortFitpics(
+    fitpics,
+    {
+      filters: {
+        ...emptyFitpicFilters,
+        statusExcluded: ["storage"]
+      }
+    },
+    items
+  );
+
+  assert.deepEqual(filtered.map((fitpic) => fitpic.id), ["fitpic_1", "fitpic_3"]);
 });
 
 test("fitDate newest sorting falls back gracefully when fitDate is missing", () => {
@@ -93,17 +138,81 @@ test("fitDate newest sorting falls back gracefully when fitDate is missing", () 
   assert.deepEqual(sorted.map((fitpic) => fitpic.id), ["fitpic_2", "fitpic_1", "fitpic_3"]);
 });
 
-test("title sorting and linked item filtering are fitpics-local behaviors", () => {
-  const sorted = filterAndSortFitpics(
-    fitpics,
-    {
-      sort: "titleAz",
-      linkedItemFilter: "uuid:uuid-boots"
-    },
-    items
-  );
+test("fitpic filter options include tags and linked wardrobe metadata", () => {
+  const options = getFitpicFilterOptions(fitpics, items, {
+    ...emptyFitpicFilters,
+    collections: ["Core"]
+  });
 
-  assert.deepEqual(sorted.map((fitpic) => fitpic.id), ["fitpic_2"]);
+  assert.deepEqual(options.tags, ["Spring"]);
+  assert.deepEqual(options.linkedItem, ["3sixteen Shirt Renamed"]);
+  assert.deepEqual(options.brand, ["3sixteen"]);
+  assert.deepEqual(options.type, ["Shirt"]);
+  assert.deepEqual(options.status, ["available"]);
+});
+
+test("fitpic tag filter groups nest taxonomy-style tags by family", () => {
+  const groups = getFitpicTagFilterGroups([
+    "brand/taiga takahashi",
+    "season/aw25",
+    "season/ss25",
+    "subject/garment",
+    "source/official",
+    "editorial"
+  ]);
+
+  assert.deepEqual(groups, [
+    {
+      family: "season",
+      label: "season",
+      options: [
+        { value: "season/aw25", label: "aw25", fullLabel: "season/aw25" },
+        { value: "season/ss25", label: "ss25", fullLabel: "season/ss25" }
+      ]
+    },
+    {
+      family: "brand",
+      label: "brand",
+      options: [
+        { value: "brand/taiga takahashi", label: "taiga takahashi", fullLabel: "brand/taiga takahashi" }
+      ]
+    },
+    {
+      family: "source",
+      label: "source",
+      options: [
+        { value: "source/official", label: "official", fullLabel: "source/official" }
+      ]
+    },
+    {
+      family: "subject",
+      label: "subject",
+      options: [
+        { value: "subject/garment", label: "garment", fullLabel: "subject/garment" }
+      ]
+    },
+    {
+      family: "other",
+      label: "Other",
+      options: [
+        { value: "editorial", label: "editorial", fullLabel: "editorial" }
+      ]
+    }
+  ]);
+});
+
+test("matchesFitpicFilters treats linked favorite as linked-item metadata, not fitpic favorite", () => {
+  assert.equal(
+    matchesFitpicFilters(
+      { ...fitpics[1], favorite: true },
+      {
+        ...emptyFitpicFilters,
+        favorite: "no"
+      },
+      items
+    ),
+    true
+  );
 });
 
 test("fitpic preview navigation follows the current visible order without wrapping", () => {

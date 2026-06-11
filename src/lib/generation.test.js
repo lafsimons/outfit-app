@@ -9,6 +9,7 @@ import {
   getCurrentOutfitClimateChip,
   getEligibleSlotPool,
   getGuidedScoreBreakdown,
+  getManualSelectorSlotPool,
   getOutfitDominantStyle,
   getPool,
   isEligibleForGeneration,
@@ -581,6 +582,59 @@ test("shared eligible slot pool matches formal generation footwear outcomes", ()
   );
 
   assert.deepEqual(seenGeneratedIds.sort(), eligibleIds);
+});
+
+test("manual selector slot pool stays broad even when guided eligible pool is style-constrained", () => {
+  const guidedPool = getEligibleSlotPool(
+    syntheticWardrobe,
+    "TopInner",
+    {},
+    defaultGenerationLists,
+    true,
+    { style: ["Athleisure"], climate: [] },
+    null,
+    {},
+    itemsById
+  ).map((item) => item.id);
+  const manualPool = getManualSelectorSlotPool(
+    syntheticWardrobe,
+    "TopInner",
+    true,
+    {},
+    itemsById
+  ).map((item) => item.id);
+
+  assert.equal(guidedPool.includes("top_shirt"), false);
+  assert.equal(manualPool.includes("top_shirt"), true);
+});
+
+test("manual selector slot pool ignores generation-list eligibility but keeps slot validity", () => {
+  const selectorItems = [
+    { id: "wishlist_top", garmentType: "Top", layerType: "Inner", status: "Wishlist" },
+    { id: "wardrobe_bottom", garmentType: "Bottom", layerType: "Both", status: "Wardrobe" }
+  ];
+
+  const manualPool = getManualSelectorSlotPool(
+    selectorItems,
+    "TopInner",
+    true,
+    {},
+    {}
+  ).map((item) => item.id);
+  const guidedPool = getEligibleSlotPool(
+    selectorItems,
+    "TopInner",
+    {},
+    defaultGenerationLists,
+    true,
+    { style: [], climate: [] },
+    null,
+    {},
+    {}
+  ).map((item) => item.id);
+
+  assert.deepEqual(manualPool, ["wishlist_top"]);
+  assert.deepEqual(guidedPool, []);
 });
 
 test("formal forward-check keeps early bridge footwear eligible when remaining slots can still anchor", () => {

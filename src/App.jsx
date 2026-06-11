@@ -53,9 +53,9 @@ import {
   getCurrentOutfitStyleChip,
   getEligibleSlotPool,
   getOtherTopSlot,
+  getManualSelectorSlotPool,
   getOutfitDominantStyle,
   getOutfitKey,
-  getPool,
   getGuidedBreakdownDisplayEntries,
   isEligibleForGeneration,
   isNonStackableTopType,
@@ -147,8 +147,12 @@ import {
   setActiveWardrobeItemImageInDraft
 } from "./lib/wardrobeItemImageEditorModel";
 import {
+  emptyFitpicFilters,
   filterAndSortFitpics,
-  getFitpicLinkedItemFilterOptions,
+  fitpicExcludedMultiValueFilterKeys,
+  fitpicMultiValueFilterKeys,
+  getFitpicFilterOptions,
+  getFitpicTagFilterGroups,
   getFitpicPreviewDirectionForKey,
   getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
@@ -156,18 +160,25 @@ import {
   filterAndSortSavedOutfits,
   getSavedOutfitTagFilterOptions
 } from "./lib/savedOutfitLibrary";
+import {
+  createEmptySelectorFilters,
+  DEFAULT_SELECTOR_SORT,
+  filterAndSortSelectorItems,
+  getSelectorSearchText,
+  getSelectorFilterOptions,
+  hasActiveSelectorControls
+} from "./lib/outfitItemSelectorLibrary";
 import { prepareBackupImport } from "./lib/backupImport";
 import {
   DEFAULT_WARDROBE_SORT,
   emptyWardrobeFilters,
-  filterWardrobeItems,
+  getVisibleWardrobeItems,
   getExcludedFilterKey,
   getWardrobeFilterOptions,
   getWardrobeSearchText,
   matchesWardrobeFilters,
   normalizeWardrobeFilters,
   normalizeWardrobeSort,
-  sortWardrobeItems,
   wardrobeExcludedMultiValueFilterKeys,
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
@@ -291,6 +302,16 @@ const defaultWardrobeFilterSectionsOpen = {
   collections: false,
   favorite: false,
   laundry: false
+};
+const defaultFitpicFilterSectionsOpen = {
+  tags: false,
+  linkedItem: false,
+  brand: false,
+  garmentType: false,
+  type: false,
+  status: false,
+  collections: false,
+  favorite: false
 };
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
@@ -1306,6 +1327,61 @@ async function fetchWeatherForSavedLocation(settings) {
 }
 
 export default function App() {
+  function SlotActionIcon({ kind, locked: isLocked = false }) {
+    if (kind === "lock") {
+      return isLocked ? (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5.25 6V4.85a2.75 2.75 0 1 1 5.5 0V6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="3.5" y="6" width="9" height="6.75" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M10.8 6V4.9a2.75 2.75 0 1 0-5.5 0" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M10.8 6H6.4a1.7 1.7 0 0 0-1.7 1.7v3.35a1.7 1.7 0 0 0 1.7 1.7h5.15a1.7 1.7 0 0 0 1.7-1.7V7.7A1.7 1.7 0 0 0 11.55 6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "reroll") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M12.5 5.75V2.9H9.65" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M12.25 3.2A5.25 5.25 0 1 0 13 8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "previous") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M9.75 3.75 5.25 8l4.5 4.25" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "next") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="m6.25 3.75 4.5 4.25-4.5 4.25" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "remove") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5 4.5h6.05M6.15 4.5l.45-1.2h2.8l.45 1.2M5.55 6.1v5.35M8 6.1v5.35M10.45 6.1v5.35M4.6 4.5h6.8v7a1.4 1.4 0 0 1-1.4 1.4H6a1.4 1.4 0 0 1-1.4-1.4v-7Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        <path d="m4.25 4.25 7.5 7.5M11.75 4.25l-7.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
   const outfitSectionTabs = [
     ["saved", "Saved"],
     ["fitpics", "Fitpics"]
@@ -1318,6 +1394,7 @@ export default function App() {
   const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
   const pickerOverlayRef = useRef(null);
+  const slotActionsPopoverRef = useRef(null);
   const inlineEditorResizeRef = useRef(null);
   const outfitDebugRef = useRef(null);
   const generationListsRef = useRef(null);
@@ -1364,6 +1441,11 @@ export default function App() {
   const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
+  const [activeSlotActionsSlot, setActiveSlotActionsSlot] = useState(null);
+  const [selectorSearch, setSelectorSearch] = useState("");
+  const [selectorSort, setSelectorSort] = useState(DEFAULT_SELECTOR_SORT);
+  const [selectorFilters, setSelectorFilters] = useState(createEmptySelectorFilters);
+  const [selectorFiltersOpen, setSelectorFiltersOpen] = useState(false);
   const [selectedAccessorySlot, setSelectedAccessorySlot] = useState(null);
   const [selectedOutfitSlot, setSelectedOutfitSlot] = useState(null);
   const [pickerAnchorSlot, setPickerAnchorSlot] = useState(null);
@@ -1388,8 +1470,10 @@ export default function App() {
   const [fitpicDropActive, setFitpicDropActive] = useState(false);
   const [fitpicSearch, setFitpicSearch] = useState("");
   const [fitpicSort, setFitpicSort] = useState("fitDateNewest");
-  const [fitpicFavoritesOnly, setFitpicFavoritesOnly] = useState(false);
-  const [fitpicLinkedItemFilter, setFitpicLinkedItemFilter] = useState("");
+  const [fitpicFiltersOpen, setFitpicFiltersOpen] = useState(false);
+  const [fitpicFilterSearch, setFitpicFilterSearch] = useState("");
+  const [fitpicFilterSectionsOpen, setFitpicFilterSectionsOpen] = useState(defaultFitpicFilterSectionsOpen);
+  const [fitpicFilters, setFitpicFilters] = useState(emptyFitpicFilters);
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
@@ -1559,29 +1643,49 @@ export default function App() {
       })
       .slice(0, 8);
   }, [editingFitpic, fitpicDraft.linkedItemIds, fitpicDraft.linkedItemUuids, fitpicLinkedItemSearch, items]);
-  const fitpicLinkedItemFilterOptions = useMemo(
-    () => getFitpicLinkedItemFilterOptions(fitpics, items),
-    [fitpics, items]
+  const activeFitpicFilterCount = Object.entries(fitpicFilters).reduce(
+    (count, [key, value]) =>
+      count + (
+        fitpicMultiValueFilterKeys.includes(key) || fitpicExcludedMultiValueFilterKeys.includes(key)
+          ? value.length
+          : value
+            ? 1
+            : 0
+      ),
+    0
   );
-  const selectedFitpicLinkedItemFilterLabel = useMemo(
-    () => fitpicLinkedItemFilterOptions.find((option) => option.value === fitpicLinkedItemFilter)?.label ?? "",
-    [fitpicLinkedItemFilter, fitpicLinkedItemFilterOptions]
+  const hasActiveFitpicFilters = activeFitpicFilterCount > 0;
+  const fitpicFilterOptions = useMemo(
+    () => getFitpicFilterOptions(fitpics, items, fitpicFilters),
+    [fitpicFilters, fitpics, items]
   );
-  const selectedFitpicSortLabel = useMemo(() => {
-    switch (fitpicSort) {
-      case "fitDateOldest":
-        return "Fit date oldest";
-      case "createdNewest":
-        return "Created newest";
-      case "importedNewest":
-        return "Imported newest";
-      case "titleAz":
-        return "Title A-Z";
-      case "fitDateNewest":
-      default:
-        return "Fit date newest";
-    }
-  }, [fitpicSort]);
+  const fitpicFilterPanelSections = useMemo(
+    () => [
+      { label: "Tags", key: "tags", options: fitpicFilterOptions.tags, includeNone: true, kind: "multi" },
+      { label: "Linked item", key: "linkedItem", options: fitpicFilterOptions.linkedItem, includeNone: false, kind: "multi" },
+      { label: "Brand", key: "brand", options: fitpicFilterOptions.brand, includeNone: true, kind: "multi" },
+      { label: "Garment", key: "garmentType", options: fitpicFilterOptions.garmentType, includeNone: true, kind: "multi" },
+      { label: "Type", key: "type", options: fitpicFilterOptions.type, includeNone: true, kind: "multi" },
+      { label: "Status", key: "status", options: fitpicFilterOptions.status, includeNone: false, kind: "multi" },
+      { label: "Collections", key: "collections", options: fitpicFilterOptions.collections, includeNone: false, kind: "multi" },
+      {
+        label: "Favorite",
+        key: "favorite",
+        options: [
+          { label: "Favorites", value: "yes" },
+          { label: "Not favorites", value: "no" }
+        ],
+        includeNone: false,
+        kind: "single"
+      }
+    ],
+    [fitpicFilterOptions]
+  );
+  const fitpicTagFilterGroups = useMemo(
+    () => getFitpicTagFilterGroups(fitpicFilterOptions.tags),
+    [fitpicFilterOptions.tags]
+  );
+  const normalizedFitpicFilterSearch = fitpicFilterSearch.trim().toLowerCase();
   const visibleFitpics = useMemo(
     () =>
       filterAndSortFitpics(
@@ -1589,12 +1693,11 @@ export default function App() {
         {
           search: fitpicSearch,
           sort: fitpicSort,
-          favoritesOnly: fitpicFavoritesOnly,
-          linkedItemFilter: fitpicLinkedItemFilter
+          filters: fitpicFilters
         },
         items
       ),
-    [fitpicFavoritesOnly, fitpicLinkedItemFilter, fitpicSearch, fitpicSort, fitpics, items]
+    [fitpicFilters, fitpicSearch, fitpicSort, fitpics, items]
   );
   const visibleFitpicIds = useMemo(
     () => visibleFitpics.map((fitpic) => fitpic.id),
@@ -1605,7 +1708,7 @@ export default function App() {
     [fitpicPreview?.id, visibleFitpicIds]
   );
   const hasActiveFitpicControls = Boolean(
-    fitpicSearch.trim() || fitpicFavoritesOnly || fitpicLinkedItemFilter || fitpicSort !== "fitDateNewest"
+    fitpicSearch.trim() || hasActiveFitpicFilters || fitpicSort !== "fitDateNewest"
   );
   const selectedFitpics = useMemo(
     () => selectedFitpicIds.map((fitpicId) => fitpicsById[fitpicId]).filter(Boolean),
@@ -1704,6 +1807,13 @@ export default function App() {
 
     setFitpicPreviewImageIndex(fitpicPreviewImages.length - 1);
   }, [fitpicPreviewImageIndex, fitpicPreviewImages]);
+
+  useEffect(() => {
+    setSelectorSearch("");
+    setSelectorSort(DEFAULT_SELECTOR_SORT);
+    setSelectorFilters(createEmptySelectorFilters());
+    setSelectorFiltersOpen(false);
+  }, [activeOutfitSlot]);
 
   function noteInteractionModality(event) {
     if (event.type === "pointerdown") {
@@ -2140,6 +2250,57 @@ export default function App() {
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
     [items]
   );
+  const selectorSearchTextById = useMemo(
+    () => Object.fromEntries(items.map((item) => [item.id, getSelectorSearchText(item)])),
+    [items]
+  );
+  const activeSelectorPool = useMemo(
+    () => (
+      activeOutfitSlot
+        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById)
+        : []
+    ),
+    [
+      activeOutfitSlot,
+      items,
+      itemsById,
+      layering,
+      outfit
+    ]
+  );
+  const activeSelectorStatusOptions = useMemo(
+    () => getItemStatusOptions(activeSelectorPool.map((item) => item.status ?? item.list)),
+    [activeSelectorPool]
+  );
+  const selectorFilterOptions = useMemo(
+    () => getSelectorFilterOptions(activeSelectorPool, selectorFilters, {
+      itemStatusOptions: activeSelectorStatusOptions
+    }),
+    [activeSelectorPool, activeSelectorStatusOptions, selectorFilters]
+  );
+  const visibleSelectorItems = useMemo(
+    () =>
+      filterAndSortSelectorItems(activeSelectorPool, {
+        search: selectorSearch,
+        filters: selectorFilters,
+        sort: selectorSort,
+        searchTextById: selectorSearchTextById
+      }),
+    [activeSelectorPool, selectorFilters, selectorSearch, selectorSort, selectorSearchTextById]
+  );
+  const hasActiveSelectorLocalControls = useMemo(
+    () => hasActiveSelectorControls({ search: selectorSearch, filters: selectorFilters, sort: selectorSort }),
+    [selectorFilters, selectorSearch, selectorSort]
+  );
+  const hasActiveSelectorLocalFilters = useMemo(
+    () => Boolean(
+      (selectorFilters.type ?? []).length
+      || (selectorFilters.status ?? []).length
+      || (selectorFilters.collections ?? []).length
+      || selectorFilters.favorite
+    ),
+    [selectorFilters]
+  );
   const wardrobeFilterOptions = useMemo(
     () =>
       getWardrobeFilterOptions(items, wardrobeFilters, {
@@ -2238,6 +2399,36 @@ export default function App() {
   }));
   const activeWardrobeFilterChips = buildActiveFilterChips(wardrobeFilters);
   const activeDashboardFilterChips = buildActiveFilterChips(dashboardFilters);
+  const activeFitpicFilterChips = [
+    ...[
+      ["Tags", "tags"],
+      ["Linked item", "linkedItem"],
+      ["Brand", "brand"],
+      ["Garment", "garmentType"],
+      ["Type", "type"],
+      ["Status", "status"],
+      ["Collections", "collections"]
+    ].flatMap(([label, key]) => [
+      ...getIncludedFilterValues(fitpicFilters, key).map((value) => ({ label, key, value, excluded: false })),
+      ...getExcludedFilterValues(fitpicFilters, key).map((value) => ({ label, key, value, excluded: true }))
+    ]),
+    ...(fitpicFilters.favorite ? [{ label: "Favorite", key: "favorite", value: fitpicFilters.favorite, excluded: false }] : [])
+  ].map((filter) => ({
+    ...filter,
+    rawValue: filter.value,
+    value:
+      filter.label === "Favorite"
+        ? filter.value === "yes"
+          ? "Favorites"
+          : "Not favorites"
+        : filter.value === "__none__"
+          ? filter.excluded
+            ? `Has ${filter.label.toLowerCase()}`
+            : `No ${filter.label.toLowerCase()}`
+          : filter.excluded
+            ? `Not ${filter.value}`
+            : filter.value
+  }));
   const wardrobeFilterPanelSections = useMemo(
     () => [
       { label: "Brand", key: "brand", options: wardrobeFilterOptions.brand, includeNone: true, kind: "multi" },
@@ -2705,12 +2896,10 @@ export default function App() {
   }
 
   const visibleWardrobeItems = useMemo(() => {
-    const filtered = filterWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById);
-    return sortWardrobeItems(filtered, wardrobeSort);
+    return getVisibleWardrobeItems(items, wardrobeFilters, excluded, wardrobeSearch, wardrobeSearchTextById, wardrobeSort);
   }, [excluded, items, wardrobeFilters, wardrobeSearch, wardrobeSearchTextById, wardrobeSort]);
   const visibleDashboardItems = useMemo(() => {
-    const filtered = filterWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById);
-    return sortWardrobeItems(filtered, dashboardSort);
+    return getVisibleWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById, dashboardSort);
   }, [dashboardFilters, dashboardSort, excluded, items, wardrobeSearchTextById]);
   const visibleWardrobeItemIds = useMemo(
     () => visibleWardrobeItems.map((item) => item.id),
@@ -3202,6 +3391,16 @@ export default function App() {
   }, [activeAccessorySlot, activeOutfitSlot, selectedAccessorySlot, selectedOutfitSlot]);
 
   useEffect(() => {
+    if (!activeSlotActionsSlot) {
+      return;
+    }
+
+    if (!outfit[activeSlotActionsSlot]) {
+      setActiveSlotActionsSlot(null);
+    }
+  }, [activeSlotActionsSlot, outfit]);
+
+  useEffect(() => {
     if (!outfitDebugOpen) {
       return undefined;
     }
@@ -3330,6 +3529,13 @@ export default function App() {
         return;
       }
 
+      if (activeSlotActionsSlot) {
+        event.preventDefault();
+        blurRetainedPointerFocus();
+        setActiveSlotActionsSlot(null);
+        return;
+      }
+
       if (selectedOutfitSlot || selectedAccessorySlot) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -3407,6 +3613,7 @@ export default function App() {
     wardrobeFiltersOpen,
     wardrobeManageOpen,
     generationListsOpen,
+    activeSlotActionsSlot,
     selectedAccessorySlot,
     selectedOutfitSlot
   ]);
@@ -3415,6 +3622,7 @@ export default function App() {
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    setActiveSlotActionsSlot(null);
     clearSelectedOutfitItem();
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
@@ -3468,23 +3676,6 @@ export default function App() {
 
   function getSlotOptions(slot) {
     return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, layering, outfitFilters, weatherData, outfit, itemsById);
-  }
-
-  function getSlotPickerOptions(slot) {
-    let pool = getPool(generationSourceItems, slot, {}, generationLists, layering);
-
-    if (layering && (slot === "TopInner" || slot === "TopOuter")) {
-      const otherTopSlot = getOtherTopSlot(slot);
-      const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-      if (otherItem?.layerType === "Both") {
-        pool = pool.filter((item) => item.layerType !== "Both");
-      }
-
-      pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
-    }
-
-    return pool;
   }
 
   function getAccessoryOptions(slot) {
@@ -4557,6 +4748,11 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function clearFitpicFilters() {
+    setFitpicFilters(emptyFitpicFilters);
+    setFitpicFilterSearch("");
+  }
+
   function clearDashboardFilters() {
     setDashboardFilters(emptyWardrobeFilters);
     setDashboardFilterSearch("");
@@ -4571,6 +4767,13 @@ export default function App() {
 
   function toggleDashboardFilterSection(key) {
     setDashboardFilterSectionsOpen((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
+  function toggleFitpicFilterSection(key) {
+    setFitpicFilterSectionsOpen((current) => ({
       ...current,
       [key]: !current[key]
     }));
@@ -4592,6 +4795,10 @@ export default function App() {
     setDashboardFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
   }
 
+  function toggleFitpicFilterValueWithMode(key, value, shouldExclude = false) {
+    setFitpicFilters((current) => toggleMultiFilterValueState(current, key, value, shouldExclude));
+  }
+
   function setWardrobeToggleFilter(key, value) {
     setWardrobeFilters((current) => ({
       ...current,
@@ -4601,6 +4808,13 @@ export default function App() {
 
   function setDashboardToggleFilter(key, value) {
     setDashboardFilters((current) => ({
+      ...current,
+      [key]: value
+    }));
+  }
+
+  function setFitpicToggleFilter(key, value) {
+    setFitpicFilters((current) => ({
       ...current,
       [key]: value
     }));
@@ -5379,6 +5593,7 @@ export default function App() {
 
   function openAccessoryPicker(slot) {
     closeUtilityWindows();
+    setActiveSlotActionsSlot(null);
     setActiveAccessorySlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -5396,6 +5611,7 @@ export default function App() {
 
   function openOutfitSlotPicker(slot) {
     closeUtilityWindows();
+    setActiveSlotActionsSlot(null);
     setActiveOutfitSlot((current) => {
       const nextSlot = current === slot ? null : slot;
       setPickerAnchorSlot(nextSlot);
@@ -5435,6 +5651,25 @@ export default function App() {
     clearSelectedOutfitItem();
   }
 
+  function toggleSlotActionsPopover(slot) {
+    setActiveSlotActionsSlot((current) => current === slot ? null : slot);
+  }
+
+  function setSelectorFilterValue(key, value) {
+    setSelectorFilters((current) => ({
+      ...current,
+      [key]: value ? [value] : [],
+      [getExcludedFilterKey(key)]: []
+    }));
+  }
+
+  function clearSelectorControls() {
+    setSelectorSearch("");
+    setSelectorSort(DEFAULT_SELECTOR_SORT);
+    setSelectorFilters(createEmptySelectorFilters());
+    setSelectorFiltersOpen(false);
+  }
+
   function closeUtilityWindows() {
     setWeatherOpen(false);
     setOutfitFiltersOpen(false);
@@ -5457,9 +5692,11 @@ export default function App() {
       }
       setActiveOutfitSlot(null);
       setActiveAccessorySlot(null);
+      setActiveSlotActionsSlot(null);
       clearSelectedOutfitItem();
       setPickerAnchorSlot(null);
       setWardrobeFiltersOpen(false);
+      setFitpicFiltersOpen(false);
       setDashboardFiltersOpen(false);
       setWardrobeManageOpen(false);
       closeWardrobePreview({ restoreFitpicPreview: false });
@@ -5491,6 +5728,7 @@ export default function App() {
 
   function closeWorkspacePanel() {
     setActivePanel(null);
+    setActiveSlotActionsSlot(null);
     clearSelectedOutfitItem();
     if (!controlsOpen) {
       setDockExpanded(isMobileViewport ? false : true);
@@ -5533,6 +5771,7 @@ export default function App() {
 
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
+    setActiveSlotActionsSlot(null);
     setPickerAnchorSlot(null);
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
@@ -5570,6 +5809,11 @@ export default function App() {
   function dismissWardrobeFilters() {
     setWardrobeFiltersOpen(false);
     setWardrobeFilterSearch("");
+  }
+
+  function dismissFitpicFilters() {
+    setFitpicFiltersOpen(false);
+    setFitpicFilterSearch("");
   }
 
   function dismissDashboardFilters() {
@@ -5636,6 +5880,23 @@ export default function App() {
     });
   }
 
+  function openFitpicFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    setFitpicFiltersOpen((current) => {
+      const nextOpen = !current;
+
+      if (!nextOpen) {
+        setFitpicFilterSearch("");
+      }
+
+      return nextOpen;
+    });
+  }
+
   function openDashboardFilters(event) {
     if (event) {
       blurPointerActivatedControl(event);
@@ -5659,6 +5920,14 @@ export default function App() {
     }
 
     dismissWardrobeFilters();
+  }
+
+  function closeFitpicFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    dismissFitpicFilters();
   }
 
   function toggleWardrobeManage(event) {
@@ -5775,49 +6044,110 @@ export default function App() {
       return null;
     }
 
-    const options = getSlotPickerOptions(activeOutfitSlot);
-    const isLocked = Boolean(locked[activeOutfitSlot]);
-    const currentItem = itemsById[outfit[activeOutfitSlot]];
+    const totalItemCount = activeSelectorPool.length;
+    const visibleItemCount = visibleSelectorItems.length;
 
     return (
       <div className="slot-picker">
-        <div className="slot-picker-header">
-          <strong>{getSlotLabel(activeOutfitSlot)}</strong>
-          <button type="button" className="ghost-button" onClick={closePickerOverlay}>
-            Close
-          </button>
-        </div>
-
-        <div className="slot-picker-actions">
-          <button
-            type="button"
-            className={`ghost-button ${isLocked ? "is-active" : ""}`}
-            onClick={() => toggleLock(activeOutfitSlot)}
-          >
-            {isLocked ? "Unlock" : "Lock"}
-          </button>
-          <button type="button" className="ghost-button" onClick={() => handleReroll(activeOutfitSlot)}>
-            Reroll
-          </button>
-          <button type="button" className="ghost-button" onClick={() => cycleOutfitSlot(activeOutfitSlot, -1)}>
-            Previous
-          </button>
-          <button type="button" className="ghost-button" onClick={() => cycleOutfitSlot(activeOutfitSlot, 1)}>
-            Next
-          </button>
-          {currentItem ? (
-            <button type="button" className="ghost-button" onClick={() => startFloatingEdit(currentItem)}>
-              Edit
+        <div className="slot-picker-toolbar">
+          <div className="slot-picker-toolbar-row slot-picker-toolbar-row-main">
+            <strong className="slot-picker-title">{getSlotLabel(activeOutfitSlot)}</strong>
+            <div className="wardrobe-search-field slot-picker-search-field">
+              <input
+                type="search"
+                value={selectorSearch}
+                onChange={(event) => setSelectorSearch(event.target.value)}
+                placeholder="Search slot items"
+              />
+            </div>
+            <div className="wardrobe-sort-field slot-picker-sort-field">
+              <select value={selectorSort} onChange={(event) => setSelectorSort(event.target.value)}>
+                <option value="nameAz">A-Z</option>
+                <option value="nameZa">Z-A</option>
+                <option value="newest">Recently added</option>
+                <option value="oldest">Oldest added</option>
+              </select>
+            </div>
+            <span className="wardrobe-results-count">
+              {visibleItemCount} item{visibleItemCount === 1 ? "" : "s"}{hasActiveSelectorLocalControls ? ` of ${totalItemCount}` : ""}
+            </span>
+            <button
+              type="button"
+              className={`ghost-button slot-picker-filters-toggle ${selectorFiltersOpen ? "is-active" : ""} ${hasActiveSelectorLocalFilters ? "has-active-filters" : ""}`}
+              onClick={() => setSelectorFiltersOpen((current) => !current)}
+              aria-expanded={selectorFiltersOpen}
+            >
+              {hasActiveSelectorLocalFilters ? "Filters active" : "Filters"}
             </button>
+            <button type="button" className="ghost-button" onClick={closePickerOverlay}>
+              Close
+            </button>
+          </div>
+
+          {selectorFiltersOpen ? (
+            <div className="slot-picker-filter-panel">
+              <div className="slot-picker-filter-grid">
+                <select
+                  value={selectorFilters.type[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("type", event.target.value)}
+                  aria-label="Filter slot items by type"
+                >
+                  <option value="">All types</option>
+                  {selectorFilterOptions.type.map((type) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectorFilters.status[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("status", event.target.value)}
+                  aria-label="Filter slot items by status"
+                >
+                  <option value="">All statuses</option>
+                  {selectorFilterOptions.status.map((status) => (
+                    <option key={status} value={status}>{status}</option>
+                  ))}
+                </select>
+                <select
+                  value={selectorFilters.collections[0] ?? ""}
+                  onChange={(event) => setSelectorFilterValue("collections", event.target.value)}
+                  aria-label="Filter slot items by collection"
+                >
+                  <option value="">All collections</option>
+                  {selectorFilterOptions.collections.map((collection) => (
+                    <option key={collection} value={collection}>{collection}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={`ghost-button slot-picker-favorite-toggle ${selectorFilters.favorite === "yes" ? "is-active" : ""}`}
+                  onClick={() =>
+                    setSelectorFilters((current) => ({
+                      ...current,
+                      favorite: current.favorite === "yes" ? "" : "yes"
+                    }))
+                  }
+                  aria-pressed={selectorFilters.favorite === "yes"}
+                >
+                  Favorites only
+                </button>
+              </div>
+              <div className="slot-picker-filter-panel-actions">
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={clearSelectorControls}
+                  disabled={!hasActiveSelectorLocalControls}
+                >
+                  Clear selector controls
+                </button>
+              </div>
+            </div>
           ) : null}
-          <button type="button" className="ghost-button danger" onClick={() => removeOutfitSlot(activeOutfitSlot)}>
-            Remove
-          </button>
         </div>
 
-        {options.length ? (
+        {visibleSelectorItems.length ? (
           <div className="slot-picker-list">
-            {options.map((item) => {
+            {visibleSelectorItems.map((item) => {
               const isExcluded = Boolean(excluded[item.id]);
 
               return (
@@ -5850,7 +6180,8 @@ export default function App() {
           </div>
         ) : (
           <div className="editor-placeholder">
-            <p>No compatible items available for this slot.</p>
+            <p>{totalItemCount ? "No slot items match the current local controls." : "No compatible items available for this slot."}</p>
+            {hasActiveSelectorLocalControls ? <p>Clear the selector controls or try a different search.</p> : null}
           </div>
         )}
       </div>
@@ -6238,67 +6569,249 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className="fitpic-controls" aria-label="Fitpic controls">
-              <div className="fitpic-controls-header">
-                <p className="fitpic-controls-count">
-                  {visibleFitpics.length} of {fitpics.length} fitpics
-                </p>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={resetFitpicControls}
-                  disabled={!hasActiveFitpicControls}
-                >
-                  Clear filters
-                </button>
-              </div>
-              <label>
-                <span className="eyebrow">Search</span>
-                <input
-                  value={fitpicSearch}
-                  onChange={(event) => setFitpicSearch(event.target.value)}
-                  placeholder="Search fitpics"
-                />
-              </label>
-              <label>
-                <span className="eyebrow">Sort</span>
-                <select value={fitpicSort} onChange={(event) => setFitpicSort(event.target.value)}>
-                  <option value="fitDateNewest">Fit date newest</option>
-                  <option value="fitDateOldest">Fit date oldest</option>
-                  <option value="createdNewest">Created newest</option>
-                  <option value="importedNewest">Imported newest</option>
-                  <option value="titleAz">Title A-Z</option>
-                </select>
-              </label>
-              <label>
-                <span className="eyebrow">Linked item</span>
-                <select
-                  value={fitpicLinkedItemFilter}
-                  onChange={(event) => setFitpicLinkedItemFilter(event.target.value)}
-                >
-                  <option value="">All linked items</option>
-                  {fitpicLinkedItemFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="fitpic-controls-toggle">
-                <input
-                  type="checkbox"
-                  checked={fitpicFavoritesOnly}
-                  onChange={(event) => setFitpicFavoritesOnly(event.target.checked)}
-                />
-                <span>Favorites only</span>
-              </label>
-            </div>
             <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
               <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
-                <span className="wardrobe-results-count">
-                  {visibleFitpics.length} fitpic{visibleFitpics.length === 1 ? "" : "s"}
-                </span>
+                <div className="wardrobe-search-field">
+                  <input
+                    type="search"
+                    value={fitpicSearch}
+                    onPointerDown={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onChange={(event) => setFitpicSearch(event.target.value)}
+                    placeholder="Search fitpics"
+                  />
+                </div>
+                <div className={`wardrobe-filter-anchor ${fitpicFiltersOpen ? "is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className={`secondary-button filter-button ${fitpicFiltersOpen || hasActiveFitpicFilters ? "is-active" : ""}`}
+                    onClick={openFitpicFilters}
+                    aria-pressed={fitpicFiltersOpen}
+                    aria-expanded={fitpicFiltersOpen}
+                    title={
+                      hasActiveFitpicFilters
+                        ? `${activeFitpicFilterCount} active filter${activeFitpicFilterCount === 1 ? "" : "s"}`
+                        : "No active filters"
+                    }
+                  >
+                    {hasActiveFitpicFilters ? `Filters (${activeFitpicFilterCount})` : "Filter"}
+                  </button>
+                  <div className={`wardrobe-controls ${fitpicFiltersOpen ? "is-open" : ""}`} aria-label="Fitpic filters">
+                    <div className="wardrobe-controls-body">
+                      <div className="wardrobe-filter-search">
+                        <input
+                          type="search"
+                          value={fitpicFilterSearch}
+                          onChange={(event) => setFitpicFilterSearch(event.target.value)}
+                          placeholder="Search filter options"
+                        />
+                      </div>
+                      {fitpicFilterPanelSections.map((section) => {
+                        const selectedCount = section.kind === "multi"
+                          ? getSelectedFilterValueCount(fitpicFilters, section.key)
+                          : fitpicFilters[section.key]
+                            ? 1
+                            : 0;
+                        const groupMatchesSearch = !normalizedFitpicFilterSearch
+                          || section.label.toLowerCase().includes(normalizedFitpicFilterSearch);
+                        const resolvedOptions = section.options.map((option) => (
+                          typeof option === "string"
+                            ? { label: option, value: option }
+                            : option
+                        ));
+                        const filteredOptions = normalizedFitpicFilterSearch && !groupMatchesSearch
+                          ? resolvedOptions.filter((option) => option.label.toLowerCase().includes(normalizedFitpicFilterSearch))
+                          : resolvedOptions;
+                        const noneLabel = `No ${section.label.toLowerCase()}`;
+                        const showNoneOption = section.includeNone && (
+                          !normalizedFitpicFilterSearch
+                          || groupMatchesSearch
+                          || noneLabel.includes(normalizedFitpicFilterSearch)
+                        );
+                        const isOpen = normalizedFitpicFilterSearch ? true : Boolean(fitpicFilterSectionsOpen[section.key]);
+                        const groupedTagMatches = section.key === "tags"
+                          ? fitpicTagFilterGroups
+                            .map((group) => {
+                              const groupMatches = group.options.filter((option) => (
+                                !normalizedFitpicFilterSearch
+                                || group.label.toLowerCase().includes(normalizedFitpicFilterSearch)
+                                || option.label.toLowerCase().includes(normalizedFitpicFilterSearch)
+                                || option.fullLabel.toLowerCase().includes(normalizedFitpicFilterSearch)
+                              ));
+
+                              if (!groupMatches.length) {
+                                return null;
+                              }
+
+                              return { ...group, options: groupMatches };
+                            })
+                            .filter(Boolean)
+                          : [];
+
+                        if (!groupMatchesSearch && !filteredOptions.length && !groupedTagMatches.length && !showNoneOption) {
+                          return null;
+                        }
+
+                        return (
+                          <section key={section.key} className={`wardrobe-filter-group ${isOpen ? "is-open" : ""}`}>
+                            <button
+                              type="button"
+                              className="wardrobe-filter-group-toggle"
+                              onClick={() => toggleFitpicFilterSection(section.key)}
+                              aria-expanded={isOpen}
+                            >
+                              <span className="wardrobe-filter-group-copy">
+                                <strong>{section.label}</strong>
+                                {selectedCount ? (
+                                  <span className="wardrobe-filter-group-count">{selectedCount} selected</span>
+                                ) : null}
+                              </span>
+                              <span className="wardrobe-filter-group-icon" aria-hidden="true">
+                                {isOpen ? "−" : "+"}
+                              </span>
+                            </button>
+                            {isOpen ? (
+                              <div className="wardrobe-filter-options">
+                                {showNoneOption ? (
+                                  <button
+                                    type="button"
+                                    className={`list-toggle ${
+                                      getIncludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                        ? "is-active"
+                                        : getExcludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                          ? "is-active is-muted is-excluded"
+                                          : ""
+                                    }`}
+                                    onClick={(event) => toggleFitpicFilterValueWithMode(section.key, "__none__", event.shiftKey)}
+                                    aria-pressed={
+                                      getIncludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                      || getExcludedFilterValues(fitpicFilters, section.key).includes("__none__")
+                                    }
+                                  >
+                                    {noneLabel}
+                                  </button>
+                                ) : null}
+                                {section.key === "tags" ? groupedTagMatches.length ? groupedTagMatches.map((group) => (
+                                      <div key={group.family} className="fitpic-tag-filter-family">
+                                        <div className="fitpic-tag-filter-family-header">
+                                          <strong>{group.label}</strong>
+                                          <span>{group.options.length}</span>
+                                        </div>
+                                        <div className="fitpic-tag-filter-family-options">
+                                          {group.options.map((option) => {
+                                            const isIncluded = getIncludedFilterValues(fitpicFilters, section.key).includes(option.value);
+                                            const isExcluded = getExcludedFilterValues(fitpicFilters, section.key).includes(option.value);
+
+                                            return (
+                                              <button
+                                                key={option.value}
+                                                type="button"
+                                                className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                                onMouseDown={(event) => event.preventDefault()}
+                                                onClick={(event) => toggleFitpicFilterValueWithMode(section.key, option.value, event.shiftKey)}
+                                                aria-pressed={isIncluded || isExcluded}
+                                                title={option.fullLabel}
+                                              >
+                                                {option.label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))
+                                  : <p className="wardrobe-filter-empty">No matching options.</p>
+                                : filteredOptions.length ? filteredOptions.map((option) => {
+                                  const isIncluded = section.kind === "multi"
+                                    ? getIncludedFilterValues(fitpicFilters, section.key).includes(option.value)
+                                    : false;
+                                  const isExcluded = section.kind === "multi"
+                                    ? getExcludedFilterValues(fitpicFilters, section.key).includes(option.value)
+                                    : false;
+                                  const isSelected = section.kind === "multi"
+                                    ? isIncluded || isExcluded
+                                    : fitpicFilters[section.key] === option.value;
+
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-muted is-excluded" : ""}`}
+                                      onMouseDown={(event) => {
+                                        if (section.kind === "multi") {
+                                          event.preventDefault();
+                                        }
+                                      }}
+                                      onClick={(event) => {
+                                        if (section.kind === "multi") {
+                                          toggleFitpicFilterValueWithMode(section.key, option.value, event.shiftKey);
+                                          return;
+                                        }
+
+                                        setFitpicToggleFilter(
+                                          section.key,
+                                          fitpicFilters[section.key] === option.value ? "" : option.value
+                                        );
+                                      }}
+                                      aria-pressed={isSelected}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                }) : (
+                                  <p className="wardrobe-filter-empty">No matching options.</p>
+                                )}
+                              </div>
+                            ) : null}
+                          </section>
+                        );
+                      })}
+                    </div>
+                    <div className="wardrobe-controls-footer">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={clearFitpicFilters}
+                        disabled={!hasActiveFitpicFilters}
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div className="wardrobe-sort-field">
+                  <select
+                    value={fitpicSort}
+                    onPointerDown={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onFocus={() => {
+                      if (fitpicFiltersOpen) {
+                        dismissFitpicFilters();
+                      }
+                    }}
+                    onChange={(event) => setFitpicSort(event.target.value)}
+                  >
+                    <option value="fitDateNewest">Fit date newest</option>
+                    <option value="fitDateOldest">Fit date oldest</option>
+                    <option value="createdNewest">Created newest</option>
+                    <option value="importedNewest">Imported newest</option>
+                    <option value="titleAz">Title A-Z</option>
+                  </select>
+                </div>
               </div>
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} of {fitpics.length} fitpics
+                </span>
               <div className="wardrobe-toolbar-context">
                 {hasFitpicSelection ? (
                   <>
@@ -6344,34 +6857,39 @@ export default function App() {
                 ) : null}
               </div>
             </div>
-            {hasActiveFitpicControls ? (
-              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic controls">
+            {fitpicFiltersOpen ? (
+              <div className="floating-backdrop filter-backdrop" onClick={closeFitpicFilters} />
+            ) : null}
+            {hasActiveFitpicFilters ? (
+              <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic filters">
                 <div className="active-filter-chips">
-                  {fitpicSearch.trim() ? (
-                    <span className="active-filter-chip">
-                      <span>Search</span>
-                      {fitpicSearch.trim()}
+                  {activeFitpicFilterChips.map((filter) => (
+                    <span
+                      key={`${filter.key}-${filter.value}-${filter.excluded ? "excluded" : "included"}`}
+                      className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}
+                    >
+                      <span>{filter.label}</span>
+                      {filter.value}
+                      <button
+                        type="button"
+                        className="active-filter-chip-clear"
+                        onClick={() => clearSingleFitpicFilterValue(filter.key, filter.rawValue, filter.excluded)}
+                        aria-label={`Remove ${filter.label} filter ${filter.value}`}
+                        title={`Remove ${filter.label} filter ${filter.value}`}
+                      >
+                        ×
+                      </button>
                     </span>
-                  ) : null}
-                  {fitpicFavoritesOnly ? (
-                    <span className="active-filter-chip">
-                      <span>Filter</span>
-                      Favorites only
-                    </span>
-                  ) : null}
-                  {fitpicLinkedItemFilter ? (
-                    <span className="active-filter-chip">
-                      <span>Linked</span>
-                      {selectedFitpicLinkedItemFilterLabel}
-                    </span>
-                  ) : null}
-                  {fitpicSort !== "fitDateNewest" ? (
-                    <span className="active-filter-chip">
-                      <span>Sort</span>
-                      {selectedFitpicSortLabel}
-                    </span>
-                  ) : null}
+                  ))}
                 </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={clearFitpicFilters}
+                  disabled={!hasActiveFitpicFilters}
+                >
+                  Clear filters
+                </button>
               </div>
             ) : null}
 
@@ -6415,6 +6933,13 @@ export default function App() {
                       </div>
                       <div className="fitpic-card-copy">
                         <strong title={fitpic.name}>{fitpic.name}</strong>
+                        {fitpic.tags?.length ? (
+                          <div className="fitpic-card-tags" aria-hidden="true">
+                            {fitpic.tags.map((tag) => (
+                              <span key={`${fitpic.id}-${tag}`} className="fitpic-card-tag">{tag}</span>
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     </button>
                   </article>
@@ -7252,8 +7777,23 @@ export default function App() {
   function resetFitpicControls() {
     setFitpicSearch("");
     setFitpicSort("fitDateNewest");
-    setFitpicFavoritesOnly(false);
-    setFitpicLinkedItemFilter("");
+    clearFitpicFilters();
+  }
+
+  function clearSingleFitpicFilterValue(key, value, excluded = false) {
+    if (key === "favorite") {
+      setFitpicToggleFilter("favorite", "");
+      return;
+    }
+
+    setFitpicFilters((current) => {
+      const excludedKey = getExcludedFilterKey(key);
+      return {
+        ...current,
+        [key]: excluded ? current[key] : current[key].filter((currentValue) => currentValue !== value),
+        [excludedKey]: excluded ? current[excludedKey].filter((currentValue) => currentValue !== value) : current[excludedKey]
+      };
+    });
   }
 
   function clearFitpicSelection() {
@@ -8215,6 +8755,7 @@ export default function App() {
   function renderOutfitSlot(slot) {
     const item = itemsById[outfit[slot]];
     const isActive = activeOutfitSlot === slot || selectedOutfitSlot === slot;
+    const isActionsOpen = activeSlotActionsSlot === slot;
     return (
       <div key={slot} className="outfit-slot-wrap">
         <article
@@ -8230,29 +8771,103 @@ export default function App() {
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
           </button>
           {item ? (
-            <div className="outfit-slot-hover-actions">
-              <button
-                type="button"
-                className="outfit-slot-hover-button"
-                onMouseDown={preventMouseButtonFocus}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  startFloatingEdit(item);
-                }}
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                className="outfit-slot-hover-button"
-                onMouseDown={preventMouseButtonFocus}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openOutfitSlotPicker(slot);
-                }}
-              >
-                Select
-              </button>
+            <div className="slot-actions-anchor">
+              <div className="outfit-slot-hover-actions slot-action-chips">
+                <button
+                  type="button"
+                  className="outfit-slot-hover-button"
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    startFloatingEdit(item);
+                  }}
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  className="outfit-slot-hover-button"
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openOutfitSlotPicker(slot);
+                  }}
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  className={`outfit-slot-hover-button slot-actions-trigger ${isActionsOpen ? "is-active" : ""}`}
+                  onMouseDown={preventMouseButtonFocus}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleSlotActionsPopover(slot);
+                  }}
+                  aria-expanded={isActionsOpen}
+                  aria-label={`${getSlotLabel(slot)} actions`}
+                  title="Actions"
+                >
+                  Actions
+                </button>
+                {isActionsOpen ? (
+                  <div
+                    ref={slotActionsPopoverRef}
+                    className="slot-actions-inline-tools"
+                    role="group"
+                    aria-label={`${getSlotLabel(slot)} actions`}
+                  >
+                    <button
+                      type="button"
+                      className={`ghost-button slot-action-icon-button ${locked[slot] ? "is-active" : ""}`}
+                      onClick={() => toggleLock(slot)}
+                      aria-label={locked[slot] ? `Unlock ${getSlotLabel(slot)}` : `Lock ${getSlotLabel(slot)}`}
+                      title={locked[slot] ? "Unlock" : "Lock"}
+                    >
+                      <SlotActionIcon kind="lock" locked={locked[slot]} />
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button slot-action-icon-button"
+                      onClick={() => handleReroll(slot)}
+                      aria-label={`Reroll ${getSlotLabel(slot)}`}
+                      title="Reroll"
+                      disabled={!item}
+                    >
+                      <SlotActionIcon kind="reroll" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button slot-action-icon-button"
+                      onClick={() => cycleOutfitSlot(slot, -1)}
+                      aria-label={`Previous item for ${getSlotLabel(slot)}`}
+                      title="Previous"
+                      disabled={!item}
+                    >
+                      <SlotActionIcon kind="previous" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button slot-action-icon-button"
+                      onClick={() => cycleOutfitSlot(slot, 1)}
+                      aria-label={`Next item for ${getSlotLabel(slot)}`}
+                      title="Next"
+                      disabled={!item}
+                    >
+                      <SlotActionIcon kind="next" />
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button danger slot-action-icon-button"
+                      onClick={() => removeOutfitSlot(slot)}
+                      aria-label={`Remove item from ${getSlotLabel(slot)}`}
+                      title="Remove"
+                      disabled={!item}
+                    >
+                      <SlotActionIcon kind="remove" />
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </article>

@@ -1204,12 +1204,15 @@ button:disabled {
   min-height: 0;
 }
 
-.accessory-picker-actions,
-.slot-picker-actions {
+.slot-picker .editor-placeholder {
+  order: 3;
+}
+
+.accessory-picker-actions {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  order: 3;
+  order: 4;
   flex: 0 0 auto;
   position: sticky;
   bottom: 0;
@@ -1218,17 +1221,89 @@ button:disabled {
   background: var(--surface);
 }
 
-.accessory-picker-actions .ghost-button,
-.slot-picker-actions .ghost-button {
+.accessory-picker-actions .ghost-button {
   flex: 1 1 auto;
+}
+
+.slot-picker-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  order: 2;
+  flex: 0 0 auto;
+}
+
+.slot-picker-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.slot-picker-toolbar-row-main {
+  flex-wrap: nowrap;
+}
+
+.slot-picker-title {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.slot-picker-search-field,
+.slot-picker-sort-field {
+  width: auto;
+}
+
+.slot-picker-search-field {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.slot-picker-sort-field {
+  flex: 0 0 144px;
+}
+
+.slot-picker-filter-panel {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+}
+
+.slot-picker-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.slot-picker-filter-grid select {
+  width: 100%;
+}
+
+.slot-picker-favorite-toggle {
+  min-height: 34px;
+}
+
+.slot-picker-filter-panel-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.slot-picker-filters-toggle.has-active-filters::after {
+  content: " •";
 }
 
 .accessory-picker-list,
 .slot-picker-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  order: 2;
+  grid-template-columns: repeat(auto-fill, minmax(152px, 1fr));
+  gap: 6px;
+  order: 3;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -1249,20 +1324,20 @@ button:disabled {
 .slot-picker-item {
   position: relative;
   display: grid;
-  gap: 6px;
+  gap: 4px;
   justify-items: center;
   text-align: center;
-  padding: 8px;
+  padding: 6px 6px 5px;
   border-radius: var(--radius-panel);
   border: 1px solid var(--border-soft);
   background: var(--surface-solid);
   color: var(--text);
-  font-size: 0.7rem;
+  font-size: 0.66rem;
 }
 
 .slot-picker-select {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   justify-items: center;
   width: 100%;
   min-width: 0;
@@ -1305,14 +1380,24 @@ button:disabled {
 
 .accessory-picker-item .managed-image,
 .slot-picker-item .managed-image {
-  width: calc(70px * var(--managed-frame-scale, 1));
-  max-width: calc(70px * var(--managed-frame-scale, 1));
-  max-height: calc(56px * var(--managed-frame-scale, 1));
+  width: calc(82px * var(--managed-frame-scale, 1));
+  max-width: calc(82px * var(--managed-frame-scale, 1));
+  max-height: calc(48px * var(--managed-frame-scale, 1));
 }
 
 .accessory-picker-item.is-current,
 .slot-picker-item.is-current {
   box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.slot-picker-select span {
+  display: -webkit-box;
+  width: 100%;
+  overflow: hidden;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  text-wrap: balance;
 }
 
 .outfit-filter-groups {
@@ -1381,6 +1466,9 @@ button:disabled {
   border: none;
   box-shadow: none;
   position: relative;
+  display: grid;
+  grid-template-areas: "stack";
+  align-items: stretch;
 }
 
 .outfit-slot-headwear {
@@ -1404,21 +1492,29 @@ button:disabled {
   filter: none;
 }
 
-.outfit-slot-hover-actions {
-  position: absolute;
-  top: -14px;
-  right: -14px;
+.slot-actions-anchor {
+  grid-area: stack;
+  position: relative;
+  justify-self: end;
+  align-self: start;
+  margin: 8px;
   z-index: 2;
-  display: grid;
-  gap: 6px;
+}
+
+.outfit-slot-hover-actions {
+  position: static;
+  z-index: auto;
   opacity: 0;
   pointer-events: none;
   transition: opacity 140ms ease;
+  display: grid;
+  gap: 6px;
 }
 
-.outfit-slot-headwear .outfit-slot-hover-actions {
-  top: -8px;
-  right: -8px;
+.slot-action-chips {
+  grid-auto-rows: max-content;
+  width: max-content;
+  justify-items: end;
 }
 
 .outfit-slot-hover-button {
@@ -1434,6 +1530,12 @@ button:disabled {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   box-shadow: none;
+}
+
+.outfit-slot-hover-button.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
 }
 
 .outfit-slot:hover .outfit-slot-hover-actions,
@@ -1455,6 +1557,52 @@ button:disabled {
   gap: 14px;
   width: 100%;
   position: relative;
+}
+
+.slot-actions-inline-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  left: calc(100% + 8px);
+  width: max-content;
+  margin-top: -34px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(40, 48, 56, 0.12);
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.slot-action-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border-color: rgba(40, 48, 56, 0.12);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(10px);
+  box-shadow: none;
+  color: var(--text);
+}
+
+.slot-action-icon-button:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.slot-action-icon-button.danger {
+  color: #7a3535;
+}
+
+.slot-action-icon-button:disabled {
+  opacity: 0.38;
+}
+
+.slot-action-icon-button svg {
+  width: 13px;
+  height: 13px;
+  display: block;
 }
 
 .top-layer-row {
@@ -1500,6 +1648,7 @@ button:disabled {
 }
 
 .outfit-slot .item-figure {
+  grid-area: stack;
   min-height: inherit;
   padding: 0;
   background: transparent;
@@ -1865,6 +2014,40 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   font-size: 0.7rem;
+}
+
+.fitpic-tag-filter-family {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+}
+
+.fitpic-tag-filter-family-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+}
+
+.fitpic-tag-filter-family-header strong {
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+
+.fitpic-tag-filter-family-header span {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+}
+
+.fitpic-tag-filter-family-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-left: 14px;
 }
 
 .wardrobe-controls.is-open,
@@ -2376,6 +2559,27 @@ button:disabled {
   color: var(--muted);
 }
 
+.active-filter-chip-clear {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.active-filter-chip-clear:hover,
+.active-filter-chip-clear:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text);
+}
+
 .active-filter-chip.is-excluded {
   border-style: dashed;
   border-color: rgba(168, 54, 54, 0.38);
@@ -2808,8 +3012,11 @@ button:disabled {
 
 .fitpic-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  grid-auto-rows: max-content;
   gap: 12px;
+  align-items: start;
+  align-content: start;
   max-height: calc(100vh - 176px - env(safe-area-inset-bottom));
   overflow: auto;
   padding-right: 0;
@@ -2957,8 +3164,9 @@ button:disabled {
 .fitpic-card {
   display: flex;
   position: relative;
+  align-self: start;
   min-height: 0;
-  padding: 10px;
+  padding: 6px;
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-panel);
   background: var(--surface-solid);
@@ -2973,7 +3181,7 @@ button:disabled {
   align-items: center;
   justify-content: center;
   width: 100%;
-  aspect-ratio: 4 / 5;
+  height: 252px;
   overflow: hidden;
   border-radius: calc(var(--radius-panel) - 4px);
   background: #fff;
@@ -2982,9 +3190,9 @@ button:disabled {
 .fitpic-card img {
   display: block;
   width: 100%;
-  height: 100%;
+  height: 252px;
   max-width: 100%;
-  max-height: 100%;
+  max-height: none;
   min-width: 0;
   min-height: 0;
   object-fit: contain;
@@ -2995,7 +3203,7 @@ button:disabled {
 .fitpic-image-button {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   align-items: stretch;
   width: 100%;
   padding: 0;
@@ -3007,21 +3215,40 @@ button:disabled {
 }
 
 .fitpic-card-copy {
-  display: block;
+  display: grid;
+  gap: 5px;
   min-width: 0;
-  padding-inline: 2px;
+  padding-inline: 0;
 }
 
 .fitpic-card-copy strong {
   display: block;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: 11px;
+  font-weight: 350;
+  line-height: 1.28;
+}
+
+.fitpic-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  min-width: 0;
+}
+
+.fitpic-card-tag {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(40, 48, 56, 0.06);
+  color: var(--muted-strong);
+  font-size: 0.65rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .fitpic-import-error {
@@ -4568,11 +4795,29 @@ button:disabled {
     flex: 0 0 auto;
   }
 
+  .slot-picker-toolbar {
+    order: 2;
+  }
+
+  .slot-picker-toolbar-row-main,
+  .slot-picker-filter-grid {
+    flex-wrap: wrap;
+  }
+
+  .slot-picker-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .slot-picker-search-field,
+  .slot-picker-sort-field {
+    flex: 1 1 100%;
+  }
+
   .accessory-picker-list,
   .slot-picker-list,
   .accessory-picker .editor-placeholder,
   .slot-picker .editor-placeholder {
-    order: 2;
+    order: 3;
     flex: 1 1 auto;
     min-height: 0;
   }
@@ -4582,9 +4827,8 @@ button:disabled {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .accessory-picker-actions,
-  .slot-picker-actions {
-    order: 3;
+  .accessory-picker-actions {
+    order: 4;
     flex: 0 0 auto;
     position: sticky;
     bottom: 0;
@@ -4593,8 +4837,7 @@ button:disabled {
     background: var(--surface);
   }
 
-  .accessory-picker-actions .ghost-button,
-  .slot-picker-actions .ghost-button {
+  .accessory-picker-actions .ghost-button {
     flex: 1 1 auto;
     padding: 6px 7px;
     font-size: 0.66rem;

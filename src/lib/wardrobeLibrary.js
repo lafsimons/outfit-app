@@ -298,6 +298,18 @@ export function filterWardrobeItems(items, filters, excluded, searchQuery, searc
   });
 }
 
+export function getVisibleWardrobeItems(
+  items,
+  filters,
+  excluded,
+  searchQuery,
+  searchTextById = {},
+  wardrobeSort
+) {
+  const filtered = filterWardrobeItems(items, filters, excluded, searchQuery, searchTextById);
+  return sortWardrobeItems(filtered, wardrobeSort);
+}
+
 export function sortWardrobeItems(items, wardrobeSort) {
   return items
     .map((item, index) => ({ item, index }))

@@ -284,37 +284,58 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
   return true;
 }
 
-export function getPool(items, slot, excluded = {}, generationLists = defaultGenerationLists, layering = true) {
+function matchesSlotBaseValidity(item, slot, layering = true) {
+  if (slot === "Headwear") return item.garmentType === "Headwear";
+  if (slot === "Bottom") return item.garmentType === "Bottom";
+  if (slot === "Footwear") return item.garmentType === "Footwear";
+
+  if (slot === "TopInner") {
+    if (!layering) {
+      return item.garmentType === "Top" || item.garmentType === "Outerwear";
+    }
+
+    return item.garmentType === "Top" && (item.layerType === "Inner" || item.layerType === "Both");
+  }
+
+  if (slot === "TopOuter") {
+    return (
+      (item.garmentType === "Top" || item.garmentType === "Outerwear") &&
+      (item.layerType === "Outer" || item.layerType === "Both")
+    );
+  }
+
+  if (accessorySlots.includes(slot)) {
+    return item.garmentType === "Accessory" && item.accessorySlot === slot;
+  }
+
+  return false;
+}
+
+function getSlotBasePool(items, slot, layering = true) {
   return items.filter((item) => {
-    if (!isEligibleForGeneration(item, excluded, generationLists)) {
-      return false;
-    }
-
-    if (slot === "Headwear") return item.garmentType === "Headwear";
-    if (slot === "Bottom") return item.garmentType === "Bottom";
-    if (slot === "Footwear") return item.garmentType === "Footwear";
-
-    if (slot === "TopInner") {
-      if (!layering) {
-        return item.garmentType === "Top" || item.garmentType === "Outerwear";
-      }
-
-      return item.garmentType === "Top" && (item.layerType === "Inner" || item.layerType === "Both");
-    }
-
-    if (slot === "TopOuter") {
-      return (
-        (item.garmentType === "Top" || item.garmentType === "Outerwear") &&
-        (item.layerType === "Outer" || item.layerType === "Both")
-      );
-    }
-
-    if (accessorySlots.includes(slot)) {
-      return item.garmentType === "Accessory" && item.accessorySlot === slot;
-    }
-
-    return false;
+    return matchesSlotBaseValidity(item, slot, layering);
   });
+}
+
+export function getPool(items, slot, excluded = {}, generationLists = defaultGenerationLists, layering = true) {
+  return getSlotBasePool(items, slot, layering).filter((item) => isEligibleForGeneration(item, excluded, generationLists));
+}
+
+export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}) {
+  let pool = getSlotBasePool(items, slot, layering);
+
+  if (layering && (slot === "TopInner" || slot === "TopOuter")) {
+    const otherTopSlot = getOtherTopSlot(slot);
+    const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
+
+    if (otherItem?.layerType === "Both") {
+      pool = pool.filter((item) => item.layerType !== "Both");
+    }
+
+    pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
+  }
+
+  return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
 }
 
 function getEligibleSlotPoolInternal(
