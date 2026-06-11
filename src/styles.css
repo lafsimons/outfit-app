@@ -4559,6 +4559,22 @@ button:disabled {
   letter-spacing: 0.02em;
 }
 
+.editor-form .editor-field-group {
+  display: grid;
+  gap: 3px;
+  align-content: start;
+  color: var(--text);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.editor-field-label {
+  display: inline-flex;
+  align-items: center;
+}
+
 .editor-form .checkbox-field {
   display: flex;
   align-items: flex-start;

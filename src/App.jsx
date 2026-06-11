@@ -208,6 +208,12 @@ import {
   setItemStatus,
   updateSelectedItems
 } from "./lib/bulkEdit";
+import {
+  addItemEditorDraftCollection,
+  patchOpenItemEditorDraft,
+  removeItemEditorDraftCollection,
+  toggleItemEditorDraftTag
+} from "./lib/itemEditorDraft";
 import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
 import {
   getImageFilename,
@@ -401,14 +407,6 @@ function createEmptyBulkMetadataDraft() {
     climateTagsToAdd: [],
     climateTagsToRemove: []
   };
-}
-
-function addCollectionToList(currentCollections, nextCollection) {
-  return normalizeCollections([...(Array.isArray(currentCollections) ? currentCollections : []), nextCollection]);
-}
-
-function removeCollectionFromList(currentCollections, collectionToRemove) {
-  return normalizeCollections(currentCollections).filter((collection) => collection !== collectionToRemove);
 }
 
 function getIncludedFilterValues(filters, key) {
@@ -4517,7 +4515,12 @@ export default function App() {
     setItems((current) => current.map((item) => (item.id === nextItem.id ? nextItem : item)));
 
     if (editingId === nextItem.id) {
-      setDraft(nextItem);
+      setDraft((current) =>
+        patchOpenItemEditorDraft(current, nextItem.id, {
+          favorite: nextItem.favorite,
+          updatedAt: nextItem.updatedAt
+        })
+      );
     }
   }
 
@@ -4880,17 +4883,7 @@ export default function App() {
   }
 
   function toggleDraftTag(field, value, options) {
-    setDraft((current) => {
-      const selectedValues = normalizeTagList(current[field], options);
-      const isSelected = selectedValues.includes(value);
-
-      return {
-        ...current,
-        [field]: isSelected
-          ? selectedValues.filter((selectedValue) => selectedValue !== value)
-          : [...selectedValues, value]
-      };
-    });
+    setDraft((current) => toggleItemEditorDraftTag(current, field, value, options));
   }
 
   function toggleGenerationList(list) {
@@ -4954,18 +4947,12 @@ export default function App() {
       return;
     }
 
-    setDraft((current) => ({
-      ...current,
-      collections: addCollectionToList(current.collections, normalizedCollection)
-    }));
+    setDraft((current) => addItemEditorDraftCollection(current, normalizedCollection));
     setDraftCollectionInput("");
   }
 
   function removeDraftCollection(collectionToRemove) {
-    setDraft((current) => ({
-      ...current,
-      collections: removeCollectionFromList(current.collections, collectionToRemove)
-    }));
+    setDraft((current) => removeItemEditorDraftCollection(current, collectionToRemove));
   }
 
   function resetAdvancedField(field) {
@@ -8489,16 +8476,19 @@ export default function App() {
           </div>
         </div>
 
-        <label className="editor-span-2">
-          Collections
+        <div className="editor-span-2 editor-field-group">
+          <span className="editor-field-label">Collections</span>
           <div className="editor-advanced-panel editor-styling-panel">
             <div className="metadata-tag-options">
               {normalizeCollections(draft.collections).map((collection) => (
                 <button
-                  key={collection}
+                  key={`collection:${collection}`}
                   type="button"
                   className="list-toggle is-active"
-                  onClick={() => removeDraftCollection(collection)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    removeDraftCollection(collection);
+                  }}
                   aria-label={`Remove ${collection} collection`}
                 >
                   {collection} ×
@@ -8510,6 +8500,7 @@ export default function App() {
                 list="item-collection-suggestions"
                 value={draftCollectionInput}
                 onChange={(event) => setDraftCollectionInput(event.target.value)}
+                onClick={(event) => event.stopPropagation()}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -8518,12 +8509,19 @@ export default function App() {
                 }}
                 placeholder="Add collection"
               />
-              <button type="button" className="secondary-button" onClick={() => addDraftCollection()}>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  addDraftCollection();
+                }}
+              >
                 Add
               </button>
             </div>
           </div>
-        </label>
+        </div>
         <datalist id="item-collection-suggestions">
           {collectionOptions.map((collection) => (
             <option key={collection} value={collection} />
@@ -8700,10 +8698,13 @@ export default function App() {
 
                 return (
                   <button
-                    key={tag}
+                    key={`style-tag:${tag}`}
                     type="button"
                     className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                    onClick={() => toggleDraftTag("styleTags", tag, styleTagOptions)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleDraftTag("styleTags", tag, styleTagOptions);
+                    }}
                     aria-pressed={isSelected}
                   >
                     {tag}
@@ -8721,10 +8722,13 @@ export default function App() {
 
                 return (
                   <button
-                    key={tag}
+                    key={`climate-tag:${tag}`}
                     type="button"
                     className={`list-toggle ${isSelected ? "is-active" : ""}`}
-                    onClick={() => toggleDraftTag("climateTags", tag, editableClimateTagOptions)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleDraftTag("climateTags", tag, editableClimateTagOptions);
+                    }}
                     aria-pressed={isSelected}
                   >
                     {tag}
