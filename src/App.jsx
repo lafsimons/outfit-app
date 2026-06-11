@@ -4975,17 +4975,21 @@ export default function App() {
     });
   }
 
-  function renderAdvancedLabel(label, field) {
+  function renderAdvancedLabel(label, field, inputId = null) {
     return (
       <span className="editor-label-row">
-        <span>{label}</span>
+        {inputId ? <label htmlFor={inputId}>{label}</label> : <span>{label}</span>}
         {advancedOverrideSet.has(field) ? (
           <span className="editor-label-actions">
             <span className="field-status-text">Custom</span>
             <button
               type="button"
               className="editor-inline-reset"
-              onClick={() => resetAdvancedField(field)}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                resetAdvancedField(field);
+              }}
             >
               Reset
             </button>
@@ -8405,9 +8409,10 @@ export default function App() {
           ))}
         </datalist>
 
-        <label>
-          {renderAdvancedLabel("Garment", "garmentType")}
+        <div className="editor-field">
+          {renderAdvancedLabel("Garment", "garmentType", "item-editor-garment-type")}
           <select
+            id="item-editor-garment-type"
             value={draft.garmentType}
             onChange={(event) =>
               setDraft((current) =>
@@ -8424,7 +8429,7 @@ export default function App() {
               </option>
             ))}
           </select>
-        </label>
+        </div>
 
         <label>
           Color
@@ -8442,16 +8447,16 @@ export default function App() {
         </datalist>
 
         <div className="editor-list-favorite-row">
-          <label>
-            {renderAdvancedLabel("Status", "status")}
-            <select value={draft.status} onChange={(event) => setAdvancedField("status", event.target.value)}>
+          <div className="editor-field">
+            {renderAdvancedLabel("Status", "status", "item-editor-status")}
+            <select id="item-editor-status" value={draft.status} onChange={(event) => setAdvancedField("status", event.target.value)}>
               {itemListOptions.map((list) => (
                 <option key={list} value={list}>
                   {list}
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
           <div className="editor-favorite-field" aria-label="Favorite">
             <div className="editor-favorite-actions">
@@ -8459,7 +8464,11 @@ export default function App() {
                 <button
                   type="button"
                   className="editor-inline-reset"
-                  onClick={() => resetAdvancedField("favorite")}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    resetAdvancedField("favorite");
+                  }}
                 >
                   Reset
                 </button>
@@ -8529,45 +8538,48 @@ export default function App() {
           ))}
         </datalist>
 
-        <label>
-          {renderAdvancedLabel("Brand", "brand")}
+        <div className="editor-field">
+          {renderAdvancedLabel("Brand", "brand", "item-editor-brand")}
           <input
+            id="item-editor-brand"
             list="item-brand-suggestions"
             value={draft.brand}
             onChange={(event) => setAdvancedField("brand", event.target.value)}
             placeholder="Brand"
           />
-        </label>
+        </div>
         <datalist id="item-brand-suggestions">
           {brandSuggestions.map((brand) => (
             <option key={brand} value={brand} />
           ))}
         </datalist>
 
-        <label>
-          {renderAdvancedLabel("Name", "name")}
+        <div className="editor-field">
+          {renderAdvancedLabel("Name", "name", "item-editor-name")}
           <input
+            id="item-editor-name"
             list="item-name-suggestions"
             value={draft.name}
             onChange={(event) => setAdvancedField("name", event.target.value)}
             placeholder=""
           />
-        </label>
+        </div>
         <datalist id="item-name-suggestions">
           {nameSuggestions.map((name) => (
             <option key={name} value={name} />
           ))}
         </datalist>
 
-        <label className="editor-span-2">
-          {renderAdvancedLabel("Description", "description")}
+        <div className="editor-span-2 editor-field">
+          {renderAdvancedLabel("Description", "description", "item-editor-description")}
           <textarea
+            id="item-editor-description"
             value={draft.description}
             onChange={(event) => setAdvancedField("description", event.target.value)}
             rows={2}
             placeholder="Notes, context, fabric, fit, or styling details"
           />
-        </label>
+        </div>
       </div>
 
       <div className="editor-advanced-toggle-row">
@@ -8589,9 +8601,10 @@ export default function App() {
       {editorAdvancedOpen ? (
         <div className="editor-advanced-panel">
           {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
-            <label>
-              {renderAdvancedLabel("Layer type", "layerType")}
+            <div className="editor-field">
+              {renderAdvancedLabel("Layer type", "layerType", "item-editor-layer-type")}
               <select
+                id="item-editor-layer-type"
                 value={draft.layerType}
                 onChange={(event) => setAdvancedField("layerType", event.target.value)}
               >
@@ -8601,13 +8614,14 @@ export default function App() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : null}
 
           {draft.garmentType === "Accessory" ? (
-            <label>
-              {renderAdvancedLabel("Accessory slot", "accessorySlot")}
+            <div className="editor-field">
+              {renderAdvancedLabel("Accessory slot", "accessorySlot", "item-editor-accessory-slot")}
               <select
+                id="item-editor-accessory-slot"
                 value={draft.accessorySlot}
                 onChange={(event) => setAdvancedField("accessorySlot", event.target.value)}
               >
@@ -8618,17 +8632,17 @@ export default function App() {
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           ) : null}
 
-          <label>
-            {renderAdvancedLabel("Size", "size")}
-            <input value={draft.size} onChange={(event) => setAdvancedField("size", event.target.value)} placeholder="M" />
-          </label>
+          <div className="editor-field">
+            {renderAdvancedLabel("Size", "size", "item-editor-size")}
+            <input id="item-editor-size" value={draft.size} onChange={(event) => setAdvancedField("size", event.target.value)} placeholder="M" />
+          </div>
 
-          <label>
-            {renderAdvancedLabel("Weight", "weight")}
-            <select value={draft.weight} onChange={(event) => setAdvancedField("weight", event.target.value)}>
+          <div className="editor-field">
+            {renderAdvancedLabel("Weight", "weight", "item-editor-weight")}
+            <select id="item-editor-weight" value={draft.weight} onChange={(event) => setAdvancedField("weight", event.target.value)}>
               <option value="">No weight</option>
               {weightOptions.map((weight) => (
                 <option key={weight} value={weight}>
@@ -8636,38 +8650,41 @@ export default function App() {
                 </option>
               ))}
             </select>
-          </label>
+          </div>
 
-          <label>
-            {renderAdvancedLabel("Quantity", "quantity")}
+          <div className="editor-field">
+            {renderAdvancedLabel("Quantity", "quantity", "item-editor-quantity")}
             <input
+              id="item-editor-quantity"
               inputMode="numeric"
               min="1"
               value={draft.quantity}
               onChange={(event) => setAdvancedField("quantity", event.target.value.replace(/[^\d]/g, ""))}
               placeholder="1"
             />
-          </label>
+          </div>
 
-          <label>
-            {renderAdvancedLabel("Paid value", "value")}
+          <div className="editor-field">
+            {renderAdvancedLabel("Paid value", "value", "item-editor-paid-value")}
             <input
+              id="item-editor-paid-value"
               inputMode="numeric"
               value={draft.value}
               onChange={(event) => setAdvancedField("value", event.target.value.replace(/[^\d]/g, ""))}
               placeholder="120"
             />
-          </label>
+          </div>
 
-          <label>
-            {renderAdvancedLabel("Retail value", "retailValue")}
+          <div className="editor-field">
+            {renderAdvancedLabel("Retail value", "retailValue", "item-editor-retail-value")}
             <input
+              id="item-editor-retail-value"
               inputMode="numeric"
               value={draft.retailValue}
               onChange={(event) => setAdvancedField("retailValue", event.target.value.replace(/[^\d]/g, ""))}
               placeholder="280"
             />
-          </label>
+          </div>
         </div>
       ) : null}
 

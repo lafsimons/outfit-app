@@ -4182,6 +4182,7 @@ button:disabled {
   margin-left: auto;
   white-space: nowrap;
   opacity: 0.72;
+  pointer-events: none;
 }
 
 .field-status-text {
@@ -4196,9 +4197,17 @@ button:disabled {
 }
 
 .editor-inline-reset {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   border: 0;
   background: transparent;
   padding: 0;
+  margin: 0;
+  width: fit-content;
+  min-width: 0;
+  min-height: 0;
   color: var(--muted);
   font-size: 0.5rem;
   font-weight: 500;
@@ -4207,6 +4216,7 @@ button:disabled {
   letter-spacing: 0.02em;
   cursor: pointer;
   opacity: 0.62;
+  pointer-events: auto;
 }
 
 .editor-inline-reset:hover,
@@ -4217,22 +4227,26 @@ button:disabled {
 }
 
 .editor-form .metadata-tag-group > .editor-label-row,
-.editor-form .checkbox-field > .editor-label-row {
+.editor-form .checkbox-field > .editor-label-row,
+.editor-form .editor-field > .editor-label-row {
   width: 100%;
 }
 
-.editor-form .checkbox-field > .editor-label-row {
+.editor-form .checkbox-field > .editor-label-row,
+.editor-form .editor-field > .editor-label-row {
   justify-content: space-between;
 }
 
 .editor-form .metadata-tag-group > .editor-label-row span:first-child,
-.editor-form .checkbox-field > .editor-label-row span:first-child {
+.editor-form .checkbox-field > .editor-label-row span:first-child,
+.editor-form .editor-field > .editor-label-row label {
   display: inline-flex;
   align-items: center;
 }
 
 .editor-form .metadata-tag-group > .editor-label-row,
 .editor-form .checkbox-field > .editor-label-row,
+.editor-form .editor-field > .editor-label-row,
 .editor-form label > .editor-label-row {
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -4555,7 +4569,8 @@ button:disabled {
   font-size: 0.66rem;
 }
 
-.editor-form label {
+.editor-form label,
+.editor-form .editor-field {
   display: grid;
   gap: 3px;
   align-content: start;
