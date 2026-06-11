@@ -160,11 +160,11 @@ import {
   getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
 import {
-  FITPIC_SPREAD_DETAIL_CELL_SIZE,
   FITPIC_SPREAD_DETAIL_GAP,
   FITPIC_SPREAD_PRIMARY_HEIGHT,
   createFitpicSpreadExportOptions,
   getFitpicSpreadExportCardHeight,
+  getFitpicSpreadExportDetailLayout,
   getFitpicSpreadExportDetailTiles,
   getFitpicSpreadExportOrderedFitpics,
   getFitpicSpreadExportPrimaryImage,
@@ -4069,6 +4069,42 @@ export default function App() {
     return ellipsis;
   }
 
+  function getWrappedCanvasTextLines(context, text, maxWidth, maxLines = 2) {
+    const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
+
+    if (!normalizedText) {
+      return [];
+    }
+
+    const words = normalizedText.split(" ");
+    const lines = [];
+    let currentLine = "";
+
+    words.forEach((word) => {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+      if (!currentLine || context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+        return;
+      }
+
+      lines.push(currentLine);
+      currentLine = word;
+    });
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    if (lines.length <= maxLines) {
+      return lines;
+    }
+
+    const visibleLines = lines.slice(0, maxLines);
+    visibleLines[maxLines - 1] = truncateCanvasText(context, lines.slice(maxLines - 1).join(" "), maxWidth);
+    return visibleLines;
+  }
+
   function drawContainedImage(context, image, frameX, frameY, frameWidth, frameHeight) {
     const scale = Math.min(frameWidth / image.naturalWidth, frameHeight / image.naturalHeight, 1_000);
     const drawWidth = image.naturalWidth * scale;
@@ -4079,16 +4115,16 @@ export default function App() {
     context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
   }
 
-  function drawFitpicExportOverflowTile(context, label, frameX, frameY, frameSize, fontFamily, colors) {
+  function drawFitpicExportOverflowTile(context, label, frameX, frameY, frameWidth, fontFamily, colors, frameHeight = frameWidth) {
     context.fillStyle = colors.panelMuted;
-    context.fillRect(frameX, frameY, frameSize, frameSize);
+    context.fillRect(frameX, frameY, frameWidth, frameHeight);
     context.strokeStyle = colors.border;
-    context.strokeRect(frameX + 0.5, frameY + 0.5, frameSize - 1, frameSize - 1);
+    context.strokeRect(frameX + 0.5, frameY + 0.5, frameWidth - 1, frameHeight - 1);
     context.fillStyle = colors.text;
     context.font = `600 18px ${fontFamily}`;
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(label, frameX + frameSize / 2, frameY + frameSize / 2);
+    context.fillText(label, frameX + frameWidth / 2, frameY + frameHeight / 2);
   }
 
   function openWardrobeExportDialog() {
@@ -4307,13 +4343,13 @@ export default function App() {
         const row = Math.floor(index / columns);
         const cardLeft = padding + column * (cardWidth + cardGap);
         const cardTop = padding + row * (exportCardHeight + cardGap);
-        const cardInnerLeft = cardLeft + 16;
-        const cardInnerWidth = cardWidth - 32;
-        let cursorY = cardTop + 16;
+        const cardInnerLeft = cardLeft + 14;
+        const cardInnerWidth = cardWidth - 28;
+        let cursorY = cardTop + 14;
         const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
         const primaryImageLoaded = primaryImage?.src ? loadedImages.get(primaryImage.src) ?? null : null;
         const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
-        const detailGridHeight = FITPIC_SPREAD_DETAIL_CELL_SIZE * 3 + FITPIC_SPREAD_DETAIL_GAP * 2;
+        const detailLayout = getFitpicSpreadExportDetailLayout(detailTiles.length, cardInnerWidth);
 
         context.fillStyle = colors.panel;
         context.fillRect(cardLeft, cardTop, cardWidth, exportCardHeight);
@@ -4327,44 +4363,56 @@ export default function App() {
           drawContainedImage(context, primaryImageLoaded, cardInnerLeft, cursorY, cardInnerWidth, FITPIC_SPREAD_PRIMARY_HEIGHT);
         }
 
-        cursorY += FITPIC_SPREAD_PRIMARY_HEIGHT + 14;
+        cursorY += FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
 
         if (normalizedOptions.showTitle) {
           context.fillStyle = colors.text;
           context.font = `600 16px ${fontFamily}`;
           context.textAlign = "left";
           context.textBaseline = "top";
-          context.fillText(
-            truncateCanvasText(context, fitpic.name || "Untitled fitpic", cardInnerWidth),
-            cardInnerLeft,
-            cursorY,
-            cardInnerWidth
-          );
-          cursorY += 34;
+          const titleLines = getWrappedCanvasTextLines(context, fitpic.name || "Untitled fitpic", cardInnerWidth, 2);
+
+          titleLines.forEach((line, lineIndex) => {
+            context.fillText(line, cardInnerLeft, cursorY + lineIndex * 18, cardInnerWidth);
+          });
+          cursorY += 38;
         }
 
         if (normalizedOptions.showDetailGrid) {
           detailTiles.forEach((tile, tileIndex) => {
-            const tileColumn = tileIndex % 3;
-            const tileRow = Math.floor(tileIndex / 3);
-            const tileX = cardInnerLeft + tileColumn * (FITPIC_SPREAD_DETAIL_CELL_SIZE + FITPIC_SPREAD_DETAIL_GAP);
-            const tileY = cursorY + tileRow * (FITPIC_SPREAD_DETAIL_CELL_SIZE + FITPIC_SPREAD_DETAIL_GAP);
+            const tileFrame = detailLayout.frames[tileIndex];
+
+            if (!tileFrame) {
+              return;
+            }
+
+            const tileX = cardInnerLeft + tileFrame.x;
+            const tileY = cursorY + tileFrame.y;
 
             if (tile.kind === "overflow") {
-              drawFitpicExportOverflowTile(context, `+${tile.overflowCount}`, tileX, tileY, FITPIC_SPREAD_DETAIL_CELL_SIZE, fontFamily, colors);
+              drawFitpicExportOverflowTile(
+                context,
+                `+${tile.overflowCount}`,
+                tileX,
+                tileY,
+                tileFrame.width,
+                fontFamily,
+                colors,
+                tileFrame.height
+              );
               return;
             }
 
             const detailImage = loadedImages.get(tile.src) ?? null;
             context.fillStyle = colors.panelMuted;
-            context.fillRect(tileX, tileY, FITPIC_SPREAD_DETAIL_CELL_SIZE, FITPIC_SPREAD_DETAIL_CELL_SIZE);
+            context.fillRect(tileX, tileY, tileFrame.width, tileFrame.height);
 
             if (detailImage) {
-              drawContainedImage(context, detailImage, tileX, tileY, FITPIC_SPREAD_DETAIL_CELL_SIZE, FITPIC_SPREAD_DETAIL_CELL_SIZE);
+              drawContainedImage(context, detailImage, tileX, tileY, tileFrame.width, tileFrame.height);
             }
           });
 
-          cursorY += detailGridHeight + 16;
+          cursorY += detailLayout.totalHeight + 10;
         }
 
         if (normalizedOptions.showTags) {
@@ -4378,7 +4426,7 @@ export default function App() {
             cursorY,
             cardInnerWidth
           );
-          cursorY += 34;
+          cursorY += 24;
         }
 
         if (normalizedOptions.showFitDate) {

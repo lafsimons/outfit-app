@@ -4,8 +4,8 @@ export const FITPIC_SPREAD_CARD_WIDTH = 308;
 export const FITPIC_SPREAD_CARD_PADDING = 36;
 export const FITPIC_SPREAD_CARD_GAP = 24;
 export const FITPIC_SPREAD_PRIMARY_HEIGHT = 228;
-export const FITPIC_SPREAD_DETAIL_CELL_SIZE = 54;
-export const FITPIC_SPREAD_DETAIL_GAP = 6;
+export const FITPIC_SPREAD_DETAIL_ROW_HEIGHT = 68;
+export const FITPIC_SPREAD_DETAIL_GAP = 4;
 export const FITPIC_SPREAD_MAX_DETAIL_TILES = 9;
 export const FITPIC_SPREAD_STANDARD_SCALE = 2;
 export const FITPIC_SPREAD_HIGH_QUALITY_SCALE = 3;
@@ -232,30 +232,91 @@ export function getFitpicSpreadExportOrderedFitpics(fitpics = [], options = {}, 
 
 export function getFitpicSpreadExportDetailRowCount(fitpic = {}, maxTiles = FITPIC_SPREAD_MAX_DETAIL_TILES) {
   const tileCount = getFitpicSpreadExportDetailTiles(fitpic, maxTiles).length;
+  if (tileCount <= 0) {
+    return 0;
+  }
+
+  if (tileCount === 1 || tileCount === 2) {
+    return 1;
+  }
+
   return Math.ceil(tileCount / 3);
+}
+
+export function getFitpicSpreadExportDetailColumns(tileCount = 0) {
+  if (tileCount <= 1) {
+    return 1;
+  }
+
+  if (tileCount === 2) {
+    return 2;
+  }
+
+  return 3;
+}
+
+export function getFitpicSpreadExportDetailLayout(tileCount = 0, availableWidth = 0, {
+  gap = FITPIC_SPREAD_DETAIL_GAP,
+  rowHeight = FITPIC_SPREAD_DETAIL_ROW_HEIGHT
+} = {}) {
+  const normalizedTileCount = Math.max(0, Math.floor(Number(tileCount) || 0));
+  const normalizedWidth = Math.max(0, Number(availableWidth) || 0);
+
+  if (!normalizedTileCount || !normalizedWidth) {
+    return {
+      columns: 0,
+      rowCount: 0,
+      frames: [],
+      totalHeight: 0
+    };
+  }
+
+  const columns = getFitpicSpreadExportDetailColumns(normalizedTileCount);
+  const rowCount = columns <= 0 ? 0 : Math.ceil(normalizedTileCount / columns);
+  const cellWidth = columns === 1
+    ? normalizedWidth
+    : (normalizedWidth - gap * (columns - 1)) / columns;
+  const frames = Array.from({ length: normalizedTileCount }, (_, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+
+    return {
+      x: column * (cellWidth + gap),
+      y: row * (rowHeight + gap),
+      width: cellWidth,
+      height: rowHeight
+    };
+  });
+
+  return {
+    columns,
+    rowCount,
+    frames,
+    totalHeight: rowCount * rowHeight + Math.max(0, rowCount - 1) * gap
+  };
 }
 
 export function getFitpicSpreadExportCardHeight(options = {}) {
   const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
-  let height = 16 + FITPIC_SPREAD_PRIMARY_HEIGHT + 14;
+  let height = 14 + FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
 
   if (normalizedOptions.showTitle) {
-    height += 34;
+    height += 42;
   }
 
   if (normalizedOptions.showDetailGrid) {
-    height += FITPIC_SPREAD_DETAIL_CELL_SIZE * 3 + FITPIC_SPREAD_DETAIL_GAP * 2 + 16;
+    height += FITPIC_SPREAD_DETAIL_ROW_HEIGHT * 3 + FITPIC_SPREAD_DETAIL_GAP * 2 + 10;
   }
 
   if (normalizedOptions.showTags) {
-    height += 34;
+    height += 24;
   }
 
   if (normalizedOptions.showFitDate) {
-    height += 20;
+    height += 18;
   }
 
-  return height + 16;
+  return height + 14;
 }
 
 export function getFitpicSpreadExportLayout(fitpicCount, {

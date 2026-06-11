@@ -2,10 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FITPIC_SPREAD_DETAIL_GAP,
+  FITPIC_SPREAD_DETAIL_ROW_HEIGHT,
   FITPIC_SPREAD_HIGH_QUALITY_SCALE,
   createFitpicSpreadExportOptions,
   getFitpicSpreadExportCardHeight,
+  getFitpicSpreadExportDetailColumns,
   getFitpicSpreadExportDetailImages,
+  getFitpicSpreadExportDetailLayout,
   getFitpicSpreadExportDetailRowCount,
   getFitpicSpreadExportDetailTiles,
   getFitpicSpreadExportOrderedFitpics,
@@ -114,6 +118,41 @@ test("fitpic spread export detail tiles limit to eight images plus overflow tile
   assert.equal(getFitpicSpreadExportDetailRowCount(fitpic), 3);
 });
 
+test("fitpic spread export detail layout adapts for one, two, and three images", () => {
+  assert.equal(getFitpicSpreadExportDetailColumns(1), 1);
+  assert.equal(getFitpicSpreadExportDetailColumns(2), 2);
+  assert.equal(getFitpicSpreadExportDetailColumns(3), 3);
+
+  assert.deepEqual(
+    getFitpicSpreadExportDetailLayout(1, 276),
+    {
+      columns: 1,
+      rowCount: 1,
+      frames: [{ x: 0, y: 0, width: 276, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT }],
+      totalHeight: FITPIC_SPREAD_DETAIL_ROW_HEIGHT
+    }
+  );
+
+  assert.deepEqual(
+    getFitpicSpreadExportDetailLayout(2, 276),
+    {
+      columns: 2,
+      rowCount: 1,
+      frames: [
+        { x: 0, y: 0, width: 136, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT },
+        { x: 140, y: 0, width: 136, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT }
+      ],
+      totalHeight: FITPIC_SPREAD_DETAIL_ROW_HEIGHT
+    }
+  );
+
+  const threeImageLayout = getFitpicSpreadExportDetailLayout(3, 276);
+  assert.equal(threeImageLayout.columns, 3);
+  assert.equal(threeImageLayout.rowCount, 1);
+  assert.equal(threeImageLayout.frames.length, 3);
+  assert.equal(threeImageLayout.frames[1].x, threeImageLayout.frames[0].width + FITPIC_SPREAD_DETAIL_GAP);
+});
+
 test("fitpic spread export scope supports current filtered results and all fitpics", () => {
   const allFitpics = [{ id: "a" }, { id: "b" }, { id: "c" }];
   const visibleFitpics = [{ id: "b" }];
@@ -168,6 +207,7 @@ test("fitpic spread export render config scales from the default card layout", (
   assert.equal(config.rows, 3);
   assert.ok(config.canvasWidth > 0);
   assert.ok(config.canvasHeight > 0);
+  assert.ok(cardHeight > FITPIC_SPREAD_DETAIL_ROW_HEIGHT * 3);
 });
 
 test("fitpic spread export option normalization keeps sort and shuffle mutually exclusive", () => {
