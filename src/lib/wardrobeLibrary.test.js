@@ -62,6 +62,24 @@ const items = [
     value: "",
     retailValue: "90",
     createdAt: "2024-03-01T00:00:00.000Z"
+  },
+  {
+    id: "delta-archive-shirt",
+    brand: "Lemaire",
+    name: "Research Shirt",
+    type: "Shirt",
+    garmentType: "Top",
+    color: "White",
+    weight: "Light",
+    status: "Archived",
+    collections: ["Research"],
+    description: "Archived for future reference",
+    styleTags: ["Smart Casual"],
+    climateTags: [],
+    favorite: false,
+    value: "120",
+    retailValue: "180",
+    createdAt: "2024-04-01T00:00:00.000Z"
   }
 ];
 
@@ -154,12 +172,13 @@ test("getWardrobeFilterOptions preserves selected options while deriving context
     favorite: ""
   }, {
     itemStatusOptions: ["Wardrobe", "Wishlist"],
-    styleTagOptions: ["Casual", "Smart Casual", "Athleisure", "Formal"]
+    styleTagOptions: ["Casual", "Smart Casual", "Athleisure", "Formal"],
+    includeAllStatusOptions: true
   });
 
   assert.ok(options.brand.includes("Missing Brand"));
   assert.ok(options.brand.includes("Missing Excluded Brand"));
-  assert.deepEqual(options.status, ["Wardrobe"]);
+  assert.deepEqual(options.status, ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "Archived"]);
   assert.ok(options.collections.includes("Missing Collection"));
   assert.ok(options.collections.includes("Missing Excluded Collection"));
   assert.ok(options.climate.includes("Snow"));
@@ -229,10 +248,31 @@ test("filterWardrobeItems excludes selected values and supports include plus exc
 test("sortWardrobeItems keeps existing wardrobe sort semantics", () => {
   assert.deepEqual(
     sortWardrobeItems(items, "newest").map((item) => item.id),
-    ["gamma-cap", "alpha-shirt", "beta-boots"]
+    ["delta-archive-shirt", "gamma-cap", "alpha-shirt", "beta-boots"]
   );
   assert.deepEqual(
     sortWardrobeItems(items, "paidHigh").map((item) => item.id),
-    ["beta-boots", "alpha-shirt", "gamma-cap"]
+    ["beta-boots", "alpha-shirt", "delta-archive-shirt", "gamma-cap"]
   );
+});
+
+test("filterWardrobeItems hides inactive statuses by default but still exposes them through explicit status filters", () => {
+  assert.deepEqual(
+    filterWardrobeItems(items, {}, {}, "").map((item) => item.id),
+    ["alpha-shirt", "beta-boots", "gamma-cap"]
+  );
+
+  assert.deepEqual(
+    filterWardrobeItems(items, { status: ["Archived"] }, {}, "").map((item) => item.id),
+    ["delta-archive-shirt"]
+  );
+});
+
+test("getWardrobeFilterOptions keeps all status filters available including inactive statuses", () => {
+  const options = getWardrobeFilterOptions(items, {}, {
+    itemStatusOptions: ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "Archived"],
+    includeAllStatusOptions: true
+  });
+
+  assert.deepEqual(options.status, ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "Archived"]);
 });

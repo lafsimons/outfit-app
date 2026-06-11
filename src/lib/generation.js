@@ -1,4 +1,6 @@
 import {
+  isActiveStatus,
+  isInactiveStatus,
   defaultItemList,
   getTypeMatchKeys,
   itemLists,
@@ -18,7 +20,8 @@ export const defaultGenerationLists = {
   Incoming: false,
   Wardrobe: true,
   Selling: false,
-  Sold: false
+  Sold: false,
+  Archived: false
 };
 
 function isGenerationListExplicitlyExcluded(value) {
@@ -269,6 +272,10 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
 
   const list = normalizeStatus(item.status ?? item.list);
 
+  if (isInactiveStatus(list)) {
+    return false;
+  }
+
   if (Object.hasOwn(generationLists, list)) {
     return generationLists[list] === true;
   }
@@ -322,7 +329,7 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
 }
 
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}) {
-  let pool = getSlotBasePool(items, slot, layering);
+  let pool = getSlotBasePool(items, slot, layering).filter((item) => isActiveStatus(item.status ?? item.list));
 
   if (layering && (slot === "TopInner" || slot === "TopOuter")) {
     const otherTopSlot = getOtherTopSlot(slot);

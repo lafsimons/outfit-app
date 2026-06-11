@@ -28,7 +28,8 @@ const defaultAppState = {
     Incoming: false,
     Wardrobe: true,
     Selling: false,
-    Sold: false
+    Sold: false,
+    Archived: false
   },
   generationMode: "guided",
   wardrobeFilters: {

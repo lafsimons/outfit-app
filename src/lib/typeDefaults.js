@@ -1,10 +1,15 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
 export const weightOptions = ["Light", "Medium", "Heavy"];
 export const defaultItemStatus = "Wardrobe";
-export const itemStatuses = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold"];
+export const activeItemStatuses = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling"];
+export const inactiveItemStatuses = ["Sold", "Archived"];
+export const itemStatuses = [...activeItemStatuses, ...inactiveItemStatuses];
 export const defaultItemList = defaultItemStatus;
 export const itemLists = itemStatuses;
 export const styleTagOptions = ["Casual", "Smart Casual", "Formal", "Athleisure"];
+
+const activeItemStatusSet = new Set(activeItemStatuses);
+const inactiveItemStatusSet = new Set(inactiveItemStatuses);
 
 export const emptyForm = {
   id: "",
@@ -218,6 +223,14 @@ export function normalizeStatus(status) {
   }
 
   return itemStatuses.includes(trimmed) ? trimmed : trimmed;
+}
+
+export function isActiveStatus(status) {
+  return activeItemStatusSet.has(normalizeStatus(status));
+}
+
+export function isInactiveStatus(status) {
+  return inactiveItemStatusSet.has(normalizeStatus(status));
 }
 
 export function normalizeList(list) {

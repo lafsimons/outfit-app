@@ -161,7 +161,8 @@ test("generation list default merging preserves current behavior", () => {
     Incoming: false,
     Wardrobe: true,
     Selling: false,
-    Sold: false
+    Sold: false,
+    Archived: false
   });
 
   assert.deepEqual(normalizeGenerationLists({ Wishlist: false }), {
@@ -170,7 +171,8 @@ test("generation list default merging preserves current behavior", () => {
     Incoming: false,
     Wardrobe: true,
     Selling: false,
-    Sold: false
+    Sold: false,
+    Archived: false
   });
 
   assert.deepEqual(normalizeGenerationLists({ ArchivedLater: false }), {
@@ -180,6 +182,7 @@ test("generation list default merging preserves current behavior", () => {
     Wardrobe: true,
     Selling: false,
     Sold: false,
+    Archived: false,
     ArchivedLater: false
   });
 
@@ -189,7 +192,8 @@ test("generation list default merging preserves current behavior", () => {
     Incoming: false,
     Wardrobe: true,
     Selling: false,
-    Sold: false
+    Sold: false,
+    Archived: false
   });
 });
 
@@ -220,7 +224,8 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
         Incoming: false,
         Wardrobe: true,
         Selling: false,
-        Sold: false
+        Sold: false,
+        Archived: false
       },
       generationMode: "guided",
       outfitFilters: {
@@ -321,6 +326,7 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     Wardrobe: true,
     Selling: true,
     Sold: false,
+    Archived: false,
     ArchivedLater: false
   });
   assert.equal(hydrated.generationMode, "guided");

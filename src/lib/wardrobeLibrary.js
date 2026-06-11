@@ -1,6 +1,6 @@
 import { climateTagOptions, getItemClimateTags, getItemStyleTags } from "./generation.js";
 import { getItemSortTimestamp, getNumericValue, normalizeCollections } from "./itemModel.js";
-import { normalizeStatus } from "./typeDefaults.js";
+import { getItemStatusOptions, isInactiveStatus, normalizeStatus } from "./typeDefaults.js";
 
 export const DEFAULT_WARDROBE_SORT = "newest";
 export const wardrobeMultiValueFilterKeys = ["brand", "type", "garmentType", "color", "style", "climate", "weight", "status", "collections"];
@@ -183,12 +183,21 @@ function matchesMultiFilterDimension(item, filters, key, ignored) {
   );
 }
 
+function hasExplicitStatusVisibilityRequest(filters) {
+  return Boolean((filters.status ?? []).length || (filters.statusExcluded ?? []).length);
+}
+
 export function matchesWardrobeFilters(item, filters, ignoredKeys = []) {
   const normalizedFilters = normalizeWardrobeFilters(filters);
   const ignored = new Set(ignoredKeys);
+  const itemStatus = normalizeStatus(item.status ?? item.list);
+  const shouldApplyImplicitInactiveExclusion = !ignored.has("status") && !hasExplicitStatusVisibilityRequest(normalizedFilters);
 
   return (
-    wardrobeMultiValueFilterKeys.every((key) => matchesMultiFilterDimension(item, normalizedFilters, key, ignored))
+    (!shouldApplyImplicitInactiveExclusion || !isInactiveStatus(itemStatus))
+    && (
+      wardrobeMultiValueFilterKeys.every((key) => matchesMultiFilterDimension(item, normalizedFilters, key, ignored))
+    )
     && (
       ignored.has("favorite")
       || !normalizedFilters.favorite
@@ -242,7 +251,8 @@ export function getWardrobeFilterOptions(
   {
     itemStatusOptions = [],
     styleTagOptions = [],
-    climateFilterOptions = climateTagOptions
+    climateFilterOptions = climateTagOptions,
+    includeAllStatusOptions = false
   } = {}
 ) {
   const normalizedFilters = normalizeWardrobeFilters(filters);
@@ -266,11 +276,17 @@ export function getWardrobeFilterOptions(
       normalizedFilters.climateExcluded
     ),
     weight: mergeSelected(getUniqueValues(getItemsForKey("weight"), "weight"), normalizedFilters.weight, normalizedFilters.weightExcluded),
-    status: mergeSelected(
-      itemStatusOptions.filter((status) => getItemsForKey("status").some((item) => normalizeStatus(item.status ?? item.list) === status)),
-      normalizedFilters.status,
-      normalizedFilters.statusExcluded
-    ),
+    status: includeAllStatusOptions
+      ? getItemStatusOptions([
+          ...itemStatusOptions,
+          ...normalizedFilters.status,
+          ...normalizedFilters.statusExcluded
+        ])
+      : mergeSelected(
+          itemStatusOptions.filter((status) => getItemsForKey("status").some((item) => normalizeStatus(item.status ?? item.list) === status)),
+          normalizedFilters.status,
+          normalizedFilters.statusExcluded
+        ),
     collections: mergeSelected(
       getUniqueValues(getItemsForKey("collections"), "collections"),
       normalizedFilters.collections,

@@ -219,7 +219,8 @@ test("default generation lists include only Wardrobe", () => {
     Incoming: false,
     Wardrobe: true,
     Selling: false,
-    Sold: false
+    Sold: false,
+    Archived: false
   });
 });
 
@@ -246,7 +247,25 @@ test("unknown preserved list values inherit Wardrobe generation inclusion unless
 test("generation excludes Selling and Sold statuses by default", () => {
   assert.equal(isEligibleForGeneration({ id: "selling_status", status: "Selling" }, {}, defaultGenerationLists), false);
   assert.equal(isEligibleForGeneration({ id: "sold_status", status: "Sold" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "archived_status", status: "Archived" }, {}, { ...defaultGenerationLists, Archived: true }), false);
   assert.equal(isEligibleForGeneration({ id: "wardrobe_status", status: "Wardrobe" }, {}, defaultGenerationLists), true);
+});
+
+test("manual selector pools exclude inactive statuses", () => {
+  assert.deepEqual(
+    getManualSelectorSlotPool(
+      [
+        { id: "active-top", garmentType: "Top", layerType: "Inner", status: "Wardrobe" },
+        { id: "archived-top", garmentType: "Top", layerType: "Inner", status: "Archived" },
+        { id: "sold-top", garmentType: "Top", layerType: "Inner", status: "Sold" }
+      ],
+      "TopInner",
+      true,
+      {},
+      {}
+    ).map((item) => item.id),
+    ["active-top"]
+  );
 });
 
 test("generation status exclusion blocks explicitly excluded statuses", () => {

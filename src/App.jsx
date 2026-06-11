@@ -23,6 +23,8 @@ import {
   getItemStatusOptions,
   getTypeMatchKeys,
   hasTypeDefaults,
+  isActiveStatus,
+  isInactiveStatus,
   itemLists,
   layerTypes,
   normalizeStatus,
@@ -2306,7 +2308,8 @@ export default function App() {
       getWardrobeFilterOptions(items, wardrobeFilters, {
         itemStatusOptions: itemListOptions,
         styleTagOptions,
-        climateFilterOptions: climateTagOptions
+        climateFilterOptions: climateTagOptions,
+        includeAllStatusOptions: true
       }),
     [itemListOptions, items, wardrobeFilters]
   );
@@ -2315,7 +2318,8 @@ export default function App() {
       getWardrobeFilterOptions(items, dashboardFilters, {
         itemStatusOptions: dashboardItemListOptions,
         styleTagOptions,
-        climateFilterOptions: climateTagOptions
+        climateFilterOptions: climateTagOptions,
+        includeAllStatusOptions: true
       }),
     [dashboardItemListOptions, items, dashboardFilters]
   );
@@ -2901,6 +2905,10 @@ export default function App() {
   const visibleDashboardItems = useMemo(() => {
     return getVisibleWardrobeItems(items, dashboardFilters, excluded, "", wardrobeSearchTextById, dashboardSort);
   }, [dashboardFilters, dashboardSort, excluded, items, wardrobeSearchTextById]);
+  const activeItemCount = useMemo(
+    () => items.reduce((count, item) => count + (isActiveStatus(item.status ?? item.list) ? 1 : 0), 0),
+    [items]
+  );
   const visibleWardrobeItemIds = useMemo(
     () => visibleWardrobeItems.map((item) => item.id),
     [visibleWardrobeItems]
@@ -4886,6 +4894,10 @@ export default function App() {
   }
 
   function toggleGenerationList(list) {
+    if (isInactiveStatus(list)) {
+      return;
+    }
+
     setGenerationLists((current) => {
       const currentValue = getGenerationListState(list, current);
 
@@ -4897,6 +4909,10 @@ export default function App() {
   }
 
   function toggleGenerationListWithMode(list, shouldExclude = false) {
+    if (isInactiveStatus(list)) {
+      return;
+    }
+
     setGenerationLists((current) => {
       const nextState = getNextGenerationListState(getGenerationListState(list, current), shouldExclude);
 
@@ -4916,6 +4932,10 @@ export default function App() {
   }
 
   function getGenerationListState(list, listState = generationLists) {
+    if (isInactiveStatus(list)) {
+      return false;
+    }
+
     if (Object.hasOwn(listState, list)) {
       return listState[list];
     }
@@ -7168,7 +7188,7 @@ export default function App() {
         <div className="wardrobe-stats-grid">
           <div className="wardrobe-stat-card">
             <span>Items</span>
-            <strong>{items.length}</strong>
+            <strong>{activeItemCount}</strong>
           </div>
           <div className="wardrobe-stat-card">
             <span>Visible</span>
