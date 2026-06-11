@@ -5,14 +5,19 @@ import {
   FITPIC_SPREAD_DETAIL_GAP,
   FITPIC_SPREAD_DETAIL_ROW_HEIGHT,
   FITPIC_SPREAD_HIGH_QUALITY_SCALE,
+  FITPIC_SPREAD_PRIMARY_HEIGHT,
   createFitpicSpreadExportOptions,
   getFitpicSpreadExportCardHeight,
+  getFitpicSpreadExportCardHeightForFitpic,
+  getFitpicSpreadExportColumnCount,
   getFitpicSpreadExportDetailColumns,
   getFitpicSpreadExportDetailImages,
   getFitpicSpreadExportDetailLayout,
   getFitpicSpreadExportDetailRowCount,
   getFitpicSpreadExportDetailTiles,
   getFitpicSpreadExportOrderedFitpics,
+  getFitpicSpreadExportPackedRenderConfig,
+  getFitpicSpreadExportPlacements,
   getFitpicSpreadExportPrimaryImage,
   getFitpicSpreadExportRenderConfig,
   getFitpicSpreadExportScopedFitpics,
@@ -153,6 +158,30 @@ test("fitpic spread export detail layout adapts for one, two, and three images",
   assert.equal(threeImageLayout.frames[1].x, threeImageLayout.frames[0].width + FITPIC_SPREAD_DETAIL_GAP);
 });
 
+test("fitpic spread export card height is content-driven per fitpic", () => {
+  const options = createFitpicSpreadExportOptions("reference");
+  const shortFitpic = {
+    name: "Short",
+    fitpicImages: [
+      { fitpicImageUuid: "primary", order: 0, images: { original: "/images/primary.jpg" } }
+    ]
+  };
+  const tallFitpic = {
+    name: "Tall",
+    fitpicImages: Array.from({ length: 9 }, (_, index) => ({
+      fitpicImageUuid: `image-${index}`,
+      order: index,
+      images: { original: `/images/${index}.jpg` }
+    }))
+  };
+
+  const shortHeight = getFitpicSpreadExportCardHeightForFitpic(shortFitpic, options);
+  const tallHeight = getFitpicSpreadExportCardHeightForFitpic(tallFitpic, options);
+
+  assert.ok(shortHeight < tallHeight);
+  assert.ok(shortHeight > FITPIC_SPREAD_PRIMARY_HEIGHT);
+});
+
 test("fitpic spread export scope supports current filtered results and all fitpics", () => {
   const allFitpics = [{ id: "a" }, { id: "b" }, { id: "c" }];
   const visibleFitpics = [{ id: "b" }];
@@ -208,6 +237,82 @@ test("fitpic spread export render config scales from the default card layout", (
   assert.ok(config.canvasWidth > 0);
   assert.ok(config.canvasHeight > 0);
   assert.ok(cardHeight > FITPIC_SPREAD_DETAIL_ROW_HEIGHT * 3);
+});
+
+test("fitpic spread export packed placements use shortest-column packing instead of fixed rows", () => {
+  const options = createFitpicSpreadExportOptions("reference");
+  const fitpics = [
+    {
+      id: "a",
+      name: "A",
+      fitpicImages: [{ fitpicImageUuid: "a-1", order: 0, images: { original: "/images/a-1.jpg" } }]
+    },
+    {
+      id: "b",
+      name: "B",
+      fitpicImages: Array.from({ length: 9 }, (_, index) => ({
+        fitpicImageUuid: `b-${index}`,
+        order: index,
+        images: { original: `/images/b-${index}.jpg` }
+      }))
+    },
+    {
+      id: "c",
+      name: "C",
+      fitpicImages: [
+        { fitpicImageUuid: "c-1", order: 0, images: { original: "/images/c-1.jpg" } },
+        { fitpicImageUuid: "c-2", order: 1, images: { original: "/images/c-2.jpg" } }
+      ]
+    },
+    {
+      id: "d",
+      name: "D",
+      fitpicImages: [{ fitpicImageUuid: "d-1", order: 0, images: { original: "/images/d-1.jpg" } }]
+    }
+  ];
+
+  const placements = getFitpicSpreadExportPlacements(fitpics, options, { padding: 36, cardGap: 24 });
+  const fixedRowSecondRowY = 36 + getFitpicSpreadExportCardHeight(options) + 24;
+
+  assert.equal(getFitpicSpreadExportColumnCount(fitpics.length), 2);
+  assert.equal(placements[0].column, 0);
+  assert.equal(placements[1].column, 1);
+  assert.equal(
+    placements.slice(2).some((placement) => placement.y < fixedRowSecondRowY),
+    true
+  );
+  assert.equal(
+    placements.slice(2).some((placement) => placement.y !== fixedRowSecondRowY),
+    true
+  );
+});
+
+test("fitpic spread export packed render config reduces canvas height versus fixed-row layout", () => {
+  const options = createFitpicSpreadExportOptions("reference");
+  const fitpics = [
+    {
+      fitpicImages: [{ fitpicImageUuid: "a-1", order: 0, images: { original: "/images/a-1.jpg" } }]
+    },
+    {
+      fitpicImages: Array.from({ length: 9 }, (_, index) => ({
+        fitpicImageUuid: `b-${index}`,
+        order: index,
+        images: { original: `/images/b-${index}.jpg` }
+      }))
+    },
+    {
+      fitpicImages: [{ fitpicImageUuid: "c-1", order: 0, images: { original: "/images/c-1.jpg" } }]
+    },
+    {
+      fitpicImages: [{ fitpicImageUuid: "d-1", order: 0, images: { original: "/images/d-1.jpg" } }]
+    }
+  ];
+  const fixedCardHeight = getFitpicSpreadExportCardHeight(options);
+  const fixedConfig = getFitpicSpreadExportRenderConfig(fitpics.length, { cardHeight: fixedCardHeight });
+  const packedConfig = getFitpicSpreadExportPackedRenderConfig(fitpics, options);
+
+  assert.ok(packedConfig.canvasHeight < fixedConfig.canvasHeight);
+  assert.equal(packedConfig.placements.length, fitpics.length);
 });
 
 test("fitpic spread export option normalization keeps sort and shuffle mutually exclusive", () => {

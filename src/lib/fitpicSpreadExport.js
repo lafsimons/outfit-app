@@ -7,6 +7,8 @@ export const FITPIC_SPREAD_PRIMARY_HEIGHT = 228;
 export const FITPIC_SPREAD_DETAIL_ROW_HEIGHT = 68;
 export const FITPIC_SPREAD_DETAIL_GAP = 4;
 export const FITPIC_SPREAD_MAX_DETAIL_TILES = 9;
+export const FITPIC_SPREAD_TITLE_LINE_HEIGHT = 18;
+export const FITPIC_SPREAD_TITLE_MAX_LINES = 2;
 export const FITPIC_SPREAD_STANDARD_SCALE = 2;
 export const FITPIC_SPREAD_HIGH_QUALITY_SCALE = 3;
 export const FITPIC_SPREAD_MAX_CANVAS_DIMENSION = 16384;
@@ -301,7 +303,7 @@ export function getFitpicSpreadExportCardHeight(options = {}) {
   let height = 14 + FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
 
   if (normalizedOptions.showTitle) {
-    height += 42;
+    height += FITPIC_SPREAD_TITLE_LINE_HEIGHT * FITPIC_SPREAD_TITLE_MAX_LINES + 2;
   }
 
   if (normalizedOptions.showDetailGrid) {
@@ -319,6 +321,68 @@ export function getFitpicSpreadExportCardHeight(options = {}) {
   return height + 14;
 }
 
+export function getFitpicSpreadExportCardHeightForFitpic(fitpic = {}, options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+  const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
+  const detailLayout = getFitpicSpreadExportDetailLayout(detailTiles.length, FITPIC_SPREAD_CARD_WIDTH - 28);
+  let height = 14 + FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+
+  if (normalizedOptions.showTitle) {
+    height += FITPIC_SPREAD_TITLE_LINE_HEIGHT * FITPIC_SPREAD_TITLE_MAX_LINES + 2;
+  }
+
+  if (normalizedOptions.showDetailGrid && detailLayout.totalHeight > 0) {
+    height += detailLayout.totalHeight + 10;
+  }
+
+  if (normalizedOptions.showTags) {
+    height += 24;
+  }
+
+  if (normalizedOptions.showFitDate) {
+    height += 18;
+  }
+
+  return height + 14;
+}
+
+export function getFitpicSpreadExportColumnCount(fitpicCount) {
+  const normalizedFitpicCount = Math.max(0, Math.floor(Number(fitpicCount) || 0));
+  return Math.max(1, Math.ceil(Math.sqrt(normalizedFitpicCount || 1)));
+}
+
+export function getFitpicSpreadExportPlacements(fitpics = [], options = {}, {
+  cardWidth = FITPIC_SPREAD_CARD_WIDTH,
+  cardGap = FITPIC_SPREAD_CARD_GAP,
+  padding = FITPIC_SPREAD_CARD_PADDING
+} = {}) {
+  const columns = getFitpicSpreadExportColumnCount(fitpics.length);
+  const columnHeights = Array.from({ length: columns }, () => padding);
+
+  return (Array.isArray(fitpics) ? fitpics : []).map((fitpic, index) => {
+    const cardHeight = getFitpicSpreadExportCardHeightForFitpic(fitpic, options);
+    let column = 0;
+
+    for (let candidateColumn = 1; candidateColumn < columns; candidateColumn += 1) {
+      if (columnHeights[candidateColumn] < columnHeights[column]) {
+        column = candidateColumn;
+      }
+    }
+
+    const placement = {
+      index,
+      column,
+      x: padding + column * (cardWidth + cardGap),
+      y: columnHeights[column],
+      width: cardWidth,
+      height: cardHeight
+    };
+
+    columnHeights[column] += cardHeight + cardGap;
+    return placement;
+  });
+}
+
 export function getFitpicSpreadExportLayout(fitpicCount, {
   cardWidth = FITPIC_SPREAD_CARD_WIDTH,
   cardHeight = getFitpicSpreadExportCardHeight(),
@@ -326,7 +390,7 @@ export function getFitpicSpreadExportLayout(fitpicCount, {
   padding = FITPIC_SPREAD_CARD_PADDING
 } = {}) {
   const normalizedFitpicCount = Math.max(0, Math.floor(Number(fitpicCount) || 0));
-  const columns = Math.max(1, Math.ceil(Math.sqrt(normalizedFitpicCount || 1)));
+  const columns = getFitpicSpreadExportColumnCount(normalizedFitpicCount);
   const rows = Math.max(1, Math.ceil((normalizedFitpicCount || 1) / columns));
   const canvasWidth = columns * cardWidth + Math.max(0, columns - 1) * cardGap + padding * 2;
   const canvasHeight = rows * cardHeight + Math.max(0, rows - 1) * cardGap + padding * 2;
@@ -367,5 +431,43 @@ export function getFitpicSpreadExportRenderConfig(fitpicCount, {
     exportScale,
     pixelWidth: Math.max(1, Math.floor(layout.canvasWidth * exportScale)),
     pixelHeight: Math.max(1, Math.floor(layout.canvasHeight * exportScale))
+  };
+}
+
+export function getFitpicSpreadExportPackedRenderConfig(fitpics = [], options = {}, {
+  cardWidth = FITPIC_SPREAD_CARD_WIDTH,
+  cardGap = FITPIC_SPREAD_CARD_GAP,
+  padding = FITPIC_SPREAD_CARD_PADDING,
+  qualityScale = FITPIC_SPREAD_HIGH_QUALITY_SCALE,
+  maxCanvasDimension = FITPIC_SPREAD_MAX_CANVAS_DIMENSION,
+  maxCanvasPixels = FITPIC_SPREAD_MAX_CANVAS_PIXELS
+} = {}) {
+  const placements = getFitpicSpreadExportPlacements(fitpics, options, { cardWidth, cardGap, padding });
+  const columns = getFitpicSpreadExportColumnCount(fitpics.length);
+  const canvasWidth = columns * cardWidth + Math.max(0, columns - 1) * cardGap + padding * 2;
+  const contentBottom = placements.length
+    ? Math.max(...placements.map((placement) => placement.y + placement.height))
+    : padding;
+  const canvasHeight = contentBottom + padding;
+  const dimensionLimitedScale = Math.min(
+    qualityScale,
+    maxCanvasDimension / canvasWidth,
+    maxCanvasDimension / canvasHeight
+  );
+  const pixelLimitedScale = Math.sqrt(maxCanvasPixels / (canvasWidth * canvasHeight));
+  const exportScale = Math.max(0.1, Math.min(dimensionLimitedScale, pixelLimitedScale));
+
+  return {
+    placements,
+    columns,
+    cardWidth,
+    cardGap,
+    padding,
+    canvasWidth,
+    canvasHeight,
+    qualityScale,
+    exportScale,
+    pixelWidth: Math.max(1, Math.floor(canvasWidth * exportScale)),
+    pixelHeight: Math.max(1, Math.floor(canvasHeight * exportScale))
   };
 }

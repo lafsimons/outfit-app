@@ -163,12 +163,11 @@ import {
   FITPIC_SPREAD_DETAIL_GAP,
   FITPIC_SPREAD_PRIMARY_HEIGHT,
   createFitpicSpreadExportOptions,
-  getFitpicSpreadExportCardHeight,
   getFitpicSpreadExportDetailLayout,
   getFitpicSpreadExportDetailTiles,
   getFitpicSpreadExportOrderedFitpics,
+  getFitpicSpreadExportPackedRenderConfig,
   getFitpicSpreadExportPrimaryImage,
-  getFitpicSpreadExportRenderConfig,
   getFitpicSpreadExportScopedFitpics,
   normalizeFitpicSpreadExportOptions
 } from "./lib/fitpicSpreadExport";
@@ -4275,19 +4274,14 @@ export default function App() {
       return;
     }
 
-    const fitpicCardHeight = getFitpicSpreadExportCardHeight(normalizedOptions);
     const {
-      cardWidth,
-      cardHeight: exportCardHeight,
-      cardGap,
-      padding,
-      columns,
+      placements,
       canvasWidth,
       canvasHeight,
       exportScale,
       pixelWidth,
       pixelHeight
-    } = getFitpicSpreadExportRenderConfig(exportFitpics.length, { cardHeight: fitpicCardHeight });
+    } = getFitpicSpreadExportPackedRenderConfig(exportFitpics, normalizedOptions);
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
 
@@ -4339,10 +4333,16 @@ export default function App() {
       );
 
       exportFitpics.forEach((fitpic, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        const cardLeft = padding + column * (cardWidth + cardGap);
-        const cardTop = padding + row * (exportCardHeight + cardGap);
+        const placement = placements[index];
+
+        if (!placement) {
+          return;
+        }
+
+        const cardLeft = placement.x;
+        const cardTop = placement.y;
+        const exportCardHeight = placement.height;
+        const cardWidth = placement.width;
         const cardInnerLeft = cardLeft + 14;
         const cardInnerWidth = cardWidth - 28;
         let cursorY = cardTop + 14;
