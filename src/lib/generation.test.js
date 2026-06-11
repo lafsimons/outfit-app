@@ -244,14 +244,16 @@ test("unknown preserved list values inherit Wardrobe generation inclusion unless
   );
 });
 
-test("generation excludes Selling and Sold statuses by default", () => {
+test("generation status inclusion follows controls state, with inactive statuses off by default", () => {
   assert.equal(isEligibleForGeneration({ id: "selling_status", status: "Selling" }, {}, defaultGenerationLists), false);
   assert.equal(isEligibleForGeneration({ id: "sold_status", status: "Sold" }, {}, defaultGenerationLists), false);
-  assert.equal(isEligibleForGeneration({ id: "archived_status", status: "Archived" }, {}, { ...defaultGenerationLists, Archived: true }), false);
+  assert.equal(isEligibleForGeneration({ id: "archived_status", status: "Archived" }, {}, defaultGenerationLists), false);
+  assert.equal(isEligibleForGeneration({ id: "archived_status", status: "Archived" }, {}, { ...defaultGenerationLists, Archived: true }), true);
+  assert.equal(isEligibleForGeneration({ id: "sold_status", status: "Sold" }, {}, { ...defaultGenerationLists, Sold: true }), true);
   assert.equal(isEligibleForGeneration({ id: "wardrobe_status", status: "Wardrobe" }, {}, defaultGenerationLists), true);
 });
 
-test("manual selector pools exclude inactive statuses", () => {
+test("manual selector pools follow controls status inclusion, including inactive statuses when enabled", () => {
   assert.deepEqual(
     getManualSelectorSlotPool(
       [
@@ -262,9 +264,26 @@ test("manual selector pools exclude inactive statuses", () => {
       "TopInner",
       true,
       {},
-      {}
+      {},
+      defaultGenerationLists
     ).map((item) => item.id),
     ["active-top"]
+  );
+
+  assert.deepEqual(
+    getManualSelectorSlotPool(
+      [
+        { id: "active-top", garmentType: "Top", layerType: "Inner", status: "Wardrobe" },
+        { id: "archived-top", garmentType: "Top", layerType: "Inner", status: "Archived" },
+        { id: "sold-top", garmentType: "Top", layerType: "Inner", status: "Sold" }
+      ],
+      "TopInner",
+      true,
+      {},
+      {},
+      { ...defaultGenerationLists, Archived: true, Sold: true }
+    ).map((item) => item.id),
+    ["active-top", "archived-top", "sold-top"]
   );
 });
 
@@ -620,14 +639,15 @@ test("manual selector slot pool stays broad even when guided eligible pool is st
     "TopInner",
     true,
     {},
-    itemsById
+    itemsById,
+    defaultGenerationLists
   ).map((item) => item.id);
 
   assert.equal(guidedPool.includes("top_shirt"), false);
   assert.equal(manualPool.includes("top_shirt"), true);
 });
 
-test("manual selector slot pool ignores generation-list eligibility but keeps slot validity", () => {
+test("manual selector slot pool follows generation-list eligibility while keeping slot validity", () => {
   const selectorItems = [
     { id: "wishlist_top", garmentType: "Top", layerType: "Inner", status: "Wishlist" },
     { id: "wardrobe_bottom", garmentType: "Bottom", layerType: "Both", status: "Wardrobe" }
@@ -638,7 +658,8 @@ test("manual selector slot pool ignores generation-list eligibility but keeps sl
     "TopInner",
     true,
     {},
-    {}
+    {},
+    defaultGenerationLists
   ).map((item) => item.id);
   const guidedPool = getEligibleSlotPool(
     selectorItems,
@@ -652,8 +673,39 @@ test("manual selector slot pool ignores generation-list eligibility but keeps sl
     {}
   ).map((item) => item.id);
 
-  assert.deepEqual(manualPool, ["wishlist_top"]);
+  assert.deepEqual(manualPool, []);
   assert.deepEqual(guidedPool, []);
+});
+
+test("manual selector slot pool includes statuses that controls explicitly enable", () => {
+  const selectorItems = [
+    { id: "archived_top", garmentType: "Top", layerType: "Inner", status: "Archived" },
+    { id: "sold_top", garmentType: "Top", layerType: "Inner", status: "Sold" }
+  ];
+
+  assert.deepEqual(
+    getManualSelectorSlotPool(
+      selectorItems,
+      "TopInner",
+      true,
+      {},
+      {},
+      { ...defaultGenerationLists, Archived: true }
+    ).map((item) => item.id),
+    ["archived_top"]
+  );
+
+  assert.deepEqual(
+    getManualSelectorSlotPool(
+      selectorItems,
+      "TopInner",
+      true,
+      {},
+      {},
+      { ...defaultGenerationLists, Sold: true }
+    ).map((item) => item.id),
+    ["sold_top"]
+  );
 });
 
 test("formal forward-check keeps early bridge footwear eligible when remaining slots can still anchor", () => {

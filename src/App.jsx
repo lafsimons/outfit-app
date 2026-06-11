@@ -24,7 +24,6 @@ import {
   getTypeMatchKeys,
   hasTypeDefaults,
   isActiveStatus,
-  isInactiveStatus,
   itemLists,
   layerTypes,
   normalizeStatus,
@@ -2259,11 +2258,12 @@ export default function App() {
   const activeSelectorPool = useMemo(
     () => (
       activeOutfitSlot
-        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById)
+        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById, generationLists)
         : []
     ),
     [
       activeOutfitSlot,
+      generationLists,
       items,
       itemsById,
       layering,
@@ -4894,10 +4894,6 @@ export default function App() {
   }
 
   function toggleGenerationList(list) {
-    if (isInactiveStatus(list)) {
-      return;
-    }
-
     setGenerationLists((current) => {
       const currentValue = getGenerationListState(list, current);
 
@@ -4909,10 +4905,6 @@ export default function App() {
   }
 
   function toggleGenerationListWithMode(list, shouldExclude = false) {
-    if (isInactiveStatus(list)) {
-      return;
-    }
-
     setGenerationLists((current) => {
       const nextState = getNextGenerationListState(getGenerationListState(list, current), shouldExclude);
 
@@ -4932,10 +4924,6 @@ export default function App() {
   }
 
   function getGenerationListState(list, listState = generationLists) {
-    if (isInactiveStatus(list)) {
-      return false;
-    }
-
     if (Object.hasOwn(listState, list)) {
       return listState[list];
     }
