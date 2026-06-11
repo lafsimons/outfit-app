@@ -233,6 +233,14 @@ import {
   stripViteHash
 } from "./lib/imagePresentation";
 import {
+  downloadExportFile,
+  getExportFilename,
+  serializeFitpicsCsv,
+  serializeFitpicsJson,
+  serializeSavedOutfitsCsv,
+  serializeSavedOutfitsJson
+} from "./lib/metadataExport";
+import {
   getWardrobePreviewDirectionForKey,
   getWardrobePreviewImageNavigation,
   getWardrobePreviewNavigation
@@ -3854,6 +3862,46 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function handleExportSavedOutfitsCsv() {
+    downloadExportFile(
+      serializeSavedOutfitsCsv(savedOutfits, items),
+      {
+        filename: getExportFilename("saved-outfits", "csv"),
+        mimeType: "text/csv;charset=utf-8"
+      }
+    );
+  }
+
+  function handleExportSavedOutfitsJson() {
+    downloadExportFile(
+      serializeSavedOutfitsJson(savedOutfits, items),
+      {
+        filename: getExportFilename("saved-outfits", "json"),
+        mimeType: "application/json"
+      }
+    );
+  }
+
+  function handleExportFitpicsCsv() {
+    downloadExportFile(
+      serializeFitpicsCsv(fitpics, items),
+      {
+        filename: getExportFilename("fitpics", "csv"),
+        mimeType: "text/csv;charset=utf-8"
+      }
+    );
+  }
+
+  function handleExportFitpicsJson() {
+    downloadExportFile(
+      serializeFitpicsJson(fitpics, items),
+      {
+        filename: getExportFilename("fitpics", "json"),
+        mimeType: "application/json"
+      }
+    );
+  }
+
   async function handleImportBackup(event) {
     const [file] = event.target.files;
     event.target.value = "";
@@ -6266,14 +6314,30 @@ export default function App() {
                 <p className="saved-outfit-controls-count">
                   {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
                 </p>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={resetSavedOutfitControls}
-                  disabled={!hasActiveSavedOutfitControls}
-                >
-                  Clear filters
-                </button>
+                <div className="wardrobe-toolbar-context-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportSavedOutfitsCsv}
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportSavedOutfitsJson}
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={resetSavedOutfitControls}
+                    disabled={!hasActiveSavedOutfitControls}
+                  >
+                    Clear filters
+                  </button>
+                </div>
               </div>
               <label>
                 Search
@@ -6813,6 +6877,22 @@ export default function App() {
                   {visibleFitpics.length} of {fitpics.length} fitpics
                 </span>
               <div className="wardrobe-toolbar-context">
+                <div className="wardrobe-toolbar-context-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportFitpicsCsv}
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportFitpicsJson}
+                  >
+                    Export JSON
+                  </button>
+                </div>
                 {hasFitpicSelection ? (
                   <>
                     <div className="wardrobe-selection-summary fitpic-selection-summary">
