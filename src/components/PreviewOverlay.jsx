@@ -1,3 +1,5 @@
+import DismissibleBackdrop from "./DismissibleBackdrop";
+
 export default function PreviewOverlay({
   open,
   eyebrow = "Preview",
@@ -12,7 +14,7 @@ export default function PreviewOverlay({
   }
 
   return (
-    <div className="floating-backdrop preview-overlay-backdrop" onClick={onClose}>
+    <DismissibleBackdrop className="floating-backdrop preview-overlay-backdrop" onDismiss={onClose}>
       <div
         className="preview-overlay"
         role="dialog"
@@ -35,6 +37,6 @@ export default function PreviewOverlay({
         </div>
         <div className="preview-overlay-body">{children}</div>
       </div>
-    </div>
+    </DismissibleBackdrop>
   );
 }

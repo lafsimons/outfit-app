@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmationDialog from "./components/ConfirmationDialog";
+import DismissibleBackdrop from "./components/DismissibleBackdrop";
 import PreviewOverlay from "./components/PreviewOverlay";
 import WardrobeExportDialog from "./components/WardrobeExportDialog";
 import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
@@ -6853,7 +6854,7 @@ export default function App() {
               </div>
             </div>
             {fitpicFiltersOpen ? (
-              <div className="floating-backdrop filter-backdrop" onClick={closeFitpicFilters} />
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeFitpicFilters} />
             ) : null}
             {hasActiveFitpicFilters ? (
               <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic filters">
@@ -9282,35 +9283,35 @@ export default function App() {
         ) : null}
 
         {activePanel ? (
-          <div className="floating-backdrop active-panel-backdrop" onClick={closeWorkspacePanel}>
-        <div
-          className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
-          onClick={(event) => event.stopPropagation()}
-        >
-        {activePanel === "wardrobe" ? (
-        <div className="wardrobe-workspace">
-          <div className="panel wardrobe-panel">
-            <div className="panel-header">
-              <div className="wardrobe-toolbar">
-                <div className="wardrobe-toolbar-leading">
-                  <div className="wardrobe-search-field">
-                    <input
-                      type="search"
-                      value={wardrobeSearch}
-                      onPointerDown={() => {
-                        if (wardrobeFiltersOpen) {
-                          dismissWardrobeFilters();
-                        }
-                      }}
-                      onFocus={() => {
-                        if (wardrobeFiltersOpen) {
-                          dismissWardrobeFilters();
-                        }
-                      }}
-                      onChange={(event) => setWardrobeSearch(event.target.value)}
-                      placeholder="Search wardrobe"
-                    />
-                  </div>
+          <DismissibleBackdrop className="floating-backdrop active-panel-backdrop" onDismiss={closeWorkspacePanel}>
+            <div
+              className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {activePanel === "wardrobe" ? (
+                <div className="wardrobe-workspace">
+                  <div className="panel wardrobe-panel">
+                    <div className="panel-header">
+                      <div className="wardrobe-toolbar">
+                        <div className="wardrobe-toolbar-leading">
+                          <div className="wardrobe-search-field">
+                            <input
+                              type="search"
+                              value={wardrobeSearch}
+                              onPointerDown={() => {
+                                if (wardrobeFiltersOpen) {
+                                  dismissWardrobeFilters();
+                                }
+                              }}
+                              onFocus={() => {
+                                if (wardrobeFiltersOpen) {
+                                  dismissWardrobeFilters();
+                                }
+                              }}
+                              onChange={(event) => setWardrobeSearch(event.target.value)}
+                              placeholder="Search wardrobe"
+                            />
+                          </div>
                   <div className={`wardrobe-filter-anchor ${wardrobeFiltersOpen ? "is-open" : ""}`}>
                     <button
                       type="button"
@@ -9598,11 +9599,14 @@ export default function App() {
             </div>
 
             {wardrobeFiltersOpen ? (
-              <div className="floating-backdrop filter-backdrop" onClick={closeWardrobeFilters} />
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeWardrobeFilters} />
             ) : null}
 
             {wardrobeManageOpen ? (
-              <div className="floating-backdrop filter-backdrop" onClick={() => setWardrobeManageOpen(false)} />
+              <DismissibleBackdrop
+                className="floating-backdrop filter-backdrop"
+                onDismiss={() => setWardrobeManageOpen(false)}
+              />
             ) : null}
 
             <input
@@ -9667,8 +9671,8 @@ export default function App() {
           {renderDashboardContent()}
         </section>
         ) : null}
-        </div>
-        </div>
+            </div>
+          </DismissibleBackdrop>
         ) : null}
 
         {(editingId || bulkMetadataEditorOpen) && !showInlineWardrobeEditor ? (

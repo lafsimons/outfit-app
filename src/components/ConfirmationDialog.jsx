@@ -1,3 +1,5 @@
+import DismissibleBackdrop from "./DismissibleBackdrop";
+
 export default function ConfirmationDialog({
   open,
   title,
@@ -11,7 +13,7 @@ export default function ConfirmationDialog({
   }
 
   return (
-    <div className="floating-backdrop confirm-backdrop" onClick={onCancel}>
+    <DismissibleBackdrop className="floating-backdrop confirm-backdrop" onDismiss={onCancel}>
       <div className="confirm-dialog" onClick={(event) => event.stopPropagation()}>
         <div>
           <p className="eyebrow">Confirm</p>
@@ -27,6 +29,6 @@ export default function ConfirmationDialog({
           </button>
         </div>
       </div>
-    </div>
+    </DismissibleBackdrop>
   );
 }

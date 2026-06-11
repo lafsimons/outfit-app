@@ -1,3 +1,5 @@
+import DismissibleBackdrop from "./DismissibleBackdrop";
+
 import {
   createWardrobeSpreadExportOptions,
   wardrobeSpreadExportPresets
@@ -41,7 +43,7 @@ export default function WardrobeExportDialog({
   }
 
   return (
-    <div className="floating-backdrop confirm-backdrop" onClick={onCancel}>
+    <DismissibleBackdrop className="floating-backdrop confirm-backdrop" onDismiss={onCancel}>
       <div
         className="confirm-dialog wardrobe-export-dialog"
         role="dialog"
@@ -142,6 +144,6 @@ export default function WardrobeExportDialog({
           </button>
         </div>
       </div>
-    </div>
+    </DismissibleBackdrop>
   );
 }
