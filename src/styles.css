@@ -21,6 +21,13 @@
   --preview-end: #e8e8e8;
   --radius-panel: 4px;
   --radius-control: 3px;
+  --z-active-panel-backdrop: 19;
+  --z-active-panel: 20;
+  --z-filter-backdrop: 21;
+  --z-floating-editor: 52;
+  --z-floating-editor-wardrobe: 60;
+  --z-confirm-backdrop: 110;
+  --z-preview-overlay: 100;
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 14px;
   color: var(--text);
@@ -759,11 +766,11 @@ button:disabled {
 }
 
 .active-panel-backdrop {
-  z-index: 19;
+  z-index: var(--z-active-panel-backdrop);
 }
 
 .filter-backdrop {
-  z-index: 21;
+  z-index: var(--z-filter-backdrop);
 }
 
 .active-panel-overlay {
@@ -771,7 +778,7 @@ button:disabled {
   left: 50%;
   top: 32px;
   bottom: calc(92px + env(safe-area-inset-bottom));
-  z-index: 20;
+  z-index: var(--z-active-panel);
   width: min(1180px, calc(100vw - 40px));
   transform: translateX(-50%);
   overflow: auto;
@@ -3572,7 +3579,7 @@ button:disabled {
 }
 
 .confirm-backdrop {
-  z-index: 70;
+  z-index: var(--z-confirm-backdrop);
   display: grid;
   place-items: center;
   padding: 16px;
@@ -3655,7 +3662,7 @@ button:disabled {
 }
 
 .preview-overlay-backdrop {
-  z-index: 96;
+  z-index: var(--z-preview-overlay);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -3895,7 +3902,7 @@ button:disabled {
   position: fixed;
   left: 18px;
   bottom: calc(90px + env(safe-area-inset-bottom));
-  z-index: 52;
+  z-index: var(--z-floating-editor);
   width: min(var(--wardrobe-editor-width, 396px), calc(100vw - 36px));
   max-height: calc(100vh - 140px - env(safe-area-inset-bottom));
   display: flex;
@@ -3905,7 +3912,7 @@ button:disabled {
 }
 
 .floating-item-editor.is-wardrobe-editor {
-  z-index: 60;
+  z-index: var(--z-floating-editor-wardrobe);
 }
 
 .floating-item-editor.is-outfit-editor {
