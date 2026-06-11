@@ -237,14 +237,19 @@ export function normalizeList(list) {
   return normalizeStatus(list);
 }
 
-export function getItemStatusOptions(values = []) {
-  const unknownLists = [...new Set(
+export function sortStatusOptions(values = []) {
+  const uniqueKnownStatuses = itemStatuses.filter((status) => values.includes(status));
+  const unknownStatuses = [...new Set(
     values
       .map((value) => (typeof value === "string" ? value.trim() : ""))
       .filter((value) => value && !itemStatuses.includes(value))
-  )].sort((a, b) => a.localeCompare(b));
+  )].sort((left, right) => left.localeCompare(right));
 
-  return [...itemStatuses, ...unknownLists];
+  return [...uniqueKnownStatuses, ...unknownStatuses];
+}
+
+export function getItemStatusOptions(values = []) {
+  return sortStatusOptions(itemStatuses.concat(values));
 }
 
 export function getItemListOptions(values = []) {

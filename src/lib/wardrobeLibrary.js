@@ -1,6 +1,6 @@
 import { climateTagOptions, getItemClimateTags, getItemStyleTags } from "./generation.js";
 import { getItemSortTimestamp, getNumericValue, normalizeCollections } from "./itemModel.js";
-import { getItemStatusOptions, isInactiveStatus, normalizeStatus } from "./typeDefaults.js";
+import { getItemStatusOptions, isInactiveStatus, normalizeStatus, sortStatusOptions } from "./typeDefaults.js";
 
 export const DEFAULT_WARDROBE_SORT = "newest";
 export const wardrobeMultiValueFilterKeys = ["brand", "type", "garmentType", "color", "style", "climate", "weight", "status", "collections"];
@@ -282,11 +282,11 @@ export function getWardrobeFilterOptions(
           ...normalizedFilters.status,
           ...normalizedFilters.statusExcluded
         ])
-      : mergeSelected(
-          itemStatusOptions.filter((status) => getItemsForKey("status").some((item) => normalizeStatus(item.status ?? item.list) === status)),
-          normalizedFilters.status,
-          normalizedFilters.statusExcluded
-        ),
+      : sortStatusOptions([
+          ...itemStatusOptions.filter((status) => getItemsForKey("status").some((item) => normalizeStatus(item.status ?? item.list) === status)),
+          ...normalizedFilters.status,
+          ...normalizedFilters.statusExcluded
+        ]),
     collections: mergeSelected(
       getUniqueValues(getItemsForKey("collections"), "collections"),
       normalizedFilters.collections,

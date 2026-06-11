@@ -9,7 +9,8 @@ import {
   matchesStatusFilter,
   normalizeStatus,
   matchesListFilter,
-  normalizeList
+  normalizeList,
+  sortStatusOptions
 } from "./typeDefaults.js";
 
 test("normalizeStatus defaults missing values to Wardrobe and accepts Incoming", () => {
@@ -53,6 +54,13 @@ test("getItemStatusOptions keeps known status order and appends unknown values o
   assert.deepEqual(
     getItemStatusOptions(["Wishlist", "Incoming", "ArchivedLater", "ArchivedLater", "Zeta"]),
     ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "Archived", "ArchivedLater", "Zeta"]
+  );
+});
+
+test("sortStatusOptions uses lifecycle order instead of alphabetical sorting", () => {
+  assert.deepEqual(
+    sortStatusOptions(["Incoming", "Interested", "Selling", "Wardrobe", "Wishlist", "Sold", "Archived"]),
+    ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling", "Sold", "Archived"]
   );
 });
 
