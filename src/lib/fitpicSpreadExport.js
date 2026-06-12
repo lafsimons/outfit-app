@@ -4,8 +4,8 @@ export const FITPIC_SPREAD_CARD_WIDTH = 308;
 export const FITPIC_SPREAD_CARD_PADDING = 36;
 export const FITPIC_SPREAD_CARD_GAP = 24;
 export const FITPIC_SPREAD_PRIMARY_HEIGHT = 228;
-export const FITPIC_SPREAD_DETAIL_ROW_HEIGHT = 68;
-export const FITPIC_SPREAD_DETAIL_GAP = 4;
+export const FITPIC_SPREAD_DETAIL_ROW_HEIGHT = 82;
+export const FITPIC_SPREAD_DETAIL_GAP = 3;
 export const FITPIC_SPREAD_MAX_DETAIL_TILES = 9;
 export const FITPIC_SPREAD_TITLE_LINE_HEIGHT = 18;
 export const FITPIC_SPREAD_TITLE_MAX_LINES = 2;
@@ -250,7 +250,7 @@ export function getFitpicSpreadExportDetailColumns(tileCount = 0) {
     return 1;
   }
 
-  if (tileCount === 2) {
+  if (tileCount <= 4) {
     return 2;
   }
 

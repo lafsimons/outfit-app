@@ -126,7 +126,9 @@ test("fitpic spread export detail tiles limit to eight images plus overflow tile
 test("fitpic spread export detail layout adapts for one, two, and three images", () => {
   assert.equal(getFitpicSpreadExportDetailColumns(1), 1);
   assert.equal(getFitpicSpreadExportDetailColumns(2), 2);
-  assert.equal(getFitpicSpreadExportDetailColumns(3), 3);
+  assert.equal(getFitpicSpreadExportDetailColumns(3), 2);
+  assert.equal(getFitpicSpreadExportDetailColumns(4), 2);
+  assert.equal(getFitpicSpreadExportDetailColumns(5), 3);
 
   assert.deepEqual(
     getFitpicSpreadExportDetailLayout(1, 276),
@@ -144,18 +146,19 @@ test("fitpic spread export detail layout adapts for one, two, and three images",
       columns: 2,
       rowCount: 1,
       frames: [
-        { x: 0, y: 0, width: 136, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT },
-        { x: 140, y: 0, width: 136, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT }
+        { x: 0, y: 0, width: 136.5, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT },
+        { x: 139.5, y: 0, width: 136.5, height: FITPIC_SPREAD_DETAIL_ROW_HEIGHT }
       ],
       totalHeight: FITPIC_SPREAD_DETAIL_ROW_HEIGHT
     }
   );
 
   const threeImageLayout = getFitpicSpreadExportDetailLayout(3, 276);
-  assert.equal(threeImageLayout.columns, 3);
-  assert.equal(threeImageLayout.rowCount, 1);
+  assert.equal(threeImageLayout.columns, 2);
+  assert.equal(threeImageLayout.rowCount, 2);
   assert.equal(threeImageLayout.frames.length, 3);
   assert.equal(threeImageLayout.frames[1].x, threeImageLayout.frames[0].width + FITPIC_SPREAD_DETAIL_GAP);
+  assert.equal(threeImageLayout.frames[2].y, FITPIC_SPREAD_DETAIL_ROW_HEIGHT + FITPIC_SPREAD_DETAIL_GAP);
 });
 
 test("fitpic spread export card height is content-driven per fitpic", () => {

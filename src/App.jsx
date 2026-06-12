@@ -4375,7 +4375,7 @@ export default function App() {
           titleLines.forEach((line, lineIndex) => {
             context.fillText(line, cardInnerLeft, cursorY + lineIndex * 18, cardInnerWidth);
           });
-          cursorY += 38;
+          cursorY += 34;
         }
 
         if (normalizedOptions.showDetailGrid) {
@@ -4412,7 +4412,7 @@ export default function App() {
             }
           });
 
-          cursorY += detailLayout.totalHeight + 10;
+          cursorY += detailLayout.totalHeight + 8;
         }
 
         if (normalizedOptions.showTags) {
