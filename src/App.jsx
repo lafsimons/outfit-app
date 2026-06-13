@@ -1064,13 +1064,12 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     : null;
   const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
   const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
-  const [displayedImageUrl, setDisplayedImageUrl] = useState(() =>
-    getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl) ? targetImageUrl : ""
-  );
-  const [displayedMetricsCacheKey, setDisplayedMetricsCacheKey] = useState(() =>
-    getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl) ? targetMetricsCacheKey : ""
-  );
-  const metrics = useImageMetrics(displayedImageUrl, displayedMetricsCacheKey, perfContext);
+  const hasTargetMetrics = Boolean(getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl));
+  const [displayedImageUrl, setDisplayedImageUrl] = useState(() => (hasTargetMetrics ? targetImageUrl : ""));
+  const [displayedMetricsCacheKey, setDisplayedMetricsCacheKey] = useState(() => (hasTargetMetrics ? targetMetricsCacheKey : ""));
+  const activeImageUrl = hasTargetMetrics ? targetImageUrl : displayedImageUrl;
+  const activeMetricsCacheKey = hasTargetMetrics ? targetMetricsCacheKey : displayedMetricsCacheKey;
+  const metrics = useImageMetrics(activeImageUrl, activeMetricsCacheKey, perfContext);
 
   useEffect(() => {
     if (!targetImageUrl) {
@@ -1079,9 +1078,13 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
       return undefined;
     }
 
-    if (getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl)) {
-      setDisplayedImageUrl(targetImageUrl);
-      setDisplayedMetricsCacheKey(targetMetricsCacheKey);
+    if (hasTargetMetrics) {
+      if (displayedImageUrl !== targetImageUrl) {
+        setDisplayedImageUrl(targetImageUrl);
+      }
+      if (displayedMetricsCacheKey !== targetMetricsCacheKey) {
+        setDisplayedMetricsCacheKey(targetMetricsCacheKey);
+      }
       return undefined;
     }
 
@@ -1100,10 +1103,10 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return () => {
       cancelled = true;
     };
-  }, [targetImageUrl, targetMetricsCacheKey]);
+  }, [displayedImageUrl, displayedMetricsCacheKey, hasTargetMetrics, targetImageUrl, targetMetricsCacheKey]);
 
   useEffect(() => {
-    if (!perfSlot || !targetImageUrl || displayedImageUrl !== targetImageUrl) {
+    if (!perfSlot || !targetImageUrl || activeImageUrl !== targetImageUrl) {
       return undefined;
     }
 
@@ -1126,9 +1129,9 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [displayedImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
+  }, [activeImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
 
-  if (!displayedImageUrl) {
+  if (!activeImageUrl) {
     return null;
   }
 
@@ -1136,8 +1139,9 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return (
       <img
         ref={imageRef}
-        src={displayedImageUrl}
+        src={activeImageUrl}
         alt={alt}
+        decoding="async"
         className={`managed-image managed-image-plain ${className}`.trim()}
         data-item-id={dataItemId || item?.id || ""}
       />
@@ -1153,8 +1157,9 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
       >
         <img
           ref={imageRef}
-          src={displayedImageUrl}
+          src={activeImageUrl}
           alt={alt}
+          decoding="async"
           className="managed-image-content"
         />
       </span>
