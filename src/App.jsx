@@ -289,8 +289,220 @@ const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
 const imageMetricsCache = new Map();
+const pendingImageMetricsLoads = new Map();
 
-function resolveImageUrl(imageUrl) {
+function getOaPerfNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function getOaGenerationPerfState() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const perfEnabled = Boolean(window.__OA_GENERATION_PERF__)
+    || window.location?.search?.includes("oaPerf=1")
+    || window.localStorage?.getItem?.("oaGenerationPerf") === "true";
+
+  if (!perfEnabled) {
+    return null;
+  }
+
+  if (!window.__OA_GENERATION_PERF_STATE__) {
+    window.__OA_GENERATION_PERF_STATE__ = {
+      nextInteractionId: 0,
+      activeBySlot: {},
+      interactions: {},
+      recentEntries: [],
+      counters: {
+        resolveImageUrlCalls: 0,
+        resolveImageUrlBySource: {},
+        loadImageMetricsCalls: 0,
+        imageMetricsCacheHits: 0,
+        imageMetricsCacheMisses: 0,
+        imageMetricsDecodeMs: 0,
+        imageMetricsDecodeCount: 0,
+        saveQueuedCount: 0,
+        saveWriteCount: 0,
+        saveWriteMs: 0
+      }
+    };
+  }
+
+  return window.__OA_GENERATION_PERF_STATE__;
+}
+
+function noteOaPerfCounter(name, delta = 1) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  perfState.counters[name] = (perfState.counters[name] ?? 0) + delta;
+}
+
+function noteOaPerfResolve(context = null) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  perfState.counters.resolveImageUrlCalls += 1;
+
+  const source = typeof context?.source === "string" && context.source.trim()
+    ? context.source.trim()
+    : "unknown";
+  perfState.counters.resolveImageUrlBySource[source] = (perfState.counters.resolveImageUrlBySource[source] ?? 0) + 1;
+
+  const interactionId = typeof context?.interactionId === "string"
+    ? context.interactionId
+    : typeof context?.slot === "string"
+      ? perfState.activeBySlot[context.slot] ?? null
+      : null;
+  const interaction = interactionId ? perfState.interactions[interactionId] : null;
+
+  if (!interaction) {
+    return;
+  }
+
+  interaction.resolveCalls = (interaction.resolveCalls ?? 0) + 1;
+  interaction.resolveSources[source] = (interaction.resolveSources[source] ?? 0) + 1;
+}
+
+function startOaPerfInteraction(kind, slot, metadata = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return null;
+  }
+
+  perfState.nextInteractionId += 1;
+  const interactionId = `oa-perf-${perfState.nextInteractionId}`;
+  perfState.interactions[interactionId] = {
+    id: interactionId,
+    kind,
+    slot,
+    startedAt: getOaPerfNow(),
+    clickCount: 1,
+    metadata: { ...metadata },
+    poolMs: 0,
+    scoreMs: 0,
+    poolCalls: 0,
+    poolSizes: [],
+    poolSourceItems: 0,
+    resolveCalls: 0,
+    resolveSources: {},
+    cacheHits: 0,
+    cacheMisses: 0,
+    decodeMs: 0,
+    saveQueued: false,
+    saveWritesDelta: 0,
+    saveWriteMsDelta: 0,
+    renderCountStart: 0,
+    renderCountAtStateCommit: 0,
+    renderCountAtPaint: 0,
+    renderDelta: 0
+  };
+  perfState.activeBySlot[slot] = interactionId;
+
+  return interactionId;
+}
+
+function getOaPerfInteraction(interactionId) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return null;
+  }
+
+  return perfState.interactions[interactionId] ?? null;
+}
+
+function updateOaPerfInteraction(interactionId, updater) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return;
+  }
+
+  const interaction = perfState.interactions[interactionId];
+  if (!interaction) {
+    return;
+  }
+
+  updater(interaction, perfState);
+}
+
+function completeOaPerfInteraction(interactionId, summary = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return;
+  }
+
+  const interaction = perfState.interactions[interactionId];
+  if (!interaction || interaction.completedAt) {
+    return;
+  }
+
+  interaction.completedAt = getOaPerfNow();
+  Object.assign(interaction, summary);
+
+  const totalMs = interaction.completedAt - interaction.startedAt;
+  const stateMs = interaction.stateCommittedAt ? interaction.stateCommittedAt - interaction.startedAt : 0;
+  const imageReadyMs = interaction.imageReadyAt && interaction.stateCommittedAt
+    ? interaction.imageReadyAt - interaction.stateCommittedAt
+    : 0;
+  const paintMs = interaction.paintAt && interaction.imageReadyAt
+    ? interaction.paintAt - interaction.imageReadyAt
+    : 0;
+  const saveQueuedLabel = interaction.saveQueued ? "yes" : "no";
+  const poolSizeLabel = interaction.poolSizes.length ? interaction.poolSizes[interaction.poolSizes.length - 1] : 0;
+  const clickCountLabel = interaction.clickCount > 1 ? ` clicks=${interaction.clickCount}` : "";
+
+  const line = `[OA perf] ${interaction.kind} ${interaction.slot} total=${totalMs.toFixed(1)}ms pool=${interaction.poolMs.toFixed(1)}ms score=${interaction.scoreMs.toFixed(1)}ms state=${stateMs.toFixed(1)}ms decode=${interaction.decodeMs.toFixed(1)}ms imageReady=${imageReadyMs.toFixed(1)}ms paint=${paintMs.toFixed(1)}ms resolve=${interaction.resolveCalls} poolSize=${poolSizeLabel} items=${interaction.poolSourceItems} saves=${saveQueuedLabel}/${interaction.saveWritesDelta} renders=${interaction.renderDelta}${clickCountLabel}`;
+
+  perfState.recentEntries.push({
+    ...interaction,
+    totalMs,
+    line
+  });
+  perfState.recentEntries = perfState.recentEntries.slice(-200);
+
+  if (perfState.activeBySlot[interaction.slot] === interactionId) {
+    delete perfState.activeBySlot[interaction.slot];
+  }
+
+  console.log(line);
+}
+
+function noteOaPerfStorageEvent(type, payload = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  if (type === "saveQueued") {
+    perfState.counters.saveQueuedCount += 1;
+  } else if (type === "saveWriteComplete") {
+    perfState.counters.saveWriteCount += 1;
+    perfState.counters.saveWriteMs += Number(payload.durationMs) || 0;
+  }
+
+  const activeInteractions = Object.values(perfState.activeBySlot);
+  activeInteractions.forEach((interactionId) => {
+    updateOaPerfInteraction(interactionId, (interaction) => {
+      if (type === "saveQueued") {
+        interaction.saveQueued = true;
+      } else if (type === "saveWriteComplete") {
+        interaction.saveWritesDelta += 1;
+        interaction.saveWriteMsDelta += Number(payload.durationMs) || 0;
+      }
+    });
+  });
+}
+
+function resolveImageUrl(imageUrl, context = null) {
+  noteOaPerfResolve(context);
+
   if (!imageUrl || imageUrl.startsWith("data:") || /^https?:\/\//.test(imageUrl)) {
     return imageUrl;
   }
@@ -301,6 +513,80 @@ function resolveImageUrl(imageUrl) {
 
   const filename = getImageFilename(imageUrl);
   return imageUrlByFilename[filename] ?? imageUrlByFilename[stripViteHash(filename)] ?? imageUrl;
+}
+
+function loadImageMetrics(resolvedImageUrl, context = null) {
+  noteOaPerfCounter("loadImageMetricsCalls");
+
+  if (!resolvedImageUrl) {
+    return Promise.resolve({ naturalWidth: 1, naturalHeight: 1 });
+  }
+
+  const cachedMetrics = imageMetricsCache.get(resolvedImageUrl);
+  if (cachedMetrics) {
+    noteOaPerfCounter("imageMetricsCacheHits");
+    if (context?.interactionId) {
+      updateOaPerfInteraction(context.interactionId, (interaction) => {
+        interaction.cacheHits += 1;
+      });
+    }
+    return Promise.resolve(cachedMetrics);
+  }
+
+  const pendingLoad = pendingImageMetricsLoads.get(resolvedImageUrl);
+  if (pendingLoad) {
+    return pendingLoad;
+  }
+
+  noteOaPerfCounter("imageMetricsCacheMisses");
+  if (context?.interactionId) {
+    updateOaPerfInteraction(context.interactionId, (interaction) => {
+      interaction.cacheMisses += 1;
+    });
+  }
+
+  const metricsPromise = new Promise((resolve) => {
+    const image = new Image();
+    const startedAt = getOaPerfNow();
+
+    const finalize = (metrics) => {
+      const durationMs = getOaPerfNow() - startedAt;
+      imageMetricsCache.set(resolvedImageUrl, metrics);
+      pendingImageMetricsLoads.delete(resolvedImageUrl);
+      noteOaPerfCounter("imageMetricsDecodeMs", durationMs);
+      noteOaPerfCounter("imageMetricsDecodeCount");
+      if (context?.interactionId) {
+        updateOaPerfInteraction(context.interactionId, (interaction) => {
+          interaction.decodeMs += durationMs;
+        });
+      }
+      resolve(metrics);
+    };
+
+    image.onload = () => {
+      const nextMetrics = {
+        naturalWidth: Math.max(image.naturalWidth || 1, 1),
+        naturalHeight: Math.max(image.naturalHeight || 1, 1)
+      };
+
+      if (typeof image.decode === "function") {
+        image.decode().catch(() => undefined).finally(() => finalize(nextMetrics));
+        return;
+      }
+
+      finalize(nextMetrics);
+    };
+
+    image.onerror = () => {
+      finalize({ naturalWidth: 1, naturalHeight: 1 });
+    };
+
+    image.decoding = "async";
+    image.src = resolvedImageUrl;
+  });
+
+  pendingImageMetricsLoads.set(resolvedImageUrl, metricsPromise);
+  return metricsPromise;
 }
 
 function getIsMobileViewport() {
@@ -664,8 +950,11 @@ function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWid
   context.restore();
 }
 
-function useImageMetrics(imageUrl) {
-  const resolvedImageUrl = resolveImageUrl(imageUrl?.trim?.() ?? imageUrl ?? "");
+function useImageMetrics(imageUrl, perfContext = null) {
+  const resolvedImageUrl = resolveImageUrl(
+    imageUrl?.trim?.() ?? imageUrl ?? "",
+    perfContext ? { ...perfContext, source: `${perfContext.source || "useImageMetrics"}:resolve` } : null
+  );
   const [metrics, setMetrics] = useState(() => imageMetricsCache.get(resolvedImageUrl) ?? null);
 
   useEffect(() => {
@@ -674,38 +963,12 @@ function useImageMetrics(imageUrl) {
       return undefined;
     }
 
-    const cached = imageMetricsCache.get(resolvedImageUrl);
-    if (cached) {
-      setMetrics(cached);
-      return undefined;
-    }
-
     let cancelled = false;
-    const image = new Image();
-
-    image.onload = () => {
-      const nextMetrics = {
-        naturalWidth: Math.max(image.naturalWidth || 1, 1),
-        naturalHeight: Math.max(image.naturalHeight || 1, 1)
-      };
-
-      imageMetricsCache.set(resolvedImageUrl, nextMetrics);
-
+    loadImageMetrics(resolvedImageUrl, perfContext).then((nextMetrics) => {
       if (!cancelled) {
         setMetrics(nextMetrics);
       }
-    };
-
-    image.onerror = () => {
-      const fallbackMetrics = { naturalWidth: 1, naturalHeight: 1 };
-      imageMetricsCache.set(resolvedImageUrl, fallbackMetrics);
-
-      if (!cancelled) {
-        setMetrics(fallbackMetrics);
-      }
-    };
-
-    image.src = resolvedImageUrl;
+    });
 
     return () => {
       cancelled = true;
@@ -715,11 +978,72 @@ function useImageMetrics(imageUrl) {
   return metrics ?? { naturalWidth: 1, naturalHeight: 1 };
 }
 
-function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false }) {
-  const resolvedImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "");
-  const metrics = useImageMetrics(resolvedImageUrl);
+function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
+  const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
+  const perfContext = perfSlot
+    ? {
+        slot: perfSlot,
+        interactionId: perfInteractionId,
+        source: "ManagedItemImage"
+      }
+    : null;
+  const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
+  const [displayedImageUrl, setDisplayedImageUrl] = useState(() =>
+    imageMetricsCache.has(targetImageUrl) ? targetImageUrl : ""
+  );
+  const metrics = useImageMetrics(displayedImageUrl, perfContext);
 
-  if (!resolvedImageUrl) {
+  useEffect(() => {
+    if (!targetImageUrl) {
+      setDisplayedImageUrl("");
+      return undefined;
+    }
+
+    if (imageMetricsCache.has(targetImageUrl)) {
+      setDisplayedImageUrl(targetImageUrl);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    loadImageMetrics(targetImageUrl, perfContext).then(() => {
+      if (!cancelled) {
+        setDisplayedImageUrl(targetImageUrl);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [targetImageUrl]);
+
+  useEffect(() => {
+    if (!perfSlot || !targetImageUrl || displayedImageUrl !== targetImageUrl) {
+      return undefined;
+    }
+
+    const activeInteractionId = getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? perfInteractionId;
+    if (!activeInteractionId) {
+      return undefined;
+    }
+
+    updateOaPerfInteraction(activeInteractionId, (interaction) => {
+      interaction.imageReadyAt = getOaPerfNow();
+    });
+
+    const frameId = window.requestAnimationFrame(() => {
+      updateOaPerfInteraction(activeInteractionId, (interaction) => {
+        interaction.paintAt = getOaPerfNow();
+      });
+      completeOaPerfInteraction(activeInteractionId);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [displayedImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
+
+  if (!displayedImageUrl) {
     return null;
   }
 
@@ -727,7 +1051,7 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return (
       <img
         ref={imageRef}
-        src={resolvedImageUrl}
+        src={displayedImageUrl}
         alt={alt}
         className={`managed-image managed-image-plain ${className}`.trim()}
         data-item-id={dataItemId || item?.id || ""}
@@ -739,16 +1063,16 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
       <span
         ref={frameRef}
         className={`managed-image ${className}`.trim()}
-      style={getManagedImageFrameStyle(item, metrics, { useFrameScale, normalizeToFrameScale, useCrop, usePresentation })}
-      data-item-id={dataItemId || item?.id || ""}
-    >
-      <img
-        ref={imageRef}
-        src={resolvedImageUrl}
-        alt={alt}
-        className="managed-image-content"
-      />
-    </span>
+        style={getManagedImageFrameStyle(item, metrics, { useFrameScale, normalizeToFrameScale, useCrop, usePresentation })}
+        data-item-id={dataItemId || item?.id || ""}
+      >
+        <img
+          ref={imageRef}
+          src={displayedImageUrl}
+          alt={alt}
+          className="managed-image-content"
+        />
+      </span>
   );
 }
 
@@ -1566,6 +1890,11 @@ export default function App() {
   const outfitItemPreviewClickTimeoutRef = useRef(null);
   const pendingOutfitItemPreviewRef = useRef(null);
   const fitpicDropDepthRef = useRef(0);
+  const appRenderCountRef = useRef(0);
+  const previousOutfitRef = useRef(outfit);
+  const pendingSlotActionQueueRef = useRef(new Map());
+  const pendingSlotActionFrameRef = useRef(null);
+  appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1960,6 +2289,61 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    window.__OA_GENERATION_PERF_EMIT__ = noteOaPerfStorageEvent;
+    window.__OA_GENERATION_PERF_GET_STATE__ = () => getOaGenerationPerfState();
+    window.__OA_GENERATION_PERF_RESET__ = () => {
+      if (window.__OA_GENERATION_PERF_STATE__) {
+        window.__OA_GENERATION_PERF_STATE__ = {
+          ...window.__OA_GENERATION_PERF_STATE__,
+          activeBySlot: {},
+          interactions: {},
+          recentEntries: [],
+          counters: {
+            resolveImageUrlCalls: 0,
+            resolveImageUrlBySource: {},
+            loadImageMetricsCalls: 0,
+            imageMetricsCacheHits: 0,
+            imageMetricsCacheMisses: 0,
+            imageMetricsDecodeMs: 0,
+            imageMetricsDecodeCount: 0,
+            saveQueuedCount: 0,
+            saveWriteCount: 0,
+            saveWriteMs: 0
+          }
+        };
+      }
+
+      return window.__OA_GENERATION_PERF_STATE__ ?? null;
+    };
+    window.__OA_GENERATION_PERF_SUMMARY__ = () => {
+      const perfState = getOaGenerationPerfState();
+      if (!perfState) {
+        return null;
+      }
+
+      return {
+        dataset: perfState.dataset ?? null,
+        lastGenerationSourceItems: perfState.lastGenerationSourceItems ?? null,
+        counters: perfState.counters,
+        recentEntries: perfState.recentEntries.slice(-20)
+      };
+    };
+
+    return () => {
+      if (window.__OA_GENERATION_PERF_EMIT__ === noteOaPerfStorageEvent) {
+        delete window.__OA_GENERATION_PERF_EMIT__;
+      }
+      delete window.__OA_GENERATION_PERF_GET_STATE__;
+      delete window.__OA_GENERATION_PERF_RESET__;
+      delete window.__OA_GENERATION_PERF_SUMMARY__;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (wardrobeSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
@@ -1980,8 +2364,74 @@ export default function App() {
         window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
       }
       pendingOutfitItemPreviewRef.current = null;
+
+      if (pendingSlotActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingSlotActionFrameRef.current);
+      }
+      pendingSlotActionQueueRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const perfState = getOaGenerationPerfState();
+    const previousOutfit = previousOutfitRef.current;
+
+    if (perfState && previousOutfit !== outfit) {
+      Object.entries(perfState.activeBySlot).forEach(([slot, interactionId]) => {
+        if (slot === "outfit") {
+          updateOaPerfInteraction(interactionId, (interaction) => {
+            if (!interaction.stateCommittedAt) {
+              interaction.stateCommittedAt = getOaPerfNow();
+              interaction.renderCountAtStateCommit = appRenderCountRef.current;
+              interaction.renderDelta = Math.max(
+                interaction.renderDelta,
+                appRenderCountRef.current - (interaction.renderCountStart || 0)
+              );
+            }
+          });
+          window.requestAnimationFrame(() => {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.paintAt = getOaPerfNow();
+              interaction.renderCountAtPaint = appRenderCountRef.current;
+              interaction.renderDelta = Math.max(
+                interaction.renderDelta,
+                appRenderCountRef.current - (interaction.renderCountStart || 0)
+              );
+            });
+            completeOaPerfInteraction(interactionId);
+          });
+          return;
+        }
+
+        if (previousOutfit?.[slot] === outfit?.[slot]) {
+          return;
+        }
+
+        updateOaPerfInteraction(interactionId, (interaction) => {
+          if (!interaction.stateCommittedAt) {
+            interaction.stateCommittedAt = getOaPerfNow();
+            interaction.renderCountAtStateCommit = appRenderCountRef.current;
+            interaction.renderDelta = Math.max(
+              interaction.renderDelta,
+              appRenderCountRef.current - (interaction.renderCountStart || 0)
+            );
+          }
+        });
+
+        if (!outfit?.[slot]) {
+          window.requestAnimationFrame(() => {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.paintAt = getOaPerfNow();
+              interaction.renderCountAtPaint = appRenderCountRef.current;
+            });
+            completeOaPerfInteraction(interactionId);
+          });
+        }
+      });
+    }
+
+    previousOutfitRef.current = outfit;
+  }, [outfit]);
 
   const currentOutfitItems = useMemo(() => {
     const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
@@ -2074,7 +2524,9 @@ export default function App() {
     0
   );
   const generationSourceItems = useMemo(
-    () => items.filter((item) => {
+    () => {
+      const startedAt = getOaPerfNow();
+      const nextItems = items.filter((item) => {
       const itemCollections = normalizeCollections(item.collections);
       const includedCollections = outfitFilters.collections ?? [];
       const excludedCollections = outfitFilters.collectionsExcluded ?? [];
@@ -2088,9 +2540,48 @@ export default function App() {
       }
 
       return true;
-    }),
+      });
+
+      const perfState = getOaGenerationPerfState();
+      if (perfState) {
+        perfState.lastGenerationSourceItems = {
+          computedAt: getOaPerfNow(),
+          durationMs: getOaPerfNow() - startedAt,
+          itemCount: nextItems.length,
+          sourceCount: items.length
+        };
+      }
+
+      return nextItems;
+    },
     [items, outfitFilters.collections, outfitFilters.collectionsExcluded]
   );
+
+  useEffect(() => {
+    const perfState = getOaGenerationPerfState();
+    if (!perfState) {
+      return;
+    }
+
+    const imageUrls = items
+      .map((item) => item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "")
+      .filter(Boolean);
+    const dataUrls = imageUrls.filter((value) => value.startsWith("data:image/"));
+    const resolvedAssetUrls = imageUrls.filter((value) => value.startsWith("/images/") || value.startsWith("/assets/"));
+
+    perfState.dataset = {
+      itemCount: items.length,
+      generationSourceItemCount: generationSourceItems.length,
+      dataUrlCount: dataUrls.length,
+      resolvedAssetUrlCount: resolvedAssetUrls.length,
+      averageDataUrlLength: dataUrls.length
+        ? Math.round(dataUrls.reduce((sum, value) => sum + value.length, 0) / dataUrls.length)
+        : 0,
+      maxDataUrlLength: dataUrls.length
+        ? Math.max(...dataUrls.map((value) => value.length))
+        : 0
+    };
+  }, [generationSourceItems.length, items]);
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
       return [];
@@ -3658,6 +4149,16 @@ export default function App() {
   ]);
 
   function handleGenerate() {
+    const perfInteractionId = startOaPerfInteraction("generate", "outfit", {
+      generationMode,
+      sourceItems: generationSourceItems.length
+    });
+    if (perfInteractionId) {
+      updateOaPerfInteraction(perfInteractionId, (interaction) => {
+        interaction.renderCountStart = appRenderCountRef.current;
+      });
+    }
+
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
@@ -3670,7 +4171,15 @@ export default function App() {
     setEditingId(null);
     setEditorReturnTarget(null);
     setOutfit((current) => {
+      const scoringStartedAt = getOaPerfNow();
       const result = buildNextOutfitWithDebug(generationSourceItems, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const scoringDurationMs = getOaPerfNow() - scoringStartedAt;
+      if (perfInteractionId) {
+        updateOaPerfInteraction(perfInteractionId, (interaction) => {
+          interaction.scoreMs += scoringDurationMs;
+          interaction.poolSourceItems = generationSourceItems.length;
+        });
+      }
       const nextOutfit = result.outfit;
       setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
       if (generationMode === "guided") {
@@ -3703,14 +4212,7 @@ export default function App() {
       return;
     }
 
-    const pool = getSlotOptions(slot).filter((item) => item.id !== outfit[slot]);
-
-    const nextItem = pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
-
-    setOutfit((current) => ({
-      ...current,
-      [slot]: nextItem?.id ?? null
-    }));
+    queueSlotAction(slot, "reroll");
   }
 
   function getSlotOptions(slot) {
@@ -3738,18 +4240,11 @@ export default function App() {
   }
 
   function cycleOutfitSlot(slot, direction) {
-    const options = getSlotOptions(slot);
-
-    if (!options.length) {
-      setOutfitSlot(slot, null);
+    if (!direction) {
       return;
     }
 
-    const currentIndex = options.findIndex((item) => item.id === outfit[slot]);
-    const fallbackIndex = direction > 0 ? -1 : 0;
-    const nextIndex = (currentIndex === -1 ? fallbackIndex : currentIndex + direction + options.length) % options.length;
-
-    setOutfitSlot(slot, options[nextIndex].id);
+    queueSlotAction(slot, "cycle", direction);
   }
 
   function cycleAccessorySlot(slot, direction) {
@@ -3768,6 +4263,166 @@ export default function App() {
       ...current,
       [slot]: options[nextIndex].id
     }));
+  }
+
+  function queueSlotAction(slot, kind, direction = 0) {
+    const queue = pendingSlotActionQueueRef.current;
+    const existingEntry = queue.get(slot) ?? { cycleDelta: 0, rerollCount: 0, interactionId: null };
+    const interactionId = existingEntry.interactionId ?? startOaPerfInteraction(kind, slot, {
+      direction,
+      sourceItems: generationSourceItems.length
+    });
+
+    if (interactionId) {
+      updateOaPerfInteraction(interactionId, (interaction) => {
+        interaction.clickCount = (interaction.clickCount ?? 0) + (existingEntry.interactionId ? 1 : 0);
+        interaction.metadata.direction = direction;
+        interaction.renderCountStart = interaction.renderCountStart || appRenderCountRef.current;
+      });
+    }
+    existingEntry.interactionId = interactionId;
+
+    if (kind === "reroll") {
+      existingEntry.rerollCount += 1;
+    } else if (kind === "cycle") {
+      existingEntry.cycleDelta += direction > 0 ? 1 : -1;
+    }
+
+    queue.set(slot, existingEntry);
+
+    if (pendingSlotActionFrameRef.current !== null) {
+      return;
+    }
+
+    pendingSlotActionFrameRef.current = window.requestAnimationFrame(() => {
+      pendingSlotActionFrameRef.current = null;
+      flushQueuedSlotActions();
+    });
+  }
+
+  function flushQueuedSlotActions() {
+    const queuedEntries = Array.from(pendingSlotActionQueueRef.current.entries());
+    if (!queuedEntries.length) {
+      return;
+    }
+
+    pendingSlotActionQueueRef.current.clear();
+
+    setOutfit((current) => {
+      let nextOutfit = current;
+
+      queuedEntries.forEach(([slot, entry]) => {
+        if (locked[slot]) {
+          return;
+        }
+
+        const interactionId = entry.interactionId;
+        const rerollCount = Math.max(0, Math.trunc(entry.rerollCount || 0));
+        const cycleDelta = Math.trunc(entry.cycleDelta || 0);
+        const cycleDirection = cycleDelta === 0 ? 0 : cycleDelta > 0 ? 1 : -1;
+        const cycleSteps = Math.abs(cycleDelta);
+
+        if (interactionId) {
+          updateOaPerfInteraction(interactionId, (interaction) => {
+            interaction.poolSourceItems = generationSourceItems.length;
+          });
+        }
+
+        for (let index = 0; index < rerollCount; index += 1) {
+          const poolStartedAt = getOaPerfNow();
+          const pool = getEligibleSlotPool(
+            generationSourceItems,
+            slot,
+            excluded,
+            generationLists,
+            layering,
+            outfitFilters,
+            weatherData,
+            nextOutfit,
+            itemsById
+          ).filter((item) => item.id !== nextOutfit[slot]);
+          const poolDurationMs = getOaPerfNow() - poolStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.poolMs += poolDurationMs;
+              interaction.poolCalls += 1;
+              interaction.poolSizes.push(pool.length);
+            });
+          }
+
+          const scoreStartedAt = getOaPerfNow();
+          const nextItem = pickNextItemForGeneration(
+            pool,
+            slot,
+            nextOutfit,
+            itemsById,
+            outfitFilters,
+            weatherData,
+            generationMode,
+            outfitAffinity,
+            recentOutfits,
+            layering
+          );
+          const scoreDurationMs = getOaPerfNow() - scoreStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.scoreMs += scoreDurationMs;
+            });
+          }
+
+          nextOutfit = {
+            ...nextOutfit,
+            [slot]: nextItem?.id ?? null
+          };
+        }
+
+        for (let index = 0; index < cycleSteps; index += 1) {
+          const poolStartedAt = getOaPerfNow();
+          const options = getEligibleSlotPool(
+            generationSourceItems,
+            slot,
+            excluded,
+            generationLists,
+            layering,
+            outfitFilters,
+            weatherData,
+            nextOutfit,
+            itemsById
+          );
+          const poolDurationMs = getOaPerfNow() - poolStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.poolMs += poolDurationMs;
+              interaction.poolCalls += 1;
+              interaction.poolSizes.push(options.length);
+            });
+          }
+
+          if (!options.length) {
+            nextOutfit = {
+              ...nextOutfit,
+              [slot]: null
+            };
+            break;
+          }
+
+          const currentIndex = options.findIndex((item) => item.id === nextOutfit[slot]);
+          const fallbackIndex = cycleDirection > 0 ? -1 : 0;
+          const nextIndex = (
+            currentIndex === -1
+              ? fallbackIndex + cycleDirection + options.length
+              : currentIndex + cycleDirection + options.length
+          ) % options.length;
+
+          nextOutfit = {
+            ...nextOutfit,
+            [slot]: options[nextIndex].id
+          };
+        }
+      });
+
+      return nextOutfit;
+    });
   }
 
   function toggleLayering() {
@@ -8921,7 +9576,7 @@ export default function App() {
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
+            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} /> : <span aria-hidden="true" />}
           </button>
           {item ? (
             <div className="slot-actions-anchor">
