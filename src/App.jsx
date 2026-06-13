@@ -253,6 +253,7 @@ import {
   serializeSavedOutfitsCsv,
   serializeSavedOutfitsJson
 } from "./lib/metadataExport";
+import { buildBackupPackageZip } from "./lib/backupPackageV2.js";
 import {
   getWardrobePreviewDirectionForKey,
   getWardrobePreviewImageNavigation,
@@ -3857,6 +3858,49 @@ export default function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleExportBackupV2() {
+    const backupPackage = await buildBackupPackageZip({
+      items,
+      appState: {
+        itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
+        imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+        layering,
+        accessoriesEnabled,
+        locked,
+        excluded,
+        outfit,
+        outfitItemUuids,
+        ignoredImportImages,
+        savedOutfits,
+        likedOutfitKeys,
+        outfitAffinity,
+        recentOutfits,
+        generateCount,
+        generationLists,
+        generationMode,
+        outfitFilters,
+        weatherSettings,
+        weatherData,
+        fitpics,
+        wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
+        wardrobeSort,
+        windowState
+      },
+      resolveAssetUrl: resolveImageUrl
+    });
+
+    downloadExportFile(await backupPackage.blob.arrayBuffer(), {
+      filename: backupPackage.fileName,
+      mimeType: "application/zip"
+    });
+
+    if (backupPackage.warningCount > 0) {
+      window.alert(
+        `Backup package exported with ${backupPackage.warningCount} warning${backupPackage.warningCount === 1 ? "" : "s"}. See ${backupPackage.warningReportFileName} inside the ZIP.`
+      );
+    }
   }
 
   async function handleExportLibraryCsv() {
@@ -9934,6 +9978,9 @@ export default function App() {
                               </button>
                               <button type="button" className="ghost-button" onClick={handleExportBackup}>
                                 Export Backup
+                              </button>
+                              <button type="button" className="ghost-button" onClick={handleExportBackupV2}>
+                                Export Backup v2
                               </button>
                               <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
                                 Import Backup
