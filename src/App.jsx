@@ -451,11 +451,12 @@ function completeOaPerfInteraction(interactionId, summary = {}) {
 
   const totalMs = interaction.completedAt - interaction.startedAt;
   const stateMs = interaction.stateCommittedAt ? interaction.stateCommittedAt - interaction.startedAt : 0;
+  const imageReadyAnchorAt = interaction.imageReadyAt || interaction.stateCommittedAt || 0;
   const imageReadyMs = interaction.imageReadyAt && interaction.stateCommittedAt
     ? interaction.imageReadyAt - interaction.stateCommittedAt
     : 0;
-  const paintMs = interaction.paintAt && interaction.imageReadyAt
-    ? interaction.paintAt - interaction.imageReadyAt
+  const paintMs = interaction.paintAt && imageReadyAnchorAt
+    ? interaction.paintAt - imageReadyAnchorAt
     : 0;
   const saveQueuedLabel = interaction.saveQueued ? "yes" : "no";
   const poolSizeLabel = interaction.poolSizes.length ? interaction.poolSizes[interaction.poolSizes.length - 1] : 0;
@@ -1079,12 +1080,6 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     }
 
     if (hasTargetMetrics) {
-      if (displayedImageUrl !== targetImageUrl) {
-        setDisplayedImageUrl(targetImageUrl);
-      }
-      if (displayedMetricsCacheKey !== targetMetricsCacheKey) {
-        setDisplayedMetricsCacheKey(targetMetricsCacheKey);
-      }
       return undefined;
     }
 
@@ -1103,7 +1098,7 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return () => {
       cancelled = true;
     };
-  }, [displayedImageUrl, displayedMetricsCacheKey, hasTargetMetrics, targetImageUrl, targetMetricsCacheKey]);
+  }, [hasTargetMetrics, targetImageUrl, targetMetricsCacheKey]);
 
   useEffect(() => {
     if (!perfSlot || !targetImageUrl || activeImageUrl !== targetImageUrl) {
