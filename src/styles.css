@@ -3665,6 +3665,18 @@ button:disabled {
   color: var(--text);
 }
 
+.oa-ai-export-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.oa-ai-export-list-title,
+.oa-ai-export-empty {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 @media (max-width: 520px) {
   .wardrobe-export-presets {
     grid-template-columns: 1fr;
