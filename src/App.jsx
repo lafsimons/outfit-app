@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DismissibleBackdrop from "./components/DismissibleBackdrop";
+import FitpicExportDialog from "./components/FitpicExportDialog";
 import PreviewOverlay from "./components/PreviewOverlay";
 import WardrobeExportDialog from "./components/WardrobeExportDialog";
 import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
@@ -159,6 +160,18 @@ import {
   getFitpicPreviewNavigation
 } from "./lib/fitpicLibrary";
 import {
+  FITPIC_SPREAD_DETAIL_GAP,
+  FITPIC_SPREAD_PRIMARY_HEIGHT,
+  createFitpicSpreadExportOptions,
+  getFitpicSpreadExportDetailLayout,
+  getFitpicSpreadExportDetailTiles,
+  getFitpicSpreadExportOrderedFitpics,
+  getFitpicSpreadExportPackedRenderConfig,
+  getFitpicSpreadExportPrimaryImage,
+  getFitpicSpreadExportScopedFitpics,
+  normalizeFitpicSpreadExportOptions
+} from "./lib/fitpicSpreadExport";
+import {
   filterAndSortSavedOutfits,
   getSavedOutfitTagFilterOptions
 } from "./lib/savedOutfitLibrary";
@@ -232,6 +245,14 @@ import {
   normalizeImageScale,
   stripViteHash
 } from "./lib/imagePresentation";
+import {
+  downloadExportFile,
+  getExportFilename,
+  serializeFitpicsCsv,
+  serializeFitpicsJson,
+  serializeSavedOutfitsCsv,
+  serializeSavedOutfitsJson
+} from "./lib/metadataExport";
 import {
   getWardrobePreviewDirectionForKey,
   getWardrobePreviewImageNavigation,
@@ -1500,6 +1521,7 @@ export default function App() {
   const [itemImageDragActive, setItemImageDragActive] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeExportOptions, setWardrobeExportOptions] = useState(null);
+  const [fitpicExportOptions, setFitpicExportOptions] = useState(null);
   const [wardrobeSearch, setWardrobeSearch] = useState("");
   const [wardrobeFilterSearch, setWardrobeFilterSearch] = useState("");
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
@@ -3854,6 +3876,46 @@ export default function App() {
     URL.revokeObjectURL(url);
   }
 
+  function handleExportSavedOutfitsCsv() {
+    downloadExportFile(
+      serializeSavedOutfitsCsv(savedOutfits, items),
+      {
+        filename: getExportFilename("saved-outfits", "csv"),
+        mimeType: "text/csv;charset=utf-8"
+      }
+    );
+  }
+
+  function handleExportSavedOutfitsJson() {
+    downloadExportFile(
+      serializeSavedOutfitsJson(savedOutfits, items),
+      {
+        filename: getExportFilename("saved-outfits", "json"),
+        mimeType: "application/json"
+      }
+    );
+  }
+
+  function handleExportFitpicsCsv() {
+    downloadExportFile(
+      serializeFitpicsCsv(fitpics, items),
+      {
+        filename: getExportFilename("fitpics", "csv"),
+        mimeType: "text/csv;charset=utf-8"
+      }
+    );
+  }
+
+  function handleExportFitpicsJson() {
+    downloadExportFile(
+      serializeFitpicsJson(fitpics, items),
+      {
+        filename: getExportFilename("fitpics", "json"),
+        mimeType: "application/json"
+      }
+    );
+  }
+
   async function handleImportBackup(event) {
     const [file] = event.target.files;
     event.target.value = "";
@@ -4006,8 +4068,70 @@ export default function App() {
     return ellipsis;
   }
 
+  function getWrappedCanvasTextLines(context, text, maxWidth, maxLines = 2) {
+    const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
+
+    if (!normalizedText) {
+      return [];
+    }
+
+    const words = normalizedText.split(" ");
+    const lines = [];
+    let currentLine = "";
+
+    words.forEach((word) => {
+      const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+      if (!currentLine || context.measureText(nextLine).width <= maxWidth) {
+        currentLine = nextLine;
+        return;
+      }
+
+      lines.push(currentLine);
+      currentLine = word;
+    });
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    if (lines.length <= maxLines) {
+      return lines;
+    }
+
+    const visibleLines = lines.slice(0, maxLines);
+    visibleLines[maxLines - 1] = truncateCanvasText(context, lines.slice(maxLines - 1).join(" "), maxWidth);
+    return visibleLines;
+  }
+
+  function drawContainedImage(context, image, frameX, frameY, frameWidth, frameHeight) {
+    const scale = Math.min(frameWidth / image.naturalWidth, frameHeight / image.naturalHeight, 1_000);
+    const drawWidth = image.naturalWidth * scale;
+    const drawHeight = image.naturalHeight * scale;
+    const drawX = frameX + (frameWidth - drawWidth) / 2;
+    const drawY = frameY + (frameHeight - drawHeight) / 2;
+
+    context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  }
+
+  function drawFitpicExportOverflowTile(context, label, frameX, frameY, frameWidth, fontFamily, colors, frameHeight = frameWidth) {
+    context.fillStyle = colors.panelMuted;
+    context.fillRect(frameX, frameY, frameWidth, frameHeight);
+    context.strokeStyle = colors.border;
+    context.strokeRect(frameX + 0.5, frameY + 0.5, frameWidth - 1, frameHeight - 1);
+    context.fillStyle = colors.text;
+    context.font = `600 18px ${fontFamily}`;
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(label, frameX + frameWidth / 2, frameY + frameHeight / 2);
+  }
+
   function openWardrobeExportDialog() {
     setWardrobeExportOptions(createWardrobeSpreadExportOptions("compact"));
+  }
+
+  function openFitpicExportDialog() {
+    setFitpicExportOptions(createFitpicSpreadExportOptions("reference"));
   }
 
   async function handleExportWardrobeImage(options = createWardrobeSpreadExportOptions("compact")) {
@@ -4122,10 +4246,224 @@ export default function App() {
     }
   }
 
+  async function handleExportFitpicImage(options = createFitpicSpreadExportOptions("reference")) {
+    const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+    const sortedAllFitpics = filterAndSortFitpics(
+      fitpics,
+      {
+        search: "",
+        filters: emptyFitpicFilters,
+        sort: fitpicSort
+      },
+      items
+    );
+    const scopedFitpics = getFitpicSpreadExportScopedFitpics({
+      allFitpics: fitpics,
+      visibleFitpics,
+      sortedFitpics: sortedAllFitpics,
+      options: normalizedOptions
+    });
+    const exportFitpics = getFitpicSpreadExportOrderedFitpics(scopedFitpics, normalizedOptions);
+
+    if (!exportFitpics.length) {
+      window.alert(
+        normalizedOptions.scope === "all"
+          ? "There are no fitpics to export."
+          : "There are no filtered fitpics to export."
+      );
+      return;
+    }
+
+    const {
+      placements,
+      canvasWidth,
+      canvasHeight,
+      exportScale,
+      pixelWidth,
+      pixelHeight
+    } = getFitpicSpreadExportPackedRenderConfig(exportFitpics, normalizedOptions);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      window.alert("The fitpics image could not be exported.");
+      return;
+    }
+
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    context.scale(exportScale, exportScale);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const documentStyles = getComputedStyle(document.documentElement);
+    const colors = {
+      background: documentStyles.getPropertyValue("--bg").trim() || "#f7f7f7",
+      panel: documentStyles.getPropertyValue("--surface-solid").trim() || "#ffffff",
+      panelMuted: documentStyles.getPropertyValue("--surface").trim() || "#efefef",
+      border: documentStyles.getPropertyValue("--border-soft").trim() || "rgba(17, 17, 17, 0.12)",
+      text: documentStyles.getPropertyValue("--text").trim() || "#111",
+      muted: documentStyles.getPropertyValue("--muted-strong").trim() || "rgba(17, 17, 17, 0.75)"
+    };
+    const fontFamily = documentStyles.getPropertyValue("font-family").trim() || "monospace";
+    context.fillStyle = colors.background;
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    const imageSourcesToLoad = new Map();
+
+    exportFitpics.forEach((fitpic) => {
+      const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
+      const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
+
+      if (primaryImage?.src) {
+        imageSourcesToLoad.set(primaryImage.src, resolveImageUrl(primaryImage.src));
+      }
+
+      detailTiles.forEach((tile) => {
+        if (tile.kind === "image" && tile.src) {
+          imageSourcesToLoad.set(tile.src, resolveImageUrl(tile.src));
+        }
+      });
+    });
+
+    try {
+      const loadedImages = new Map(
+        await Promise.all(
+          [...imageSourcesToLoad.entries()].map(async ([source, resolvedSource]) => [source, await loadImage(resolvedSource)])
+        )
+      );
+
+      exportFitpics.forEach((fitpic, index) => {
+        const placement = placements[index];
+
+        if (!placement) {
+          return;
+        }
+
+        const cardLeft = placement.x;
+        const cardTop = placement.y;
+        const exportCardHeight = placement.height;
+        const cardWidth = placement.width;
+        const cardInnerLeft = cardLeft + 14;
+        const cardInnerWidth = cardWidth - 28;
+        let cursorY = cardTop + 14;
+        const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
+        const primaryImageLoaded = primaryImage?.src ? loadedImages.get(primaryImage.src) ?? null : null;
+        const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
+        const detailLayout = getFitpicSpreadExportDetailLayout(detailTiles.length, cardInnerWidth);
+
+        context.fillStyle = colors.panel;
+        context.fillRect(cardLeft, cardTop, cardWidth, exportCardHeight);
+        context.strokeStyle = colors.border;
+        context.strokeRect(cardLeft + 0.5, cardTop + 0.5, cardWidth - 1, exportCardHeight - 1);
+
+        context.fillStyle = colors.panelMuted;
+        context.fillRect(cardInnerLeft, cursorY, cardInnerWidth, FITPIC_SPREAD_PRIMARY_HEIGHT);
+
+        if (primaryImageLoaded) {
+          drawContainedImage(context, primaryImageLoaded, cardInnerLeft, cursorY, cardInnerWidth, FITPIC_SPREAD_PRIMARY_HEIGHT);
+        }
+
+        cursorY += FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+
+        if (normalizedOptions.showTitle) {
+          context.fillStyle = colors.text;
+          context.font = `600 16px ${fontFamily}`;
+          context.textAlign = "left";
+          context.textBaseline = "top";
+          const titleLines = getWrappedCanvasTextLines(context, fitpic.name || "Untitled fitpic", cardInnerWidth, 2);
+
+          titleLines.forEach((line, lineIndex) => {
+            context.fillText(line, cardInnerLeft, cursorY + lineIndex * 18, cardInnerWidth);
+          });
+          cursorY += 34;
+        }
+
+        if (normalizedOptions.showDetailGrid) {
+          detailTiles.forEach((tile, tileIndex) => {
+            const tileFrame = detailLayout.frames[tileIndex];
+
+            if (!tileFrame) {
+              return;
+            }
+
+            const tileX = cardInnerLeft + tileFrame.x;
+            const tileY = cursorY + tileFrame.y;
+
+            if (tile.kind === "overflow") {
+              drawFitpicExportOverflowTile(
+                context,
+                `+${tile.overflowCount}`,
+                tileX,
+                tileY,
+                tileFrame.width,
+                fontFamily,
+                colors,
+                tileFrame.height
+              );
+              return;
+            }
+
+            const detailImage = loadedImages.get(tile.src) ?? null;
+            context.fillStyle = colors.panelMuted;
+            context.fillRect(tileX, tileY, tileFrame.width, tileFrame.height);
+
+            if (detailImage) {
+              drawContainedImage(context, detailImage, tileX, tileY, tileFrame.width, tileFrame.height);
+            }
+          });
+
+          cursorY += detailLayout.totalHeight + 8;
+        }
+
+        if (normalizedOptions.showTags) {
+          context.fillStyle = colors.muted;
+          context.font = `500 12px ${fontFamily}`;
+          context.textAlign = "left";
+          context.textBaseline = "top";
+          context.fillText(
+            truncateCanvasText(context, (Array.isArray(fitpic.tags) ? fitpic.tags.join(" • ") : "") || "No tags", cardInnerWidth),
+            cardInnerLeft,
+            cursorY,
+            cardInnerWidth
+          );
+          cursorY += 24;
+        }
+
+        if (normalizedOptions.showFitDate) {
+          context.fillStyle = colors.muted;
+          context.font = `500 12px ${fontFamily}`;
+          context.textAlign = "left";
+          context.textBaseline = "top";
+          context.fillText(
+            truncateCanvasText(context, formatFitpicDate(fitpic.fitDate || fitpic.createdAt) || "No fit date", cardInnerWidth),
+            cardInnerLeft,
+            cursorY,
+            cardInnerWidth
+          );
+        }
+      });
+
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = `oa-fitpics-spread-${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      window.alert("The fitpics image could not be exported.");
+    }
+  }
+
   async function handleConfirmWardrobeExport() {
     const nextOptions = wardrobeExportOptions ? { ...wardrobeExportOptions } : createWardrobeSpreadExportOptions("compact");
     setWardrobeExportOptions(null);
     await handleExportWardrobeImage(nextOptions);
+  }
+
+  async function handleConfirmFitpicExport() {
+    const nextOptions = fitpicExportOptions ? { ...fitpicExportOptions } : createFitpicSpreadExportOptions("reference");
+    setFitpicExportOptions(null);
+    await handleExportFitpicImage(nextOptions);
   }
 
   async function handleResetToDefault() {
@@ -6266,14 +6604,30 @@ export default function App() {
                 <p className="saved-outfit-controls-count">
                   {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
                 </p>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  onClick={resetSavedOutfitControls}
-                  disabled={!hasActiveSavedOutfitControls}
-                >
-                  Clear filters
-                </button>
+                <div className="wardrobe-toolbar-context-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportSavedOutfitsCsv}
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportSavedOutfitsJson}
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={resetSavedOutfitControls}
+                    disabled={!hasActiveSavedOutfitControls}
+                  >
+                    Clear filters
+                  </button>
+                </div>
               </div>
               <label>
                 Search
@@ -6813,6 +7167,29 @@ export default function App() {
                   {visibleFitpics.length} of {fitpics.length} fitpics
                 </span>
               <div className="wardrobe-toolbar-context">
+                <div className="wardrobe-toolbar-context-actions">
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={openFitpicExportDialog}
+                  >
+                    Export PNG
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportFitpicsCsv}
+                  >
+                    Export CSV
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleExportFitpicsJson}
+                  >
+                    Export JSON
+                  </button>
+                </div>
                 {hasFitpicSelection ? (
                   <>
                     <div className="wardrobe-selection-summary fitpic-selection-summary">
@@ -9726,6 +10103,14 @@ export default function App() {
           onChange={setWardrobeExportOptions}
           onCancel={() => setWardrobeExportOptions(null)}
           onConfirm={handleConfirmWardrobeExport}
+        />
+
+        <FitpicExportDialog
+          open={Boolean(fitpicExportOptions)}
+          options={fitpicExportOptions ?? createFitpicSpreadExportOptions("reference")}
+          onChange={setFitpicExportOptions}
+          onCancel={() => setFitpicExportOptions(null)}
+          onConfirm={handleConfirmFitpicExport}
         />
 
         {workspaceDock}

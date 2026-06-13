@@ -3648,6 +3648,23 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.wardrobe-export-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text);
+  font-size: 0.72rem;
+}
+
+.wardrobe-export-field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  padding: 8px 9px;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+
 @media (max-width: 520px) {
   .wardrobe-export-presets {
     grid-template-columns: 1fr;
