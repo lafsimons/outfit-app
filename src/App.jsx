@@ -1889,6 +1889,11 @@ export default function App() {
   const editorImageRef = useRef(null);
   const paletteCacheRef = useRef(new Map());
   const generatePointerHandledAtRef = useRef(-1);
+  const generateInFlightRef = useRef(false);
+  const generateAwaitingPaintRef = useRef(false);
+  const pendingGenerateRef = useRef(false);
+  const pendingGenerateFrameRef = useRef(null);
+  const generateReleaseFrameRef = useRef(null);
   const pointerActivatedControlRef = useRef(null);
   const lastInteractionWasPointerRef = useRef(false);
   const [items, setItems] = useState([]);
@@ -2505,6 +2510,16 @@ export default function App() {
       }
       pendingSlotActionQueueRef.current.clear();
 
+      if (pendingGenerateFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingGenerateFrameRef.current);
+      }
+      pendingGenerateFrameRef.current = null;
+
+      if (generateReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(generateReleaseFrameRef.current);
+      }
+      generateReleaseFrameRef.current = null;
+
       cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
       imageMetricsPrewarmHandleRef.current = null;
       cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
@@ -2571,6 +2586,49 @@ export default function App() {
     }
 
     previousOutfitRef.current = outfit;
+  }, [outfit]);
+
+  useEffect(() => {
+    if (!generateAwaitingPaintRef.current) {
+      return undefined;
+    }
+
+    generateAwaitingPaintRef.current = false;
+
+    if (generateReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(generateReleaseFrameRef.current);
+    }
+
+    generateReleaseFrameRef.current = window.requestAnimationFrame(() => {
+      generateReleaseFrameRef.current = window.requestAnimationFrame(() => {
+        generateReleaseFrameRef.current = null;
+        generateInFlightRef.current = false;
+
+        if (pendingGenerateRef.current) {
+          if (pendingGenerateFrameRef.current !== null) {
+            window.cancelAnimationFrame(pendingGenerateFrameRef.current);
+          }
+
+          pendingGenerateFrameRef.current = window.requestAnimationFrame(() => {
+            pendingGenerateFrameRef.current = null;
+
+            if (generateInFlightRef.current || !pendingGenerateRef.current) {
+              return;
+            }
+
+            pendingGenerateRef.current = false;
+            handleGenerate();
+          });
+        }
+      });
+    });
+
+    return () => {
+      if (generateReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(generateReleaseFrameRef.current);
+        generateReleaseFrameRef.current = null;
+      }
+    };
   }, [outfit]);
 
   const currentOutfitItems = useMemo(() => {
@@ -4423,6 +4481,15 @@ export default function App() {
   ]);
 
   function handleGenerate() {
+    if (generateInFlightRef.current) {
+      pendingGenerateRef.current = true;
+      return;
+    }
+
+    generateInFlightRef.current = true;
+    generateAwaitingPaintRef.current = true;
+    pendingGenerateRef.current = false;
+
     const perfInteractionId = startOaPerfInteraction("generate", "outfit", {
       generationMode,
       sourceItems: generationSourceItems.length
