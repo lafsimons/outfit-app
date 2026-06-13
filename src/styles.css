@@ -1661,6 +1661,8 @@ button:disabled {
   background: transparent;
   border-radius: 0;
   box-shadow: none;
+  contain: paint;
+  isolation: isolate;
 }
 
 .outfit-slot .item-figure:active,

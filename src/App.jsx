@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DismissibleBackdrop from "./components/DismissibleBackdrop";
@@ -1028,13 +1028,32 @@ function useImageMetrics(imageUrl, metricsCacheKey = "", perfContext = null) {
     imageUrl?.trim?.() ?? imageUrl ?? "",
     perfContext ? { ...perfContext, source: `${perfContext.source || "useImageMetrics"}:resolve` } : null
   );
-  const [metrics, setMetrics] = useState(() => getCachedImageMetrics(metricsCacheKey, resolvedImageUrl) ?? null);
+  const cacheIdentity = `${metricsCacheKey}::${resolvedImageUrl}`;
+  const cachedMetrics = getCachedImageMetrics(metricsCacheKey, resolvedImageUrl);
+  const [metricsState, setMetricsState] = useState(() => ({
+    identity: cacheIdentity,
+    metrics: cachedMetrics ?? null
+  }));
 
   useEffect(() => {
     if (!resolvedImageUrl) {
-      setMetrics(null);
+      setMetricsState((current) => (
+        current.identity === cacheIdentity && current.metrics === null
+          ? current
+          : { identity: cacheIdentity, metrics: null }
+      ));
       return undefined;
     }
+
+    if (cachedMetrics) {
+      return undefined;
+    }
+
+    setMetricsState((current) => (
+      current.identity === cacheIdentity && current.metrics === null
+        ? current
+        : { identity: cacheIdentity, metrics: null }
+    ));
 
     let cancelled = false;
     loadImageMetrics(resolvedImageUrl, {
@@ -1042,19 +1061,36 @@ function useImageMetrics(imageUrl, metricsCacheKey = "", perfContext = null) {
       cacheKey: metricsCacheKey
     }).then((nextMetrics) => {
       if (!cancelled) {
-        setMetrics(nextMetrics);
+        setMetricsState((current) => {
+          if (
+            current.identity === cacheIdentity &&
+            current.metrics?.naturalWidth === nextMetrics.naturalWidth &&
+            current.metrics?.naturalHeight === nextMetrics.naturalHeight
+          ) {
+            return current;
+          }
+
+          return {
+            identity: cacheIdentity,
+            metrics: nextMetrics
+          };
+        });
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [metricsCacheKey, resolvedImageUrl]);
+  }, [cacheIdentity, cachedMetrics, metricsCacheKey, resolvedImageUrl]);
 
-  return metrics ?? { naturalWidth: 1, naturalHeight: 1 };
+  return cachedMetrics ?? (
+    metricsState.identity === cacheIdentity
+      ? metricsState.metrics
+      : null
+  ) ?? { naturalWidth: 1, naturalHeight: 1 };
 }
 
-function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
     ? {
@@ -1159,7 +1195,19 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
         />
       </span>
   );
-}
+}, (previousProps, nextProps) => (
+  previousProps.item === nextProps.item
+  && previousProps.alt === nextProps.alt
+  && previousProps.className === nextProps.className
+  && previousProps.frameRef === nextProps.frameRef
+  && previousProps.imageRef === nextProps.imageRef
+  && previousProps.dataItemId === nextProps.dataItemId
+  && previousProps.useFrameScale === nextProps.useFrameScale
+  && previousProps.normalizeToFrameScale === nextProps.normalizeToFrameScale
+  && previousProps.useCrop === nextProps.useCrop
+  && previousProps.usePresentation === nextProps.usePresentation
+  && previousProps.perfSlot === nextProps.perfSlot
+));
 
 function getAdvancedOverrideFields(item, defaults) {
   return advancedTrackedFields.filter((field) => !areEditorValuesEqual(item[field], defaults[field]));
@@ -4385,6 +4433,32 @@ export default function App() {
       });
     }
 
+    const scoringStartedAt = getOaPerfNow();
+    const result = buildNextOutfitWithDebug(
+      generationSourceItems,
+      outfit,
+      locked,
+      layering,
+      excluded,
+      generationLists,
+      outfitFilters,
+      weatherData,
+      generationMode,
+      outfitAffinity,
+      recentOutfits
+    );
+    const scoringDurationMs = getOaPerfNow() - scoringStartedAt;
+    if (perfInteractionId) {
+      updateOaPerfInteraction(perfInteractionId, (interaction) => {
+        interaction.scoreMs += scoringDurationMs;
+        interaction.poolSourceItems = generationSourceItems.length;
+      });
+    }
+
+    const nextOutfit = result.outfit;
+    const nextGuidedDebugPayload = generationMode === "guided" ? result.guidedDebugPayload : [];
+    const nextOutfitItemUuids = syncOutfitItemUuids(nextOutfit, outfitItemUuids, itemsById);
+
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
@@ -4396,25 +4470,18 @@ export default function App() {
     setFitpicPreview(null);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => {
-      const scoringStartedAt = getOaPerfNow();
-      const result = buildNextOutfitWithDebug(generationSourceItems, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
-      const scoringDurationMs = getOaPerfNow() - scoringStartedAt;
-      if (perfInteractionId) {
-        updateOaPerfInteraction(perfInteractionId, (interaction) => {
-          interaction.scoreMs += scoringDurationMs;
-          interaction.poolSourceItems = generationSourceItems.length;
-        });
-      }
-      const nextOutfit = result.outfit;
-      setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
-      if (generationMode === "guided") {
-        setRecentOutfits((currentRecentOutfits) =>
-          rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
-        );
-      }
-      return nextOutfit;
-    });
+    setGuidedDebugPayload(nextGuidedDebugPayload);
+    setOutfitItemUuids((current) => (
+      JSON.stringify(current) === JSON.stringify(nextOutfitItemUuids)
+        ? current
+        : nextOutfitItemUuids
+    ));
+    setOutfit(nextOutfit);
+    if (generationMode === "guided") {
+      setRecentOutfits((currentRecentOutfits) =>
+        rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
+      );
+    }
     setGenerateCount((current) => current + 1);
   }
 
