@@ -1118,6 +1118,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
   const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
   const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
   const targetReadyKey = `${targetMetricsCacheKey}::${targetImageUrl}`;
+  const renderIdentityKey = targetReadyKey || item?.id || dataItemId || perfSlot || "managed-image";
   const hasTargetMetrics = Boolean(getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl));
   const usesGenerationPlaceholder = Boolean(perfSlot);
   const [displayedImageUrl, setDisplayedImageUrl] = useState(() => (hasTargetMetrics ? targetImageUrl : ""));
@@ -1211,6 +1212,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
   if (!activeImageUrl) {
     return (
       <span
+        key={`empty:${renderIdentityKey}`}
         ref={frameRef}
         aria-hidden="true"
         className={`managed-image managed-image-empty ${className}`.trim()}
@@ -1225,6 +1227,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
 
   return (
       <span
+        key={`image:${renderIdentityKey}`}
         ref={frameRef}
         className={`managed-image ${className}`.trim()}
         style={getManagedImageFrameStyle(item, metrics, { useFrameScale, normalizeToFrameScale, useCrop, usePresentation })}
