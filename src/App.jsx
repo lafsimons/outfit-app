@@ -1090,6 +1090,22 @@ function useImageMetrics(imageUrl, metricsCacheKey = "", perfContext = null) {
   ) ?? { naturalWidth: 1, naturalHeight: 1 };
 }
 
+function getManagedImagePlaceholderAspect(perfSlot, item) {
+  if (perfSlot === "Headwear" || item?.garmentType === "Headwear") {
+    return 1.4;
+  }
+
+  if (perfSlot === "Bottom" || item?.garmentType === "Bottom") {
+    return 0.72;
+  }
+
+  if (perfSlot === "Footwear" || item?.garmentType === "Footwear") {
+    return 1.45;
+  }
+
+  return 0.82;
+}
+
 const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
@@ -1101,21 +1117,31 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
     : null;
   const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
   const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
+  const targetReadyKey = `${targetMetricsCacheKey}::${targetImageUrl}`;
   const hasTargetMetrics = Boolean(getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl));
+  const usesGenerationPlaceholder = Boolean(perfSlot);
   const [displayedImageUrl, setDisplayedImageUrl] = useState(() => (hasTargetMetrics ? targetImageUrl : ""));
   const [displayedMetricsCacheKey, setDisplayedMetricsCacheKey] = useState(() => (hasTargetMetrics ? targetMetricsCacheKey : ""));
-  const activeImageUrl = hasTargetMetrics ? targetImageUrl : displayedImageUrl;
-  const activeMetricsCacheKey = hasTargetMetrics ? targetMetricsCacheKey : displayedMetricsCacheKey;
+  const [readyTargetKey, setReadyTargetKey] = useState(() => (hasTargetMetrics ? targetReadyKey : ""));
+  const isTargetReady = hasTargetMetrics || readyTargetKey === targetReadyKey;
+  const activeImageUrl = usesGenerationPlaceholder
+    ? (isTargetReady ? targetImageUrl : "")
+    : (hasTargetMetrics ? targetImageUrl : displayedImageUrl);
+  const activeMetricsCacheKey = usesGenerationPlaceholder
+    ? (isTargetReady ? targetMetricsCacheKey : "")
+    : (hasTargetMetrics ? targetMetricsCacheKey : displayedMetricsCacheKey);
   const metrics = useImageMetrics(activeImageUrl, activeMetricsCacheKey, perfContext);
 
   useEffect(() => {
     if (!targetImageUrl) {
       setDisplayedImageUrl("");
       setDisplayedMetricsCacheKey("");
+      setReadyTargetKey("");
       return undefined;
     }
 
     if (hasTargetMetrics) {
+      setReadyTargetKey(targetReadyKey);
       return undefined;
     }
 
@@ -1126,15 +1152,18 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
       cacheKey: targetMetricsCacheKey
     }).then(() => {
       if (!cancelled) {
-        setDisplayedImageUrl(targetImageUrl);
-        setDisplayedMetricsCacheKey(targetMetricsCacheKey);
+        setReadyTargetKey(targetReadyKey);
+        if (!usesGenerationPlaceholder) {
+          setDisplayedImageUrl(targetImageUrl);
+          setDisplayedMetricsCacheKey(targetMetricsCacheKey);
+        }
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [hasTargetMetrics, targetImageUrl, targetMetricsCacheKey]);
+  }, [hasTargetMetrics, targetImageUrl, targetMetricsCacheKey, targetReadyKey, usesGenerationPlaceholder]);
 
   useEffect(() => {
     if (!perfSlot || !targetImageUrl || activeImageUrl !== targetImageUrl) {
@@ -1162,7 +1191,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
     };
   }, [activeImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
 
-  if (!activeImageUrl) {
+  if (!usePresentation && !activeImageUrl) {
     return null;
   }
 
@@ -1174,6 +1203,21 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
         alt={alt}
         decoding="async"
         className={`managed-image managed-image-plain ${className}`.trim()}
+        data-item-id={dataItemId || item?.id || ""}
+      />
+    );
+  }
+
+  if (!activeImageUrl) {
+    return (
+      <span
+        ref={frameRef}
+        aria-hidden="true"
+        className={`managed-image managed-image-empty ${className}`.trim()}
+        style={{
+          ...getItemImageStyle(item, { useFrameScale, normalizeToFrameScale, usePresentation }),
+          aspectRatio: `${getManagedImagePlaceholderAspect(perfSlot, item)}`
+        }}
         data-item-id={dataItemId || item?.id || ""}
       />
     );
