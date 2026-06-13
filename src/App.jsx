@@ -231,6 +231,7 @@ import {
 } from "./lib/itemEditorDraft";
 import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
 import {
+  buildManagedImageMetricsCacheKey,
   getImageFilename,
   getItemImageStyle,
   getManagedImageDrawBox,
@@ -289,7 +290,9 @@ const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
 const imageMetricsCache = new Map();
+const imageMetricsCacheByUrl = new Map();
 const pendingImageMetricsLoads = new Map();
+const pendingImageMetricsLoadsByUrl = new Map();
 
 function getOaPerfNow() {
   return typeof performance !== "undefined" && typeof performance.now === "function"
@@ -515,14 +518,50 @@ function resolveImageUrl(imageUrl, context = null) {
   return imageUrlByFilename[filename] ?? imageUrlByFilename[stripViteHash(filename)] ?? imageUrl;
 }
 
+function getManagedImageMetricsCacheKey(item, resolvedImageUrl) {
+  const activeItemImage = getActiveWardrobeItemImage(item);
+  const activeAsset = getActiveWardrobeItemImageAsset(item);
+
+  return buildManagedImageMetricsCacheKey({
+    resolvedImageUrl,
+    assetUuid: activeAsset?.assetUuid ?? "",
+    itemImageUuid: activeItemImage?.itemImageUuid ?? "",
+    itemUuid: item?.itemUuid ?? "",
+    itemId: item?.id ?? ""
+  });
+}
+
+function getCachedImageMetrics(cacheKey, resolvedImageUrl) {
+  if (cacheKey && imageMetricsCache.has(cacheKey)) {
+    return imageMetricsCache.get(cacheKey);
+  }
+
+  if (resolvedImageUrl && imageMetricsCacheByUrl.has(resolvedImageUrl)) {
+    return imageMetricsCacheByUrl.get(resolvedImageUrl);
+  }
+
+  return null;
+}
+
+function cacheImageMetrics(cacheKey, resolvedImageUrl, metrics) {
+  if (cacheKey) {
+    imageMetricsCache.set(cacheKey, metrics);
+  }
+
+  if (resolvedImageUrl) {
+    imageMetricsCacheByUrl.set(resolvedImageUrl, metrics);
+  }
+}
+
 function loadImageMetrics(resolvedImageUrl, context = null) {
   noteOaPerfCounter("loadImageMetricsCalls");
+  const cacheKey = typeof context?.cacheKey === "string" ? context.cacheKey : "";
 
   if (!resolvedImageUrl) {
     return Promise.resolve({ naturalWidth: 1, naturalHeight: 1 });
   }
 
-  const cachedMetrics = imageMetricsCache.get(resolvedImageUrl);
+  const cachedMetrics = getCachedImageMetrics(cacheKey, resolvedImageUrl);
   if (cachedMetrics) {
     noteOaPerfCounter("imageMetricsCacheHits");
     if (context?.interactionId) {
@@ -533,7 +572,7 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
     return Promise.resolve(cachedMetrics);
   }
 
-  const pendingLoad = pendingImageMetricsLoads.get(resolvedImageUrl);
+  const pendingLoad = (cacheKey && pendingImageMetricsLoads.get(cacheKey)) || pendingImageMetricsLoadsByUrl.get(resolvedImageUrl);
   if (pendingLoad) {
     return pendingLoad;
   }
@@ -551,8 +590,11 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
 
     const finalize = (metrics) => {
       const durationMs = getOaPerfNow() - startedAt;
-      imageMetricsCache.set(resolvedImageUrl, metrics);
-      pendingImageMetricsLoads.delete(resolvedImageUrl);
+      cacheImageMetrics(cacheKey, resolvedImageUrl, metrics);
+      if (cacheKey) {
+        pendingImageMetricsLoads.delete(cacheKey);
+      }
+      pendingImageMetricsLoadsByUrl.delete(resolvedImageUrl);
       noteOaPerfCounter("imageMetricsDecodeMs", durationMs);
       noteOaPerfCounter("imageMetricsDecodeCount");
       if (context?.interactionId) {
@@ -585,7 +627,10 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
     image.src = resolvedImageUrl;
   });
 
-  pendingImageMetricsLoads.set(resolvedImageUrl, metricsPromise);
+  if (cacheKey) {
+    pendingImageMetricsLoads.set(cacheKey, metricsPromise);
+  }
+  pendingImageMetricsLoadsByUrl.set(resolvedImageUrl, metricsPromise);
   return metricsPromise;
 }
 
@@ -603,6 +648,33 @@ function getCanUseDebugPopout() {
   }
 
   return window.matchMedia("(min-width: 1180px)").matches;
+}
+
+function scheduleIdleWork(callback, timeout = 150) {
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    return {
+      kind: "idle",
+      id: window.requestIdleCallback(callback, { timeout })
+    };
+  }
+
+  return {
+    kind: "timeout",
+    id: window.setTimeout(() => callback({ didTimeout: true, timeRemaining: () => 0 }), timeout)
+  };
+}
+
+function cancelScheduledIdleWork(handle) {
+  if (!handle) {
+    return;
+  }
+
+  if (handle.kind === "idle" && typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(handle.id);
+    return;
+  }
+
+  window.clearTimeout(handle.id);
 }
 
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
@@ -950,12 +1022,12 @@ function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWid
   context.restore();
 }
 
-function useImageMetrics(imageUrl, perfContext = null) {
+function useImageMetrics(imageUrl, metricsCacheKey = "", perfContext = null) {
   const resolvedImageUrl = resolveImageUrl(
     imageUrl?.trim?.() ?? imageUrl ?? "",
     perfContext ? { ...perfContext, source: `${perfContext.source || "useImageMetrics"}:resolve` } : null
   );
-  const [metrics, setMetrics] = useState(() => imageMetricsCache.get(resolvedImageUrl) ?? null);
+  const [metrics, setMetrics] = useState(() => getCachedImageMetrics(metricsCacheKey, resolvedImageUrl) ?? null);
 
   useEffect(() => {
     if (!resolvedImageUrl) {
@@ -964,7 +1036,10 @@ function useImageMetrics(imageUrl, perfContext = null) {
     }
 
     let cancelled = false;
-    loadImageMetrics(resolvedImageUrl, perfContext).then((nextMetrics) => {
+    loadImageMetrics(resolvedImageUrl, {
+      ...perfContext,
+      cacheKey: metricsCacheKey
+    }).then((nextMetrics) => {
       if (!cancelled) {
         setMetrics(nextMetrics);
       }
@@ -973,7 +1048,7 @@ function useImageMetrics(imageUrl, perfContext = null) {
     return () => {
       cancelled = true;
     };
-  }, [resolvedImageUrl]);
+  }, [metricsCacheKey, resolvedImageUrl]);
 
   return metrics ?? { naturalWidth: 1, naturalHeight: 1 };
 }
@@ -988,34 +1063,44 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
       }
     : null;
   const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
+  const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
   const [displayedImageUrl, setDisplayedImageUrl] = useState(() =>
-    imageMetricsCache.has(targetImageUrl) ? targetImageUrl : ""
+    getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl) ? targetImageUrl : ""
   );
-  const metrics = useImageMetrics(displayedImageUrl, perfContext);
+  const [displayedMetricsCacheKey, setDisplayedMetricsCacheKey] = useState(() =>
+    getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl) ? targetMetricsCacheKey : ""
+  );
+  const metrics = useImageMetrics(displayedImageUrl, displayedMetricsCacheKey, perfContext);
 
   useEffect(() => {
     if (!targetImageUrl) {
       setDisplayedImageUrl("");
+      setDisplayedMetricsCacheKey("");
       return undefined;
     }
 
-    if (imageMetricsCache.has(targetImageUrl)) {
+    if (getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl)) {
       setDisplayedImageUrl(targetImageUrl);
+      setDisplayedMetricsCacheKey(targetMetricsCacheKey);
       return undefined;
     }
 
     let cancelled = false;
 
-    loadImageMetrics(targetImageUrl, perfContext).then(() => {
+    loadImageMetrics(targetImageUrl, {
+      ...perfContext,
+      cacheKey: targetMetricsCacheKey
+    }).then(() => {
       if (!cancelled) {
         setDisplayedImageUrl(targetImageUrl);
+        setDisplayedMetricsCacheKey(targetMetricsCacheKey);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [targetImageUrl]);
+  }, [targetImageUrl, targetMetricsCacheKey]);
 
   useEffect(() => {
     if (!perfSlot || !targetImageUrl || displayedImageUrl !== targetImageUrl) {
@@ -1894,6 +1979,8 @@ export default function App() {
   const previousOutfitRef = useRef(outfit);
   const pendingSlotActionQueueRef = useRef(new Map());
   const pendingSlotActionFrameRef = useRef(null);
+  const imageMetricsPrewarmHandleRef = useRef(null);
+  const outfitPaletteUpdateHandleRef = useRef(null);
   appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
@@ -2369,6 +2456,11 @@ export default function App() {
         window.cancelAnimationFrame(pendingSlotActionFrameRef.current);
       }
       pendingSlotActionQueueRef.current.clear();
+
+      cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+      imageMetricsPrewarmHandleRef.current = null;
+      cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+      outfitPaletteUpdateHandleRef.current = null;
     };
   }, []);
 
@@ -2582,6 +2674,126 @@ export default function App() {
         : 0
     };
   }, [generationSourceItems.length, items]);
+
+  useEffect(() => {
+    const prewarmCandidatesById = new Map();
+
+    const addCandidate = (item) => {
+      if (!item?.id || prewarmCandidatesById.has(item.id)) {
+        return;
+      }
+
+      const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+      if (!imageUrl) {
+        return;
+      }
+
+      prewarmCandidatesById.set(item.id, item);
+    };
+
+    currentOutfitItems.forEach(addCandidate);
+
+    visibleSlots.forEach((slot) => {
+      const options = getEligibleSlotPool(
+        generationSourceItems,
+        slot,
+        excluded,
+        generationLists,
+        layering,
+        outfitFilters,
+        weatherData,
+        outfit,
+        itemsById
+      );
+
+      if (!options.length) {
+        return;
+      }
+
+      const currentIndex = options.findIndex((item) => item.id === outfit[slot]);
+      const candidateIndices = currentIndex === -1
+        ? [0, 1, 2, 3]
+        : [currentIndex, currentIndex + 1, currentIndex - 1, currentIndex + 2, currentIndex - 2];
+
+      candidateIndices.forEach((index) => {
+        if (index < 0 || index >= options.length) {
+          return;
+        }
+
+        addCandidate(options[index]);
+      });
+    });
+
+    const prewarmQueue = Array.from(prewarmCandidatesById.values()).filter((item) => {
+      const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+      const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
+      return !getCachedImageMetrics(cacheKey, resolvedImageUrl);
+    });
+
+    cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+    imageMetricsPrewarmHandleRef.current = null;
+
+    if (!prewarmQueue.length) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let nextIndex = 0;
+    let inFlight = false;
+
+    const scheduleNext = () => {
+      if (cancelled || nextIndex >= prewarmQueue.length || inFlight) {
+        return;
+      }
+
+      imageMetricsPrewarmHandleRef.current = scheduleIdleWork(async (deadline) => {
+        imageMetricsPrewarmHandleRef.current = null;
+
+        if (cancelled || inFlight) {
+          return;
+        }
+
+        if (!deadline.didTimeout && typeof deadline.timeRemaining === "function" && deadline.timeRemaining() < 6) {
+          scheduleNext();
+          return;
+        }
+
+        const item = prewarmQueue[nextIndex];
+        nextIndex += 1;
+        const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+        const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
+        inFlight = true;
+
+        try {
+          await loadImageMetrics(resolvedImageUrl, {
+            cacheKey,
+            source: "prewarm"
+          });
+        } finally {
+          inFlight = false;
+          scheduleNext();
+        }
+      }, 180);
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+      imageMetricsPrewarmHandleRef.current = null;
+    };
+  }, [
+    currentOutfitItems,
+    excluded,
+    generationLists,
+    generationSourceItems,
+    itemsById,
+    layering,
+    outfit,
+    outfitFilters,
+    weatherData
+  ]);
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
       return [];
@@ -3602,12 +3814,26 @@ export default function App() {
       }
     }
 
-    updateOutfitPalette();
+    cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+    outfitPaletteUpdateHandleRef.current = null;
+
+    if (!paletteOpen && outfitPalette.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    outfitPaletteUpdateHandleRef.current = scheduleIdleWork(() => {
+      outfitPaletteUpdateHandleRef.current = null;
+      updateOutfitPalette();
+    }, paletteOpen ? 120 : 300);
 
     return () => {
       cancelled = true;
+      cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+      outfitPaletteUpdateHandleRef.current = null;
     };
-  }, [currentOutfitItems]);
+  }, [currentOutfitItems, outfitPalette.length, paletteOpen]);
 
   useEffect(() => {
     let cancelled = false;

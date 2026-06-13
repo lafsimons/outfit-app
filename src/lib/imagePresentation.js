@@ -9,6 +9,26 @@ export function getImageFilename(imageUrl) {
   }
 }
 
+export function buildManagedImageMetricsCacheKey({
+  resolvedImageUrl = "",
+  assetUuid = "",
+  itemImageUuid = "",
+  itemUuid = "",
+  itemId = ""
+} = {}) {
+  const normalizedUrl = typeof resolvedImageUrl === "string" ? resolvedImageUrl.trim() : "";
+
+  if (!normalizedUrl) {
+    return assetUuid || itemImageUuid || itemUuid || itemId || "";
+  }
+
+  if (normalizedUrl.startsWith("data:image/")) {
+    return assetUuid || itemImageUuid || itemUuid || itemId || `data-url:${normalizedUrl.length}`;
+  }
+
+  return assetUuid || normalizedUrl;
+}
+
 export function stripViteHash(filename) {
   const extensionIndex = filename.lastIndexOf(".");
 
