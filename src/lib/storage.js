@@ -10,6 +10,18 @@ const APP_STORE = "appState";
 const SYNC_STATE_STORE = "syncState";
 const SYNC_METADATA_STORE = "syncMetadata";
 const SYNC_STATE_KEY = "state";
+let queuedAppStateSave = null;
+let appStateSaveInFlight = null;
+
+function emitOaPerfStorageEvent(type, payload = {}) {
+  if (typeof window === "undefined" || !window.__OA_GENERATION_PERF__) {
+    return;
+  }
+
+  if (typeof window.__OA_GENERATION_PERF_EMIT__ === "function") {
+    window.__OA_GENERATION_PERF_EMIT__(type, payload);
+  }
+}
 
 function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -488,25 +500,56 @@ export async function loadAppState() {
 }
 
 export async function saveAppState(value) {
-  const previousState = await loadAppState();
-  await withStore(APP_STORE, "readwrite", (store) =>
-    store.put({
-      key: "state",
-      value
-    })
-  );
+  queuedAppStateSave = cloneData(value);
+  emitOaPerfStorageEvent("saveQueued", {
+    hasInFlightWrite: Boolean(appStateSaveInFlight)
+  });
 
-  const deviceId = await getOrCreateDeviceId();
-  const syncUpdates = getSavedOutfitSyncUpdates(previousState?.savedOutfits, value?.savedOutfits, deviceId);
+  if (appStateSaveInFlight) {
+    await appStateSaveInFlight;
+    return;
+  }
 
-  for (const update of syncUpdates) {
-    const existingRow = await getSyncMetadata(update.key);
-    await upsertSyncMetadata(
-      buildPendingUploadSyncMetadata({
-        existingRow,
-        ...update
-      })
-    );
+  appStateSaveInFlight = (async () => {
+    while (queuedAppStateSave) {
+      const nextValue = queuedAppStateSave;
+      queuedAppStateSave = null;
+      const previousState = await loadAppState();
+      const writeStartedAt = typeof performance !== "undefined" && typeof performance.now === "function"
+        ? performance.now()
+        : Date.now();
+
+      await withStore(APP_STORE, "readwrite", (store) =>
+        store.put({
+          key: "state",
+          value: nextValue
+        })
+      );
+      emitOaPerfStorageEvent("saveWriteComplete", {
+        durationMs: (typeof performance !== "undefined" && typeof performance.now === "function"
+          ? performance.now()
+          : Date.now()) - writeStartedAt
+      });
+
+      const deviceId = await getOrCreateDeviceId();
+      const syncUpdates = getSavedOutfitSyncUpdates(previousState?.savedOutfits, nextValue?.savedOutfits, deviceId);
+
+      for (const update of syncUpdates) {
+        const existingRow = await getSyncMetadata(update.key);
+        await upsertSyncMetadata(
+          buildPendingUploadSyncMetadata({
+            existingRow,
+            ...update
+          })
+        );
+      }
+    }
+  })();
+
+  try {
+    await appStateSaveInFlight;
+  } finally {
+    appStateSaveInFlight = null;
   }
 }
 

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildManagedImageMetricsCacheKey,
   getImageFilename,
   getItemImageStyle,
   getManagedImageDrawBox,
@@ -22,6 +23,42 @@ test("image filename helpers preserve decoded names and strip Vite hashes", () =
   assert.equal(getImageFilename("/assets/Subject%20(4)%204-abc123.png?x=1#y"), "Subject (4) 4-abc123.png");
   assert.equal(stripViteHash("Subject (4) 4-abc123.png"), "Subject (4) 4.png");
   assert.equal(stripViteHash("plain.png"), "plain.png");
+});
+
+test("managed image metrics cache key prefers stable asset identity for data urls", () => {
+  assert.equal(
+    buildManagedImageMetricsCacheKey({
+      resolvedImageUrl: "data:image/png;base64,abc",
+      assetUuid: "asset-123",
+      itemImageUuid: "item-image-1",
+      itemUuid: "item-uuid-1",
+      itemId: "item-1"
+    }),
+    "asset-123"
+  );
+
+  assert.equal(
+    buildManagedImageMetricsCacheKey({
+      resolvedImageUrl: "data:image/png;base64,abc",
+      itemImageUuid: "item-image-1"
+    }),
+    "item-image-1"
+  );
+
+  assert.equal(
+    buildManagedImageMetricsCacheKey({
+      resolvedImageUrl: "/assets/top.png",
+      assetUuid: "asset-123"
+    }),
+    "asset-123"
+  );
+
+  assert.equal(
+    buildManagedImageMetricsCacheKey({
+      resolvedImageUrl: "/assets/top.png"
+    }),
+    "/assets/top.png"
+  );
 });
 
 test("image numeric normalizers preserve current bounds", () => {

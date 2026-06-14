@@ -1128,6 +1128,11 @@ button:disabled {
   transform-origin: center;
 }
 
+.managed-image-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .accessory-slot .accessory-figure .managed-image {
   width: min(
     100%,
@@ -1661,6 +1666,8 @@ button:disabled {
   background: transparent;
   border-radius: 0;
   box-shadow: none;
+  contain: paint;
+  isolation: isolate;
 }
 
 .outfit-slot .item-figure:active,
@@ -3663,6 +3670,18 @@ button:disabled {
   padding: 8px 9px;
   font-size: 0.84rem;
   color: var(--text);
+}
+
+.oa-ai-export-list {
+  display: grid;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.oa-ai-export-list-title,
+.oa-ai-export-empty {
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 @media (max-width: 520px) {

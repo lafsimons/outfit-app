@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DismissibleBackdrop from "./components/DismissibleBackdrop";
 import FitpicExportDialog from "./components/FitpicExportDialog";
+import OaAiExportDialog from "./components/OaAiExportDialog";
 import PreviewOverlay from "./components/PreviewOverlay";
 import WardrobeExportDialog from "./components/WardrobeExportDialog";
 import WardrobeSelectionBar from "./components/WardrobeSelectionBar";
@@ -230,6 +231,7 @@ import {
 } from "./lib/itemEditorDraft";
 import { getNextSelectionState, pruneSelectedIds } from "./lib/selectionModel";
 import {
+  buildManagedImageMetricsCacheKey,
   getImageFilename,
   getItemImageStyle,
   getManagedImageDrawBox,
@@ -253,11 +255,18 @@ import {
   serializeSavedOutfitsCsv,
   serializeSavedOutfitsJson
 } from "./lib/metadataExport";
+import { buildBackupPackageZip } from "./lib/backupPackageV2.js";
+import {
+  buildOaAiExportBundle,
+  createDefaultOaAiExportOptions
+} from "./lib/oaAiExport.js";
 import {
   getWardrobePreviewDirectionForKey,
   getWardrobePreviewImageNavigation,
   getWardrobePreviewNavigation
 } from "./lib/wardrobePreviewNavigation";
+import { downloadFitpicImageExport, renderFitpicImageExport } from "./lib/fitpicImageExport.js";
+import { downloadWardrobeImageExport, renderWardrobeImageExport } from "./lib/wardrobeImageExport.js";
 
 const imageAssets = import.meta.glob("../images/*.{png,jpg,jpeg,webp,avif}", {
   eager: true,
@@ -281,8 +290,223 @@ const imageUrlByFilename = Object.fromEntries(
   imageAssetEntries.map((image) => [image.filename, image.imageUrl])
 );
 const imageMetricsCache = new Map();
+const imageMetricsCacheByUrl = new Map();
+const pendingImageMetricsLoads = new Map();
+const pendingImageMetricsLoadsByUrl = new Map();
 
-function resolveImageUrl(imageUrl) {
+function getOaPerfNow() {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function getOaGenerationPerfState() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const perfEnabled = Boolean(window.__OA_GENERATION_PERF__)
+    || window.location?.search?.includes("oaPerf=1")
+    || window.localStorage?.getItem?.("oaGenerationPerf") === "true";
+
+  if (!perfEnabled) {
+    return null;
+  }
+
+  if (!window.__OA_GENERATION_PERF_STATE__) {
+    window.__OA_GENERATION_PERF_STATE__ = {
+      nextInteractionId: 0,
+      activeBySlot: {},
+      interactions: {},
+      recentEntries: [],
+      counters: {
+        resolveImageUrlCalls: 0,
+        resolveImageUrlBySource: {},
+        loadImageMetricsCalls: 0,
+        imageMetricsCacheHits: 0,
+        imageMetricsCacheMisses: 0,
+        imageMetricsDecodeMs: 0,
+        imageMetricsDecodeCount: 0,
+        saveQueuedCount: 0,
+        saveWriteCount: 0,
+        saveWriteMs: 0
+      }
+    };
+  }
+
+  return window.__OA_GENERATION_PERF_STATE__;
+}
+
+function noteOaPerfCounter(name, delta = 1) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  perfState.counters[name] = (perfState.counters[name] ?? 0) + delta;
+}
+
+function noteOaPerfResolve(context = null) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  perfState.counters.resolveImageUrlCalls += 1;
+
+  const source = typeof context?.source === "string" && context.source.trim()
+    ? context.source.trim()
+    : "unknown";
+  perfState.counters.resolveImageUrlBySource[source] = (perfState.counters.resolveImageUrlBySource[source] ?? 0) + 1;
+
+  const interactionId = typeof context?.interactionId === "string"
+    ? context.interactionId
+    : typeof context?.slot === "string"
+      ? perfState.activeBySlot[context.slot] ?? null
+      : null;
+  const interaction = interactionId ? perfState.interactions[interactionId] : null;
+
+  if (!interaction) {
+    return;
+  }
+
+  interaction.resolveCalls = (interaction.resolveCalls ?? 0) + 1;
+  interaction.resolveSources[source] = (interaction.resolveSources[source] ?? 0) + 1;
+}
+
+function startOaPerfInteraction(kind, slot, metadata = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return null;
+  }
+
+  perfState.nextInteractionId += 1;
+  const interactionId = `oa-perf-${perfState.nextInteractionId}`;
+  perfState.interactions[interactionId] = {
+    id: interactionId,
+    kind,
+    slot,
+    startedAt: getOaPerfNow(),
+    clickCount: 1,
+    metadata: { ...metadata },
+    poolMs: 0,
+    scoreMs: 0,
+    poolCalls: 0,
+    poolSizes: [],
+    poolSourceItems: 0,
+    resolveCalls: 0,
+    resolveSources: {},
+    cacheHits: 0,
+    cacheMisses: 0,
+    decodeMs: 0,
+    saveQueued: false,
+    saveWritesDelta: 0,
+    saveWriteMsDelta: 0,
+    renderCountStart: 0,
+    renderCountAtStateCommit: 0,
+    renderCountAtPaint: 0,
+    renderDelta: 0
+  };
+  perfState.activeBySlot[slot] = interactionId;
+
+  return interactionId;
+}
+
+function getOaPerfInteraction(interactionId) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return null;
+  }
+
+  return perfState.interactions[interactionId] ?? null;
+}
+
+function updateOaPerfInteraction(interactionId, updater) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return;
+  }
+
+  const interaction = perfState.interactions[interactionId];
+  if (!interaction) {
+    return;
+  }
+
+  updater(interaction, perfState);
+}
+
+function completeOaPerfInteraction(interactionId, summary = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState || !interactionId) {
+    return;
+  }
+
+  const interaction = perfState.interactions[interactionId];
+  if (!interaction || interaction.completedAt) {
+    return;
+  }
+
+  interaction.completedAt = getOaPerfNow();
+  Object.assign(interaction, summary);
+
+  const totalMs = interaction.completedAt - interaction.startedAt;
+  const stateMs = interaction.stateCommittedAt ? interaction.stateCommittedAt - interaction.startedAt : 0;
+  const imageReadyAnchorAt = interaction.imageReadyAt || interaction.stateCommittedAt || 0;
+  const imageReadyMs = interaction.imageReadyAt && interaction.stateCommittedAt
+    ? interaction.imageReadyAt - interaction.stateCommittedAt
+    : 0;
+  const paintMs = interaction.paintAt && imageReadyAnchorAt
+    ? interaction.paintAt - imageReadyAnchorAt
+    : 0;
+  const saveQueuedLabel = interaction.saveQueued ? "yes" : "no";
+  const poolSizeLabel = interaction.poolSizes.length ? interaction.poolSizes[interaction.poolSizes.length - 1] : 0;
+  const clickCountLabel = interaction.clickCount > 1 ? ` clicks=${interaction.clickCount}` : "";
+
+  const line = `[OA perf] ${interaction.kind} ${interaction.slot} total=${totalMs.toFixed(1)}ms pool=${interaction.poolMs.toFixed(1)}ms score=${interaction.scoreMs.toFixed(1)}ms state=${stateMs.toFixed(1)}ms decode=${interaction.decodeMs.toFixed(1)}ms imageReady=${imageReadyMs.toFixed(1)}ms paint=${paintMs.toFixed(1)}ms resolve=${interaction.resolveCalls} poolSize=${poolSizeLabel} items=${interaction.poolSourceItems} saves=${saveQueuedLabel}/${interaction.saveWritesDelta} renders=${interaction.renderDelta}${clickCountLabel}`;
+
+  perfState.recentEntries.push({
+    ...interaction,
+    totalMs,
+    line
+  });
+  perfState.recentEntries = perfState.recentEntries.slice(-200);
+
+  if (perfState.activeBySlot[interaction.slot] === interactionId) {
+    delete perfState.activeBySlot[interaction.slot];
+  }
+
+  console.log(line);
+}
+
+function noteOaPerfStorageEvent(type, payload = {}) {
+  const perfState = getOaGenerationPerfState();
+  if (!perfState) {
+    return;
+  }
+
+  if (type === "saveQueued") {
+    perfState.counters.saveQueuedCount += 1;
+  } else if (type === "saveWriteComplete") {
+    perfState.counters.saveWriteCount += 1;
+    perfState.counters.saveWriteMs += Number(payload.durationMs) || 0;
+  }
+
+  const activeInteractions = Object.values(perfState.activeBySlot);
+  activeInteractions.forEach((interactionId) => {
+    updateOaPerfInteraction(interactionId, (interaction) => {
+      if (type === "saveQueued") {
+        interaction.saveQueued = true;
+      } else if (type === "saveWriteComplete") {
+        interaction.saveWritesDelta += 1;
+        interaction.saveWriteMsDelta += Number(payload.durationMs) || 0;
+      }
+    });
+  });
+}
+
+function resolveImageUrl(imageUrl, context = null) {
+  noteOaPerfResolve(context);
+
   if (!imageUrl || imageUrl.startsWith("data:") || /^https?:\/\//.test(imageUrl)) {
     return imageUrl;
   }
@@ -293,6 +517,122 @@ function resolveImageUrl(imageUrl) {
 
   const filename = getImageFilename(imageUrl);
   return imageUrlByFilename[filename] ?? imageUrlByFilename[stripViteHash(filename)] ?? imageUrl;
+}
+
+function getManagedImageMetricsCacheKey(item, resolvedImageUrl) {
+  const activeItemImage = getActiveWardrobeItemImage(item);
+  const activeAsset = getActiveWardrobeItemImageAsset(item);
+
+  return buildManagedImageMetricsCacheKey({
+    resolvedImageUrl,
+    assetUuid: activeAsset?.assetUuid ?? "",
+    itemImageUuid: activeItemImage?.itemImageUuid ?? "",
+    itemUuid: item?.itemUuid ?? "",
+    itemId: item?.id ?? ""
+  });
+}
+
+function getCachedImageMetrics(cacheKey, resolvedImageUrl) {
+  if (cacheKey && imageMetricsCache.has(cacheKey)) {
+    return imageMetricsCache.get(cacheKey);
+  }
+
+  if (resolvedImageUrl && imageMetricsCacheByUrl.has(resolvedImageUrl)) {
+    return imageMetricsCacheByUrl.get(resolvedImageUrl);
+  }
+
+  return null;
+}
+
+function cacheImageMetrics(cacheKey, resolvedImageUrl, metrics) {
+  if (cacheKey) {
+    imageMetricsCache.set(cacheKey, metrics);
+  }
+
+  if (resolvedImageUrl) {
+    imageMetricsCacheByUrl.set(resolvedImageUrl, metrics);
+  }
+}
+
+function loadImageMetrics(resolvedImageUrl, context = null) {
+  noteOaPerfCounter("loadImageMetricsCalls");
+  const cacheKey = typeof context?.cacheKey === "string" ? context.cacheKey : "";
+
+  if (!resolvedImageUrl) {
+    return Promise.resolve({ naturalWidth: 1, naturalHeight: 1 });
+  }
+
+  const cachedMetrics = getCachedImageMetrics(cacheKey, resolvedImageUrl);
+  if (cachedMetrics) {
+    noteOaPerfCounter("imageMetricsCacheHits");
+    if (context?.interactionId) {
+      updateOaPerfInteraction(context.interactionId, (interaction) => {
+        interaction.cacheHits += 1;
+      });
+    }
+    return Promise.resolve(cachedMetrics);
+  }
+
+  const pendingLoad = (cacheKey && pendingImageMetricsLoads.get(cacheKey)) || pendingImageMetricsLoadsByUrl.get(resolvedImageUrl);
+  if (pendingLoad) {
+    return pendingLoad;
+  }
+
+  noteOaPerfCounter("imageMetricsCacheMisses");
+  if (context?.interactionId) {
+    updateOaPerfInteraction(context.interactionId, (interaction) => {
+      interaction.cacheMisses += 1;
+    });
+  }
+
+  const metricsPromise = new Promise((resolve) => {
+    const image = new Image();
+    const startedAt = getOaPerfNow();
+
+    const finalize = (metrics) => {
+      const durationMs = getOaPerfNow() - startedAt;
+      cacheImageMetrics(cacheKey, resolvedImageUrl, metrics);
+      if (cacheKey) {
+        pendingImageMetricsLoads.delete(cacheKey);
+      }
+      pendingImageMetricsLoadsByUrl.delete(resolvedImageUrl);
+      noteOaPerfCounter("imageMetricsDecodeMs", durationMs);
+      noteOaPerfCounter("imageMetricsDecodeCount");
+      if (context?.interactionId) {
+        updateOaPerfInteraction(context.interactionId, (interaction) => {
+          interaction.decodeMs += durationMs;
+        });
+      }
+      resolve(metrics);
+    };
+
+    image.onload = () => {
+      const nextMetrics = {
+        naturalWidth: Math.max(image.naturalWidth || 1, 1),
+        naturalHeight: Math.max(image.naturalHeight || 1, 1)
+      };
+
+      if (typeof image.decode === "function") {
+        image.decode().catch(() => undefined).finally(() => finalize(nextMetrics));
+        return;
+      }
+
+      finalize(nextMetrics);
+    };
+
+    image.onerror = () => {
+      finalize({ naturalWidth: 1, naturalHeight: 1 });
+    };
+
+    image.decoding = "async";
+    image.src = resolvedImageUrl;
+  });
+
+  if (cacheKey) {
+    pendingImageMetricsLoads.set(cacheKey, metricsPromise);
+  }
+  pendingImageMetricsLoadsByUrl.set(resolvedImageUrl, metricsPromise);
+  return metricsPromise;
 }
 
 function getIsMobileViewport() {
@@ -309,6 +649,33 @@ function getCanUseDebugPopout() {
   }
 
   return window.matchMedia("(min-width: 1180px)").matches;
+}
+
+function scheduleIdleWork(callback, timeout = 150) {
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    return {
+      kind: "idle",
+      id: window.requestIdleCallback(callback, { timeout })
+    };
+  }
+
+  return {
+    kind: "timeout",
+    id: window.setTimeout(() => callback({ didTimeout: true, timeRemaining: () => 0 }), timeout)
+  };
+}
+
+function cancelScheduledIdleWork(handle) {
+  if (!handle) {
+    return;
+  }
+
+  if (handle.kind === "idle" && typeof window !== "undefined" && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(handle.id);
+    return;
+  }
+
+  window.clearTimeout(handle.id);
 }
 
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
@@ -656,62 +1023,176 @@ function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWid
   context.restore();
 }
 
-function useImageMetrics(imageUrl) {
-  const resolvedImageUrl = resolveImageUrl(imageUrl?.trim?.() ?? imageUrl ?? "");
-  const [metrics, setMetrics] = useState(() => imageMetricsCache.get(resolvedImageUrl) ?? null);
+function useImageMetrics(imageUrl, metricsCacheKey = "", perfContext = null) {
+  const resolvedImageUrl = resolveImageUrl(
+    imageUrl?.trim?.() ?? imageUrl ?? "",
+    perfContext ? { ...perfContext, source: `${perfContext.source || "useImageMetrics"}:resolve` } : null
+  );
+  const cacheIdentity = `${metricsCacheKey}::${resolvedImageUrl}`;
+  const cachedMetrics = getCachedImageMetrics(metricsCacheKey, resolvedImageUrl);
+  const [metricsState, setMetricsState] = useState(() => ({
+    identity: cacheIdentity,
+    metrics: cachedMetrics ?? null
+  }));
 
   useEffect(() => {
     if (!resolvedImageUrl) {
-      setMetrics(null);
+      setMetricsState((current) => (
+        current.identity === cacheIdentity && current.metrics === null
+          ? current
+          : { identity: cacheIdentity, metrics: null }
+      ));
       return undefined;
     }
 
-    const cached = imageMetricsCache.get(resolvedImageUrl);
-    if (cached) {
-      setMetrics(cached);
+    if (cachedMetrics) {
       return undefined;
     }
+
+    setMetricsState((current) => (
+      current.identity === cacheIdentity && current.metrics === null
+        ? current
+        : { identity: cacheIdentity, metrics: null }
+    ));
 
     let cancelled = false;
-    const image = new Image();
-
-    image.onload = () => {
-      const nextMetrics = {
-        naturalWidth: Math.max(image.naturalWidth || 1, 1),
-        naturalHeight: Math.max(image.naturalHeight || 1, 1)
-      };
-
-      imageMetricsCache.set(resolvedImageUrl, nextMetrics);
-
+    loadImageMetrics(resolvedImageUrl, {
+      ...perfContext,
+      cacheKey: metricsCacheKey
+    }).then((nextMetrics) => {
       if (!cancelled) {
-        setMetrics(nextMetrics);
+        setMetricsState((current) => {
+          if (
+            current.identity === cacheIdentity &&
+            current.metrics?.naturalWidth === nextMetrics.naturalWidth &&
+            current.metrics?.naturalHeight === nextMetrics.naturalHeight
+          ) {
+            return current;
+          }
+
+          return {
+            identity: cacheIdentity,
+            metrics: nextMetrics
+          };
+        });
       }
-    };
-
-    image.onerror = () => {
-      const fallbackMetrics = { naturalWidth: 1, naturalHeight: 1 };
-      imageMetricsCache.set(resolvedImageUrl, fallbackMetrics);
-
-      if (!cancelled) {
-        setMetrics(fallbackMetrics);
-      }
-    };
-
-    image.src = resolvedImageUrl;
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [resolvedImageUrl]);
+  }, [cacheIdentity, cachedMetrics, metricsCacheKey, resolvedImageUrl]);
 
-  return metrics ?? { naturalWidth: 1, naturalHeight: 1 };
+  return cachedMetrics ?? (
+    metricsState.identity === cacheIdentity
+      ? metricsState.metrics
+      : null
+  ) ?? { naturalWidth: 1, naturalHeight: 1 };
 }
 
-function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false }) {
-  const resolvedImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "");
-  const metrics = useImageMetrics(resolvedImageUrl);
+function getManagedImagePlaceholderAspect(perfSlot, item) {
+  if (perfSlot === "Headwear" || item?.garmentType === "Headwear") {
+    return 1.4;
+  }
 
-  if (!resolvedImageUrl) {
+  if (perfSlot === "Bottom" || item?.garmentType === "Bottom") {
+    return 0.72;
+  }
+
+  if (perfSlot === "Footwear" || item?.garmentType === "Footwear") {
+    return 1.45;
+  }
+
+  return 0.82;
+}
+
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
+  const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
+  const perfContext = perfSlot
+    ? {
+        slot: perfSlot,
+        interactionId: perfInteractionId,
+        source: "ManagedItemImage"
+      }
+    : null;
+  const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
+  const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
+  const targetReadyKey = `${targetMetricsCacheKey}::${targetImageUrl}`;
+  const renderIdentityKey = targetReadyKey || item?.id || dataItemId || perfSlot || "managed-image";
+  const hasTargetMetrics = Boolean(getCachedImageMetrics(targetMetricsCacheKey, targetImageUrl));
+  const usesGenerationPlaceholder = Boolean(perfSlot);
+  const [displayedImageUrl, setDisplayedImageUrl] = useState(() => (hasTargetMetrics ? targetImageUrl : ""));
+  const [displayedMetricsCacheKey, setDisplayedMetricsCacheKey] = useState(() => (hasTargetMetrics ? targetMetricsCacheKey : ""));
+  const [readyTargetKey, setReadyTargetKey] = useState(() => (hasTargetMetrics ? targetReadyKey : ""));
+  const isTargetReady = hasTargetMetrics || readyTargetKey === targetReadyKey;
+  const activeImageUrl = usesGenerationPlaceholder
+    ? (isTargetReady ? targetImageUrl : "")
+    : (hasTargetMetrics ? targetImageUrl : displayedImageUrl);
+  const activeMetricsCacheKey = usesGenerationPlaceholder
+    ? (isTargetReady ? targetMetricsCacheKey : "")
+    : (hasTargetMetrics ? targetMetricsCacheKey : displayedMetricsCacheKey);
+  const metrics = useImageMetrics(activeImageUrl, activeMetricsCacheKey, perfContext);
+
+  useEffect(() => {
+    if (!targetImageUrl) {
+      setDisplayedImageUrl("");
+      setDisplayedMetricsCacheKey("");
+      setReadyTargetKey("");
+      return undefined;
+    }
+
+    if (hasTargetMetrics) {
+      setReadyTargetKey(targetReadyKey);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    loadImageMetrics(targetImageUrl, {
+      ...perfContext,
+      cacheKey: targetMetricsCacheKey
+    }).then(() => {
+      if (!cancelled) {
+        setReadyTargetKey(targetReadyKey);
+        if (!usesGenerationPlaceholder) {
+          setDisplayedImageUrl(targetImageUrl);
+          setDisplayedMetricsCacheKey(targetMetricsCacheKey);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasTargetMetrics, targetImageUrl, targetMetricsCacheKey, targetReadyKey, usesGenerationPlaceholder]);
+
+  useEffect(() => {
+    if (!perfSlot || !targetImageUrl || activeImageUrl !== targetImageUrl) {
+      return undefined;
+    }
+
+    const activeInteractionId = getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? perfInteractionId;
+    if (!activeInteractionId) {
+      return undefined;
+    }
+
+    updateOaPerfInteraction(activeInteractionId, (interaction) => {
+      interaction.imageReadyAt = getOaPerfNow();
+    });
+
+    const frameId = window.requestAnimationFrame(() => {
+      updateOaPerfInteraction(activeInteractionId, (interaction) => {
+        interaction.paintAt = getOaPerfNow();
+      });
+      completeOaPerfInteraction(activeInteractionId);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
+
+  if (!usePresentation && !activeImageUrl) {
     return null;
   }
 
@@ -719,9 +1200,26 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
     return (
       <img
         ref={imageRef}
-        src={resolvedImageUrl}
+        src={activeImageUrl}
         alt={alt}
+        decoding="async"
         className={`managed-image managed-image-plain ${className}`.trim()}
+        data-item-id={dataItemId || item?.id || ""}
+      />
+    );
+  }
+
+  if (!activeImageUrl) {
+    return (
+      <span
+        key={`empty:${renderIdentityKey}`}
+        ref={frameRef}
+        aria-hidden="true"
+        className={`managed-image managed-image-empty ${className}`.trim()}
+        style={{
+          ...getItemImageStyle(item, { useFrameScale, normalizeToFrameScale, usePresentation }),
+          aspectRatio: `${getManagedImagePlaceholderAspect(perfSlot, item)}`
+        }}
         data-item-id={dataItemId || item?.id || ""}
       />
     );
@@ -729,20 +1227,34 @@ function ManagedItemImage({ item, alt = "", className = "", frameRef = null, ima
 
   return (
       <span
+        key={`image:${renderIdentityKey}`}
         ref={frameRef}
         className={`managed-image ${className}`.trim()}
-      style={getManagedImageFrameStyle(item, metrics, { useFrameScale, normalizeToFrameScale, useCrop, usePresentation })}
-      data-item-id={dataItemId || item?.id || ""}
-    >
-      <img
-        ref={imageRef}
-        src={resolvedImageUrl}
-        alt={alt}
-        className="managed-image-content"
-      />
-    </span>
+        style={getManagedImageFrameStyle(item, metrics, { useFrameScale, normalizeToFrameScale, useCrop, usePresentation })}
+        data-item-id={dataItemId || item?.id || ""}
+      >
+        <img
+          ref={imageRef}
+          src={activeImageUrl}
+          alt={alt}
+          decoding="async"
+          className="managed-image-content"
+        />
+      </span>
   );
-}
+}, (previousProps, nextProps) => (
+  previousProps.item === nextProps.item
+  && previousProps.alt === nextProps.alt
+  && previousProps.className === nextProps.className
+  && previousProps.frameRef === nextProps.frameRef
+  && previousProps.imageRef === nextProps.imageRef
+  && previousProps.dataItemId === nextProps.dataItemId
+  && previousProps.useFrameScale === nextProps.useFrameScale
+  && previousProps.normalizeToFrameScale === nextProps.normalizeToFrameScale
+  && previousProps.useCrop === nextProps.useCrop
+  && previousProps.usePresentation === nextProps.usePresentation
+  && previousProps.perfSlot === nextProps.perfSlot
+));
 
 function getAdvancedOverrideFields(item, defaults) {
   return advancedTrackedFields.filter((field) => !areEditorValuesEqual(item[field], defaults[field]));
@@ -1424,6 +1936,11 @@ export default function App() {
   const editorImageRef = useRef(null);
   const paletteCacheRef = useRef(new Map());
   const generatePointerHandledAtRef = useRef(-1);
+  const generateInFlightRef = useRef(false);
+  const generateAwaitingPaintRef = useRef(false);
+  const pendingGenerateRef = useRef(false);
+  const pendingGenerateFrameRef = useRef(null);
+  const generateReleaseFrameRef = useRef(null);
   const pointerActivatedControlRef = useRef(null);
   const lastInteractionWasPointerRef = useRef(false);
   const [items, setItems] = useState([]);
@@ -1522,6 +2039,8 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(null);
   const [wardrobeExportOptions, setWardrobeExportOptions] = useState(null);
   const [fitpicExportOptions, setFitpicExportOptions] = useState(null);
+  const [oaAiExportOptions, setOaAiExportOptions] = useState(null);
+  const [oaAiExporting, setOaAiExporting] = useState(false);
   const [wardrobeSearch, setWardrobeSearch] = useState("");
   const [wardrobeFilterSearch, setWardrobeFilterSearch] = useState("");
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
@@ -1556,6 +2075,13 @@ export default function App() {
   const outfitItemPreviewClickTimeoutRef = useRef(null);
   const pendingOutfitItemPreviewRef = useRef(null);
   const fitpicDropDepthRef = useRef(0);
+  const appRenderCountRef = useRef(0);
+  const previousOutfitRef = useRef(outfit);
+  const pendingSlotActionQueueRef = useRef(new Map());
+  const pendingSlotActionFrameRef = useRef(null);
+  const imageMetricsPrewarmHandleRef = useRef(null);
+  const outfitPaletteUpdateHandleRef = useRef(null);
+  appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, item])),
@@ -1950,6 +2476,61 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    window.__OA_GENERATION_PERF_EMIT__ = noteOaPerfStorageEvent;
+    window.__OA_GENERATION_PERF_GET_STATE__ = () => getOaGenerationPerfState();
+    window.__OA_GENERATION_PERF_RESET__ = () => {
+      if (window.__OA_GENERATION_PERF_STATE__) {
+        window.__OA_GENERATION_PERF_STATE__ = {
+          ...window.__OA_GENERATION_PERF_STATE__,
+          activeBySlot: {},
+          interactions: {},
+          recentEntries: [],
+          counters: {
+            resolveImageUrlCalls: 0,
+            resolveImageUrlBySource: {},
+            loadImageMetricsCalls: 0,
+            imageMetricsCacheHits: 0,
+            imageMetricsCacheMisses: 0,
+            imageMetricsDecodeMs: 0,
+            imageMetricsDecodeCount: 0,
+            saveQueuedCount: 0,
+            saveWriteCount: 0,
+            saveWriteMs: 0
+          }
+        };
+      }
+
+      return window.__OA_GENERATION_PERF_STATE__ ?? null;
+    };
+    window.__OA_GENERATION_PERF_SUMMARY__ = () => {
+      const perfState = getOaGenerationPerfState();
+      if (!perfState) {
+        return null;
+      }
+
+      return {
+        dataset: perfState.dataset ?? null,
+        lastGenerationSourceItems: perfState.lastGenerationSourceItems ?? null,
+        counters: perfState.counters,
+        recentEntries: perfState.recentEntries.slice(-20)
+      };
+    };
+
+    return () => {
+      if (window.__OA_GENERATION_PERF_EMIT__ === noteOaPerfStorageEvent) {
+        delete window.__OA_GENERATION_PERF_EMIT__;
+      }
+      delete window.__OA_GENERATION_PERF_GET_STATE__;
+      delete window.__OA_GENERATION_PERF_RESET__;
+      delete window.__OA_GENERATION_PERF_SUMMARY__;
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (wardrobeSelectClickTimeoutRef.current !== null) {
         window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
@@ -1970,8 +2551,132 @@ export default function App() {
         window.clearTimeout(outfitItemPreviewClickTimeoutRef.current);
       }
       pendingOutfitItemPreviewRef.current = null;
+
+      if (pendingSlotActionFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingSlotActionFrameRef.current);
+      }
+      pendingSlotActionQueueRef.current.clear();
+
+      if (pendingGenerateFrameRef.current !== null) {
+        window.cancelAnimationFrame(pendingGenerateFrameRef.current);
+      }
+      pendingGenerateFrameRef.current = null;
+
+      if (generateReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(generateReleaseFrameRef.current);
+      }
+      generateReleaseFrameRef.current = null;
+
+      cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+      imageMetricsPrewarmHandleRef.current = null;
+      cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+      outfitPaletteUpdateHandleRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const perfState = getOaGenerationPerfState();
+    const previousOutfit = previousOutfitRef.current;
+
+    if (perfState && previousOutfit !== outfit) {
+      Object.entries(perfState.activeBySlot).forEach(([slot, interactionId]) => {
+        if (slot === "outfit") {
+          updateOaPerfInteraction(interactionId, (interaction) => {
+            if (!interaction.stateCommittedAt) {
+              interaction.stateCommittedAt = getOaPerfNow();
+              interaction.renderCountAtStateCommit = appRenderCountRef.current;
+              interaction.renderDelta = Math.max(
+                interaction.renderDelta,
+                appRenderCountRef.current - (interaction.renderCountStart || 0)
+              );
+            }
+          });
+          window.requestAnimationFrame(() => {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.paintAt = getOaPerfNow();
+              interaction.renderCountAtPaint = appRenderCountRef.current;
+              interaction.renderDelta = Math.max(
+                interaction.renderDelta,
+                appRenderCountRef.current - (interaction.renderCountStart || 0)
+              );
+            });
+            completeOaPerfInteraction(interactionId);
+          });
+          return;
+        }
+
+        if (previousOutfit?.[slot] === outfit?.[slot]) {
+          return;
+        }
+
+        updateOaPerfInteraction(interactionId, (interaction) => {
+          if (!interaction.stateCommittedAt) {
+            interaction.stateCommittedAt = getOaPerfNow();
+            interaction.renderCountAtStateCommit = appRenderCountRef.current;
+            interaction.renderDelta = Math.max(
+              interaction.renderDelta,
+              appRenderCountRef.current - (interaction.renderCountStart || 0)
+            );
+          }
+        });
+
+        if (!outfit?.[slot]) {
+          window.requestAnimationFrame(() => {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.paintAt = getOaPerfNow();
+              interaction.renderCountAtPaint = appRenderCountRef.current;
+            });
+            completeOaPerfInteraction(interactionId);
+          });
+        }
+      });
+    }
+
+    previousOutfitRef.current = outfit;
+  }, [outfit]);
+
+  useEffect(() => {
+    if (!generateAwaitingPaintRef.current) {
+      return undefined;
+    }
+
+    generateAwaitingPaintRef.current = false;
+
+    if (generateReleaseFrameRef.current !== null) {
+      window.cancelAnimationFrame(generateReleaseFrameRef.current);
+    }
+
+    generateReleaseFrameRef.current = window.requestAnimationFrame(() => {
+      generateReleaseFrameRef.current = window.requestAnimationFrame(() => {
+        generateReleaseFrameRef.current = null;
+        generateInFlightRef.current = false;
+
+        if (pendingGenerateRef.current) {
+          if (pendingGenerateFrameRef.current !== null) {
+            window.cancelAnimationFrame(pendingGenerateFrameRef.current);
+          }
+
+          pendingGenerateFrameRef.current = window.requestAnimationFrame(() => {
+            pendingGenerateFrameRef.current = null;
+
+            if (generateInFlightRef.current || !pendingGenerateRef.current) {
+              return;
+            }
+
+            pendingGenerateRef.current = false;
+            handleGenerate();
+          });
+        }
+      });
+    });
+
+    return () => {
+      if (generateReleaseFrameRef.current !== null) {
+        window.cancelAnimationFrame(generateReleaseFrameRef.current);
+        generateReleaseFrameRef.current = null;
+      }
+    };
+  }, [outfit]);
 
   const currentOutfitItems = useMemo(() => {
     const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
@@ -2064,7 +2769,9 @@ export default function App() {
     0
   );
   const generationSourceItems = useMemo(
-    () => items.filter((item) => {
+    () => {
+      const startedAt = getOaPerfNow();
+      const nextItems = items.filter((item) => {
       const itemCollections = normalizeCollections(item.collections);
       const includedCollections = outfitFilters.collections ?? [];
       const excludedCollections = outfitFilters.collectionsExcluded ?? [];
@@ -2078,9 +2785,168 @@ export default function App() {
       }
 
       return true;
-    }),
+      });
+
+      const perfState = getOaGenerationPerfState();
+      if (perfState) {
+        perfState.lastGenerationSourceItems = {
+          computedAt: getOaPerfNow(),
+          durationMs: getOaPerfNow() - startedAt,
+          itemCount: nextItems.length,
+          sourceCount: items.length
+        };
+      }
+
+      return nextItems;
+    },
     [items, outfitFilters.collections, outfitFilters.collectionsExcluded]
   );
+
+  useEffect(() => {
+    const perfState = getOaGenerationPerfState();
+    if (!perfState) {
+      return;
+    }
+
+    const imageUrls = items
+      .map((item) => item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "")
+      .filter(Boolean);
+    const dataUrls = imageUrls.filter((value) => value.startsWith("data:image/"));
+    const resolvedAssetUrls = imageUrls.filter((value) => value.startsWith("/images/") || value.startsWith("/assets/"));
+
+    perfState.dataset = {
+      itemCount: items.length,
+      generationSourceItemCount: generationSourceItems.length,
+      dataUrlCount: dataUrls.length,
+      resolvedAssetUrlCount: resolvedAssetUrls.length,
+      averageDataUrlLength: dataUrls.length
+        ? Math.round(dataUrls.reduce((sum, value) => sum + value.length, 0) / dataUrls.length)
+        : 0,
+      maxDataUrlLength: dataUrls.length
+        ? Math.max(...dataUrls.map((value) => value.length))
+        : 0
+    };
+  }, [generationSourceItems.length, items]);
+
+  useEffect(() => {
+    const prewarmCandidatesById = new Map();
+
+    const addCandidate = (item) => {
+      if (!item?.id || prewarmCandidatesById.has(item.id)) {
+        return;
+      }
+
+      const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+      if (!imageUrl) {
+        return;
+      }
+
+      prewarmCandidatesById.set(item.id, item);
+    };
+
+    currentOutfitItems.forEach(addCandidate);
+
+    visibleSlots.forEach((slot) => {
+      const options = getEligibleSlotPool(
+        generationSourceItems,
+        slot,
+        excluded,
+        generationLists,
+        layering,
+        outfitFilters,
+        weatherData,
+        outfit,
+        itemsById
+      );
+
+      if (!options.length) {
+        return;
+      }
+
+      const currentIndex = options.findIndex((item) => item.id === outfit[slot]);
+      const candidateIndices = currentIndex === -1
+        ? [0, 1, 2, 3]
+        : [currentIndex, currentIndex + 1, currentIndex - 1, currentIndex + 2, currentIndex - 2];
+
+      candidateIndices.forEach((index) => {
+        if (index < 0 || index >= options.length) {
+          return;
+        }
+
+        addCandidate(options[index]);
+      });
+    });
+
+    const prewarmQueue = Array.from(prewarmCandidatesById.values()).filter((item) => {
+      const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+      const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
+      return !getCachedImageMetrics(cacheKey, resolvedImageUrl);
+    });
+
+    cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+    imageMetricsPrewarmHandleRef.current = null;
+
+    if (!prewarmQueue.length) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let nextIndex = 0;
+    let inFlight = false;
+
+    const scheduleNext = () => {
+      if (cancelled || nextIndex >= prewarmQueue.length || inFlight) {
+        return;
+      }
+
+      imageMetricsPrewarmHandleRef.current = scheduleIdleWork(async (deadline) => {
+        imageMetricsPrewarmHandleRef.current = null;
+
+        if (cancelled || inFlight) {
+          return;
+        }
+
+        if (!deadline.didTimeout && typeof deadline.timeRemaining === "function" && deadline.timeRemaining() < 6) {
+          scheduleNext();
+          return;
+        }
+
+        const item = prewarmQueue[nextIndex];
+        nextIndex += 1;
+        const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+        const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
+        inFlight = true;
+
+        try {
+          await loadImageMetrics(resolvedImageUrl, {
+            cacheKey,
+            source: "prewarm"
+          });
+        } finally {
+          inFlight = false;
+          scheduleNext();
+        }
+      }, 180);
+    };
+
+    scheduleNext();
+
+    return () => {
+      cancelled = true;
+      cancelScheduledIdleWork(imageMetricsPrewarmHandleRef.current);
+      imageMetricsPrewarmHandleRef.current = null;
+    };
+  }, [
+    currentOutfitItems,
+    excluded,
+    generationLists,
+    generationSourceItems,
+    itemsById,
+    layering,
+    outfit,
+    outfitFilters,
+    weatherData
+  ]);
   const compatibleAccessoryOptions = useMemo(() => {
     if (!activeAccessorySlot) {
       return [];
@@ -3101,12 +3967,26 @@ export default function App() {
       }
     }
 
-    updateOutfitPalette();
+    cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+    outfitPaletteUpdateHandleRef.current = null;
+
+    if (!paletteOpen && outfitPalette.length) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    outfitPaletteUpdateHandleRef.current = scheduleIdleWork(() => {
+      outfitPaletteUpdateHandleRef.current = null;
+      updateOutfitPalette();
+    }, paletteOpen ? 120 : 300);
 
     return () => {
       cancelled = true;
+      cancelScheduledIdleWork(outfitPaletteUpdateHandleRef.current);
+      outfitPaletteUpdateHandleRef.current = null;
     };
-  }, [currentOutfitItems]);
+  }, [currentOutfitItems, outfitPalette.length, paletteOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3648,6 +4528,51 @@ export default function App() {
   ]);
 
   function handleGenerate() {
+    if (generateInFlightRef.current) {
+      pendingGenerateRef.current = true;
+      return;
+    }
+
+    generateInFlightRef.current = true;
+    generateAwaitingPaintRef.current = true;
+    pendingGenerateRef.current = false;
+
+    const perfInteractionId = startOaPerfInteraction("generate", "outfit", {
+      generationMode,
+      sourceItems: generationSourceItems.length
+    });
+    if (perfInteractionId) {
+      updateOaPerfInteraction(perfInteractionId, (interaction) => {
+        interaction.renderCountStart = appRenderCountRef.current;
+      });
+    }
+
+    const scoringStartedAt = getOaPerfNow();
+    const result = buildNextOutfitWithDebug(
+      generationSourceItems,
+      outfit,
+      locked,
+      layering,
+      excluded,
+      generationLists,
+      outfitFilters,
+      weatherData,
+      generationMode,
+      outfitAffinity,
+      recentOutfits
+    );
+    const scoringDurationMs = getOaPerfNow() - scoringStartedAt;
+    if (perfInteractionId) {
+      updateOaPerfInteraction(perfInteractionId, (interaction) => {
+        interaction.scoreMs += scoringDurationMs;
+        interaction.poolSourceItems = generationSourceItems.length;
+      });
+    }
+
+    const nextOutfit = result.outfit;
+    const nextGuidedDebugPayload = generationMode === "guided" ? result.guidedDebugPayload : [];
+    const nextOutfitItemUuids = syncOutfitItemUuids(nextOutfit, outfitItemUuids, itemsById);
+
     setActivePanel(null);
     setActiveOutfitSlot(null);
     setActiveAccessorySlot(null);
@@ -3659,17 +4584,18 @@ export default function App() {
     setFitpicPreview(null);
     setEditingId(null);
     setEditorReturnTarget(null);
-    setOutfit((current) => {
-      const result = buildNextOutfitWithDebug(generationSourceItems, current, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
-      const nextOutfit = result.outfit;
-      setGuidedDebugPayload(generationMode === "guided" ? result.guidedDebugPayload : []);
-      if (generationMode === "guided") {
-        setRecentOutfits((currentRecentOutfits) =>
-          rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
-        );
-      }
-      return nextOutfit;
-    });
+    setGuidedDebugPayload(nextGuidedDebugPayload);
+    setOutfitItemUuids((current) => (
+      JSON.stringify(current) === JSON.stringify(nextOutfitItemUuids)
+        ? current
+        : nextOutfitItemUuids
+    ));
+    setOutfit(nextOutfit);
+    if (generationMode === "guided") {
+      setRecentOutfits((currentRecentOutfits) =>
+        rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
+      );
+    }
     setGenerateCount((current) => current + 1);
   }
 
@@ -3693,14 +4619,7 @@ export default function App() {
       return;
     }
 
-    const pool = getSlotOptions(slot).filter((item) => item.id !== outfit[slot]);
-
-    const nextItem = pickNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
-
-    setOutfit((current) => ({
-      ...current,
-      [slot]: nextItem?.id ?? null
-    }));
+    queueSlotAction(slot, "reroll");
   }
 
   function getSlotOptions(slot) {
@@ -3728,18 +4647,11 @@ export default function App() {
   }
 
   function cycleOutfitSlot(slot, direction) {
-    const options = getSlotOptions(slot);
-
-    if (!options.length) {
-      setOutfitSlot(slot, null);
+    if (!direction) {
       return;
     }
 
-    const currentIndex = options.findIndex((item) => item.id === outfit[slot]);
-    const fallbackIndex = direction > 0 ? -1 : 0;
-    const nextIndex = (currentIndex === -1 ? fallbackIndex : currentIndex + direction + options.length) % options.length;
-
-    setOutfitSlot(slot, options[nextIndex].id);
+    queueSlotAction(slot, "cycle", direction);
   }
 
   function cycleAccessorySlot(slot, direction) {
@@ -3758,6 +4670,166 @@ export default function App() {
       ...current,
       [slot]: options[nextIndex].id
     }));
+  }
+
+  function queueSlotAction(slot, kind, direction = 0) {
+    const queue = pendingSlotActionQueueRef.current;
+    const existingEntry = queue.get(slot) ?? { cycleDelta: 0, rerollCount: 0, interactionId: null };
+    const interactionId = existingEntry.interactionId ?? startOaPerfInteraction(kind, slot, {
+      direction,
+      sourceItems: generationSourceItems.length
+    });
+
+    if (interactionId) {
+      updateOaPerfInteraction(interactionId, (interaction) => {
+        interaction.clickCount = (interaction.clickCount ?? 0) + (existingEntry.interactionId ? 1 : 0);
+        interaction.metadata.direction = direction;
+        interaction.renderCountStart = interaction.renderCountStart || appRenderCountRef.current;
+      });
+    }
+    existingEntry.interactionId = interactionId;
+
+    if (kind === "reroll") {
+      existingEntry.rerollCount += 1;
+    } else if (kind === "cycle") {
+      existingEntry.cycleDelta += direction > 0 ? 1 : -1;
+    }
+
+    queue.set(slot, existingEntry);
+
+    if (pendingSlotActionFrameRef.current !== null) {
+      return;
+    }
+
+    pendingSlotActionFrameRef.current = window.requestAnimationFrame(() => {
+      pendingSlotActionFrameRef.current = null;
+      flushQueuedSlotActions();
+    });
+  }
+
+  function flushQueuedSlotActions() {
+    const queuedEntries = Array.from(pendingSlotActionQueueRef.current.entries());
+    if (!queuedEntries.length) {
+      return;
+    }
+
+    pendingSlotActionQueueRef.current.clear();
+
+    setOutfit((current) => {
+      let nextOutfit = current;
+
+      queuedEntries.forEach(([slot, entry]) => {
+        if (locked[slot]) {
+          return;
+        }
+
+        const interactionId = entry.interactionId;
+        const rerollCount = Math.max(0, Math.trunc(entry.rerollCount || 0));
+        const cycleDelta = Math.trunc(entry.cycleDelta || 0);
+        const cycleDirection = cycleDelta === 0 ? 0 : cycleDelta > 0 ? 1 : -1;
+        const cycleSteps = Math.abs(cycleDelta);
+
+        if (interactionId) {
+          updateOaPerfInteraction(interactionId, (interaction) => {
+            interaction.poolSourceItems = generationSourceItems.length;
+          });
+        }
+
+        for (let index = 0; index < rerollCount; index += 1) {
+          const poolStartedAt = getOaPerfNow();
+          const pool = getEligibleSlotPool(
+            generationSourceItems,
+            slot,
+            excluded,
+            generationLists,
+            layering,
+            outfitFilters,
+            weatherData,
+            nextOutfit,
+            itemsById
+          ).filter((item) => item.id !== nextOutfit[slot]);
+          const poolDurationMs = getOaPerfNow() - poolStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.poolMs += poolDurationMs;
+              interaction.poolCalls += 1;
+              interaction.poolSizes.push(pool.length);
+            });
+          }
+
+          const scoreStartedAt = getOaPerfNow();
+          const nextItem = pickNextItemForGeneration(
+            pool,
+            slot,
+            nextOutfit,
+            itemsById,
+            outfitFilters,
+            weatherData,
+            generationMode,
+            outfitAffinity,
+            recentOutfits,
+            layering
+          );
+          const scoreDurationMs = getOaPerfNow() - scoreStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.scoreMs += scoreDurationMs;
+            });
+          }
+
+          nextOutfit = {
+            ...nextOutfit,
+            [slot]: nextItem?.id ?? null
+          };
+        }
+
+        for (let index = 0; index < cycleSteps; index += 1) {
+          const poolStartedAt = getOaPerfNow();
+          const options = getEligibleSlotPool(
+            generationSourceItems,
+            slot,
+            excluded,
+            generationLists,
+            layering,
+            outfitFilters,
+            weatherData,
+            nextOutfit,
+            itemsById
+          );
+          const poolDurationMs = getOaPerfNow() - poolStartedAt;
+          if (interactionId) {
+            updateOaPerfInteraction(interactionId, (interaction) => {
+              interaction.poolMs += poolDurationMs;
+              interaction.poolCalls += 1;
+              interaction.poolSizes.push(options.length);
+            });
+          }
+
+          if (!options.length) {
+            nextOutfit = {
+              ...nextOutfit,
+              [slot]: null
+            };
+            break;
+          }
+
+          const currentIndex = options.findIndex((item) => item.id === nextOutfit[slot]);
+          const fallbackIndex = cycleDirection > 0 ? -1 : 0;
+          const nextIndex = (
+            currentIndex === -1
+              ? fallbackIndex + cycleDirection + options.length
+              : currentIndex + cycleDirection + options.length
+          ) % options.length;
+
+          nextOutfit = {
+            ...nextOutfit,
+            [slot]: options[nextIndex].id
+          };
+        }
+      });
+
+      return nextOutfit;
+    });
   }
 
   function toggleLayering() {
@@ -3857,6 +4929,49 @@ export default function App() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleExportBackupV2() {
+    const backupPackage = await buildBackupPackageZip({
+      items,
+      appState: {
+        itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
+        imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+        layering,
+        accessoriesEnabled,
+        locked,
+        excluded,
+        outfit,
+        outfitItemUuids,
+        ignoredImportImages,
+        savedOutfits,
+        likedOutfitKeys,
+        outfitAffinity,
+        recentOutfits,
+        generateCount,
+        generationLists,
+        generationMode,
+        outfitFilters,
+        weatherSettings,
+        weatherData,
+        fitpics,
+        wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
+        wardrobeSort,
+        windowState
+      },
+      resolveAssetUrl: resolveImageUrl
+    });
+
+    downloadExportFile(await backupPackage.blob.arrayBuffer(), {
+      filename: backupPackage.fileName,
+      mimeType: "application/zip"
+    });
+
+    if (backupPackage.warningCount > 0) {
+      window.alert(
+        `Backup package exported with ${backupPackage.warningCount} warning${backupPackage.warningCount === 1 ? "" : "s"}. See ${backupPackage.warningReportFileName} inside the ZIP.`
+      );
+    }
   }
 
   async function handleExportLibraryCsv() {
@@ -4047,85 +5162,6 @@ export default function App() {
     }
   }
 
-  function truncateCanvasText(context, text, maxWidth) {
-    const normalizedText = String(text || "").trim();
-
-    if (!normalizedText || context.measureText(normalizedText).width <= maxWidth) {
-      return normalizedText;
-    }
-
-    const ellipsis = "...";
-    let truncatedText = normalizedText;
-
-    while (truncatedText.length > 0) {
-      truncatedText = truncatedText.slice(0, -1).trimEnd();
-
-      if (context.measureText(`${truncatedText}${ellipsis}`).width <= maxWidth) {
-        return `${truncatedText}${ellipsis}`;
-      }
-    }
-
-    return ellipsis;
-  }
-
-  function getWrappedCanvasTextLines(context, text, maxWidth, maxLines = 2) {
-    const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
-
-    if (!normalizedText) {
-      return [];
-    }
-
-    const words = normalizedText.split(" ");
-    const lines = [];
-    let currentLine = "";
-
-    words.forEach((word) => {
-      const nextLine = currentLine ? `${currentLine} ${word}` : word;
-
-      if (!currentLine || context.measureText(nextLine).width <= maxWidth) {
-        currentLine = nextLine;
-        return;
-      }
-
-      lines.push(currentLine);
-      currentLine = word;
-    });
-
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-
-    if (lines.length <= maxLines) {
-      return lines;
-    }
-
-    const visibleLines = lines.slice(0, maxLines);
-    visibleLines[maxLines - 1] = truncateCanvasText(context, lines.slice(maxLines - 1).join(" "), maxWidth);
-    return visibleLines;
-  }
-
-  function drawContainedImage(context, image, frameX, frameY, frameWidth, frameHeight) {
-    const scale = Math.min(frameWidth / image.naturalWidth, frameHeight / image.naturalHeight, 1_000);
-    const drawWidth = image.naturalWidth * scale;
-    const drawHeight = image.naturalHeight * scale;
-    const drawX = frameX + (frameWidth - drawWidth) / 2;
-    const drawY = frameY + (frameHeight - drawHeight) / 2;
-
-    context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
-  }
-
-  function drawFitpicExportOverflowTile(context, label, frameX, frameY, frameWidth, fontFamily, colors, frameHeight = frameWidth) {
-    context.fillStyle = colors.panelMuted;
-    context.fillRect(frameX, frameY, frameWidth, frameHeight);
-    context.strokeStyle = colors.border;
-    context.strokeRect(frameX + 0.5, frameY + 0.5, frameWidth - 1, frameHeight - 1);
-    context.fillStyle = colors.text;
-    context.font = `600 18px ${fontFamily}`;
-    context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(label, frameX + frameWidth / 2, frameY + frameHeight / 2);
-  }
-
   function openWardrobeExportDialog() {
     setWardrobeExportOptions(createWardrobeSpreadExportOptions("compact"));
   }
@@ -4134,113 +5170,23 @@ export default function App() {
     setFitpicExportOptions(createFitpicSpreadExportOptions("reference"));
   }
 
-  async function handleExportWardrobeImage(options = createWardrobeSpreadExportOptions("compact")) {
-    const normalizedOptions = normalizeWardrobeSpreadExportOptions(options);
-    const exportItems = getWardrobeSpreadExportOrderedItems(visibleWardrobeItems, normalizedOptions);
+  function openOaAiExportDialog() {
+    setOaAiExportOptions(createDefaultOaAiExportOptions(collectionOptions));
+  }
 
-    if (!exportItems.length) {
+  async function handleExportWardrobeImage(options = createWardrobeSpreadExportOptions("compact")) {
+    if (!visibleWardrobeItems.length) {
       window.alert("There are no filtered wardrobe pieces to export.");
       return;
     }
 
-    const labelRowCount = getWardrobeSpreadExportLabelRowCount(normalizedOptions);
-    const {
-      cellHeight,
-      cellSize,
-      columns,
-      padding,
-      canvasWidth,
-      canvasHeight,
-      exportScale,
-      pixelWidth,
-      pixelHeight
-    } = getWardrobeSpreadExportRenderConfig(exportItems.length, { labelRowCount });
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-
-    if (!context) {
-      window.alert("The wardrobe image could not be exported.");
-      return;
-    }
-
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-    context.scale(exportScale, exportScale);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    const documentStyles = getComputedStyle(document.documentElement);
-    const exportBackgroundColor = documentStyles.getPropertyValue("--bg").trim() || "#f7f7f7";
-    const exportTextColor = documentStyles.getPropertyValue("--text").trim() || "#111";
-    const exportMutedTextColor = documentStyles.getPropertyValue("--muted-strong").trim() || "rgba(17, 17, 17, 0.75)";
-    const exportFontFamily = documentStyles.getPropertyValue("font-family").trim() || "monospace";
-    context.fillStyle = exportBackgroundColor;
-    context.fillRect(0, 0, canvasWidth, canvasHeight);
-
     try {
-      const loadedItems = await Promise.all(
-        exportItems.map(async (item) => {
-          const exportImageUrl = resolveImageUrl(getWardrobeSpreadExportImageUrl(item));
-
-          if (!exportImageUrl) {
-            throw new Error("Missing export image.");
-          }
-
-          return {
-            item,
-            image: await loadImage(exportImageUrl)
-          };
-        })
-      );
-
-      loadedItems.forEach(({ item, image }, index) => {
-        const column = index % columns;
-        const row = Math.floor(index / columns);
-        const cellLeft = padding + column * cellSize;
-        const cellTop = padding + row * cellHeight;
-        const maxImageSize = cellSize * 0.78;
-        const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
-        const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
-        const frameWidth = sourceRect.width * baseScale;
-        const frameHeight = sourceRect.height * baseScale;
-        const jitterX = normalizedOptions.shuffleItems ? (Math.random() - 0.5) * cellSize * 0.22 : 0;
-        const jitterY = normalizedOptions.shuffleItems ? (Math.random() - 0.5) * cellSize * 0.22 : 0;
-        const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
-        const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
-        const labelRows = getWardrobeSpreadExportLabelRows(item, normalizedOptions);
-
-        drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
-
-        if (!labelRows.length) {
-          return;
-        }
-
-        context.textAlign = "center";
-        context.textBaseline = "top";
-        context.font = `500 ${WARDROBE_SPREAD_LABEL_FONT_SIZE}px ${exportFontFamily}`;
-
-        labelRows.forEach(({ key, text }, labelIndex) => {
-          if (!text) {
-            return;
-          }
-
-          const textY = cellTop
-            + cellSize
-            + WARDROBE_SPREAD_LABEL_TOP_GAP
-            + labelIndex * (WARDROBE_SPREAD_LABEL_LINE_HEIGHT + WARDROBE_SPREAD_LABEL_GAP);
-          const textWidth = cellSize - WARDROBE_SPREAD_LABEL_SIDE_PADDING * 2;
-          const displayText = truncateCanvasText(context, text, textWidth);
-
-          context.fillStyle = key === "name" ? exportTextColor : exportMutedTextColor;
-          context.fillText(displayText, cellLeft + cellSize / 2, textY, textWidth);
-        });
+      await downloadWardrobeImageExport({
+        items: visibleWardrobeItems,
+        options,
+        resolveAssetUrl: resolveImageUrl,
+        fileName: `wardrobe-wishlist-${new Date().toISOString().slice(0, 10)}.png`
       });
-
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png");
-      link.download = `wardrobe-wishlist-${new Date().toISOString().slice(0, 10)}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
     } catch {
       window.alert("The wardrobe image could not be exported.");
     }
@@ -4263,9 +5209,8 @@ export default function App() {
       sortedFitpics: sortedAllFitpics,
       options: normalizedOptions
     });
-    const exportFitpics = getFitpicSpreadExportOrderedFitpics(scopedFitpics, normalizedOptions);
 
-    if (!exportFitpics.length) {
+    if (!scopedFitpics.length) {
       window.alert(
         normalizedOptions.scope === "all"
           ? "There are no fitpics to export."
@@ -4274,183 +5219,46 @@ export default function App() {
       return;
     }
 
-    const {
-      placements,
-      canvasWidth,
-      canvasHeight,
-      exportScale,
-      pixelWidth,
-      pixelHeight
-    } = getFitpicSpreadExportPackedRenderConfig(exportFitpics, normalizedOptions);
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-
-    if (!context) {
-      window.alert("The fitpics image could not be exported.");
-      return;
-    }
-
-    canvas.width = pixelWidth;
-    canvas.height = pixelHeight;
-    context.scale(exportScale, exportScale);
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = "high";
-    const documentStyles = getComputedStyle(document.documentElement);
-    const colors = {
-      background: documentStyles.getPropertyValue("--bg").trim() || "#f7f7f7",
-      panel: documentStyles.getPropertyValue("--surface-solid").trim() || "#ffffff",
-      panelMuted: documentStyles.getPropertyValue("--surface").trim() || "#efefef",
-      border: documentStyles.getPropertyValue("--border-soft").trim() || "rgba(17, 17, 17, 0.12)",
-      text: documentStyles.getPropertyValue("--text").trim() || "#111",
-      muted: documentStyles.getPropertyValue("--muted-strong").trim() || "rgba(17, 17, 17, 0.75)"
-    };
-    const fontFamily = documentStyles.getPropertyValue("font-family").trim() || "monospace";
-    context.fillStyle = colors.background;
-    context.fillRect(0, 0, canvasWidth, canvasHeight);
-
-    const imageSourcesToLoad = new Map();
-
-    exportFitpics.forEach((fitpic) => {
-      const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
-      const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
-
-      if (primaryImage?.src) {
-        imageSourcesToLoad.set(primaryImage.src, resolveImageUrl(primaryImage.src));
-      }
-
-      detailTiles.forEach((tile) => {
-        if (tile.kind === "image" && tile.src) {
-          imageSourcesToLoad.set(tile.src, resolveImageUrl(tile.src));
-        }
-      });
-    });
-
     try {
-      const loadedImages = new Map(
-        await Promise.all(
-          [...imageSourcesToLoad.entries()].map(async ([source, resolvedSource]) => [source, await loadImage(resolvedSource)])
-        )
-      );
-
-      exportFitpics.forEach((fitpic, index) => {
-        const placement = placements[index];
-
-        if (!placement) {
-          return;
-        }
-
-        const cardLeft = placement.x;
-        const cardTop = placement.y;
-        const exportCardHeight = placement.height;
-        const cardWidth = placement.width;
-        const cardInnerLeft = cardLeft + 14;
-        const cardInnerWidth = cardWidth - 28;
-        let cursorY = cardTop + 14;
-        const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
-        const primaryImageLoaded = primaryImage?.src ? loadedImages.get(primaryImage.src) ?? null : null;
-        const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
-        const detailLayout = getFitpicSpreadExportDetailLayout(detailTiles.length, cardInnerWidth);
-
-        context.fillStyle = colors.panel;
-        context.fillRect(cardLeft, cardTop, cardWidth, exportCardHeight);
-        context.strokeStyle = colors.border;
-        context.strokeRect(cardLeft + 0.5, cardTop + 0.5, cardWidth - 1, exportCardHeight - 1);
-
-        context.fillStyle = colors.panelMuted;
-        context.fillRect(cardInnerLeft, cursorY, cardInnerWidth, FITPIC_SPREAD_PRIMARY_HEIGHT);
-
-        if (primaryImageLoaded) {
-          drawContainedImage(context, primaryImageLoaded, cardInnerLeft, cursorY, cardInnerWidth, FITPIC_SPREAD_PRIMARY_HEIGHT);
-        }
-
-        cursorY += FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
-
-        if (normalizedOptions.showTitle) {
-          context.fillStyle = colors.text;
-          context.font = `600 16px ${fontFamily}`;
-          context.textAlign = "left";
-          context.textBaseline = "top";
-          const titleLines = getWrappedCanvasTextLines(context, fitpic.name || "Untitled fitpic", cardInnerWidth, 2);
-
-          titleLines.forEach((line, lineIndex) => {
-            context.fillText(line, cardInnerLeft, cursorY + lineIndex * 18, cardInnerWidth);
-          });
-          cursorY += 34;
-        }
-
-        if (normalizedOptions.showDetailGrid) {
-          detailTiles.forEach((tile, tileIndex) => {
-            const tileFrame = detailLayout.frames[tileIndex];
-
-            if (!tileFrame) {
-              return;
-            }
-
-            const tileX = cardInnerLeft + tileFrame.x;
-            const tileY = cursorY + tileFrame.y;
-
-            if (tile.kind === "overflow") {
-              drawFitpicExportOverflowTile(
-                context,
-                `+${tile.overflowCount}`,
-                tileX,
-                tileY,
-                tileFrame.width,
-                fontFamily,
-                colors,
-                tileFrame.height
-              );
-              return;
-            }
-
-            const detailImage = loadedImages.get(tile.src) ?? null;
-            context.fillStyle = colors.panelMuted;
-            context.fillRect(tileX, tileY, tileFrame.width, tileFrame.height);
-
-            if (detailImage) {
-              drawContainedImage(context, detailImage, tileX, tileY, tileFrame.width, tileFrame.height);
-            }
-          });
-
-          cursorY += detailLayout.totalHeight + 8;
-        }
-
-        if (normalizedOptions.showTags) {
-          context.fillStyle = colors.muted;
-          context.font = `500 12px ${fontFamily}`;
-          context.textAlign = "left";
-          context.textBaseline = "top";
-          context.fillText(
-            truncateCanvasText(context, (Array.isArray(fitpic.tags) ? fitpic.tags.join(" • ") : "") || "No tags", cardInnerWidth),
-            cardInnerLeft,
-            cursorY,
-            cardInnerWidth
-          );
-          cursorY += 24;
-        }
-
-        if (normalizedOptions.showFitDate) {
-          context.fillStyle = colors.muted;
-          context.font = `500 12px ${fontFamily}`;
-          context.textAlign = "left";
-          context.textBaseline = "top";
-          context.fillText(
-            truncateCanvasText(context, formatFitpicDate(fitpic.fitDate || fitpic.createdAt) || "No fit date", cardInnerWidth),
-            cardInnerLeft,
-            cursorY,
-            cardInnerWidth
-          );
-        }
+      await downloadFitpicImageExport({
+        fitpics: scopedFitpics,
+        options: normalizedOptions,
+        resolveAssetUrl: resolveImageUrl,
+        fileName: `oa-fitpics-spread-${new Date().toISOString().slice(0, 10)}.png`
       });
-
-      const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png");
-      link.download = `oa-fitpics-spread-${new Date().toISOString().slice(0, 10)}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
     } catch {
       window.alert("The fitpics image could not be exported.");
+    }
+  }
+
+  async function handleConfirmOaAiExport() {
+    const nextOptions = oaAiExportOptions
+      ? { ...oaAiExportOptions }
+      : createDefaultOaAiExportOptions(collectionOptions);
+
+    setOaAiExporting(true);
+
+    try {
+      const bundle = await buildOaAiExportBundle({
+        items,
+        savedOutfits,
+        fitpics,
+        options: nextOptions,
+        resolveAssetUrl: resolveImageUrl,
+        renderWardrobePng: renderWardrobeImageExport,
+        renderFitpicPng: renderFitpicImageExport
+      });
+
+      downloadExportFile(await bundle.blob.arrayBuffer(), {
+        filename: bundle.fileName,
+        mimeType: "application/zip"
+      });
+
+      setOaAiExportOptions(null);
+    } catch {
+      window.alert("The OA AI export could not be generated.");
+    } finally {
+      setOaAiExporting(false);
     }
   }
 
@@ -9175,7 +9983,7 @@ export default function App() {
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation /> : <span aria-hidden="true" />}
+            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} /> : <span aria-hidden="true" />}
           </button>
           {item ? (
             <div className="slot-actions-anchor">
@@ -9929,11 +10737,17 @@ export default function App() {
                               <button type="button" className="ghost-button" onClick={openWardrobeExportDialog}>
                                 Export Wardrobe Image
                               </button>
+                              <button type="button" className="ghost-button" onClick={openOaAiExportDialog}>
+                                Export OA AI
+                              </button>
                               <button type="button" className="ghost-button" onClick={handleExportLibraryCsv}>
                                 Export Library CSV
                               </button>
                               <button type="button" className="ghost-button" onClick={handleExportBackup}>
                                 Export Backup
+                              </button>
+                              <button type="button" className="ghost-button" onClick={handleExportBackupV2}>
+                                Export Backup v2
                               </button>
                               <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
                                 Import Backup
@@ -10111,6 +10925,20 @@ export default function App() {
           onChange={setFitpicExportOptions}
           onCancel={() => setFitpicExportOptions(null)}
           onConfirm={handleConfirmFitpicExport}
+        />
+
+        <OaAiExportDialog
+          open={Boolean(oaAiExportOptions)}
+          options={oaAiExportOptions ?? createDefaultOaAiExportOptions(collectionOptions)}
+          collections={collectionOptions}
+          exporting={oaAiExporting}
+          onChange={setOaAiExportOptions}
+          onCancel={() => {
+            if (!oaAiExporting) {
+              setOaAiExportOptions(null);
+            }
+          }}
+          onConfirm={handleConfirmOaAiExport}
         />
 
         {workspaceDock}
