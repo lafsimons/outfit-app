@@ -1433,6 +1433,40 @@ button:disabled {
   margin: 0;
 }
 
+.outfit-filter-views-group {
+  align-items: flex-start;
+}
+
+.outfit-saved-views-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.outfit-saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.72);
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.outfit-saved-view-chip.is-current {
+  background: var(--soft);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.outfit-saved-view-chip:hover,
+.outfit-saved-view-chip:focus-visible {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .outfit-filter-options {
   display: contents;
 }

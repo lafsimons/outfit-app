@@ -1,12 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { emptyOutfitFilters } from "./generation.js";
 import { emptyWardrobeFilters } from "./wardrobeLibrary.js";
 import {
   applySavedWardrobeView,
+  applySavedWardrobeViewToOutfitFilters,
   createSavedWardrobeViewSnapshot,
   deleteSavedWardrobeView,
   matchesCurrentWardrobeView,
+  matchesCurrentOutfitFiltersSavedWardrobeView,
   normalizeSavedWardrobeViews,
   renameSavedWardrobeView,
   togglePinnedSavedWardrobeView,
@@ -124,6 +127,57 @@ test("matchesCurrentWardrobeView compares normalized current state by replacemen
     },
     wardrobeSort: "oldest"
   }), true);
+});
+
+test("saved wardrobe views map to generation outfit filters by supported shared fields only", () => {
+  const savedView = {
+    id: "view-1",
+    name: "Summer rotation",
+    scope: "wardrobe",
+    searchQuery: "ignored in controls",
+    filters: {
+      ...emptyWardrobeFilters,
+      style: ["Casual", "Unsupported Style"],
+      styleExcluded: ["Formal"],
+      climate: ["Warm", "Hot", "Unsupported Climate"],
+      climateExcluded: ["Rain"],
+      collections: ["S/S Rotation", "Sportswear"],
+      collectionsExcluded: ["Archive"],
+      status: ["Wishlist"],
+      statusExcluded: ["Sold"],
+      brand: ["A Kind of Guise"],
+      favorite: "yes",
+      laundry: "hide"
+    },
+    sort: "oldest",
+    pinned: false,
+    createdAt: "2024-06-01T00:00:00.000Z",
+    updatedAt: "2024-06-01T00:00:00.000Z"
+  };
+
+  assert.deepEqual(
+    applySavedWardrobeViewToOutfitFilters(savedView),
+    {
+      ...emptyOutfitFilters,
+      style: ["Casual"],
+      styleExcluded: ["Formal"],
+      climate: ["Warm", "Hot"],
+      climateExcluded: ["Rain"],
+      collections: ["S/S Rotation", "Sportswear"],
+      collectionsExcluded: ["Archive"]
+    }
+  );
+  assert.equal(
+    matchesCurrentOutfitFiltersSavedWardrobeView(savedView, {
+      style: ["Casual"],
+      styleExcluded: ["Formal"],
+      climate: ["Warm", "Hot"],
+      climateExcluded: ["Rain"],
+      collections: ["S/S Rotation", "Sportswear"],
+      collectionsExcluded: ["Archive"]
+    }),
+    true
+  );
 });
 
 test("upsertSavedWardrobeView reports duplicate-name conflicts unless replacement is allowed", () => {

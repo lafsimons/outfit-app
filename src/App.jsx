@@ -178,8 +178,10 @@ import {
 } from "./lib/savedOutfitLibrary";
 import {
   applySavedWardrobeView,
+  applySavedWardrobeViewToOutfitFilters,
   createSavedWardrobeViewSnapshot,
   deleteSavedWardrobeView,
+  matchesCurrentOutfitFiltersSavedWardrobeView,
   matchesCurrentWardrobeView,
   normalizeSavedWardrobeViews,
   renameSavedWardrobeView,
@@ -3255,6 +3257,13 @@ export default function App() {
       )?.id ?? "",
     [currentSavedWardrobeViewSnapshot, savedWardrobeViews]
   );
+  const matchingOutfitFiltersSavedWardrobeViewId = useMemo(
+    () =>
+      normalizeSavedWardrobeViews(savedWardrobeViews).find((view) =>
+        matchesCurrentOutfitFiltersSavedWardrobeView(view, outfitFilters)
+      )?.id ?? "",
+    [outfitFilters, savedWardrobeViews]
+  );
   const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
     (count, [key, value]) =>
       count + (
@@ -5969,6 +5978,14 @@ export default function App() {
     setWardrobeSearch(nextViewState.searchQuery);
     setWardrobeFilters(nextViewState.filters);
     setWardrobeSort(nextViewState.sort);
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function applyOutfitFiltersSavedWardrobeView(savedView, event = null) {
+    setOutfitFilters(applySavedWardrobeViewToOutfitFilters(savedView));
 
     if (event) {
       blurPointerActivatedControl(event);
@@ -10440,6 +10457,29 @@ export default function App() {
 
                 {outfitFiltersOpen ? (
                   <div className="outfit-filters-panel">
+                    {savedWardrobeViews.length ? (
+                      <section className="outfit-filter-group outfit-filter-views-group">
+                        <p className="eyebrow">views</p>
+                        <div className="outfit-saved-views-list" aria-label="Saved wardrobe views for outfit filters">
+                          {savedWardrobeViews.map((view) => {
+                            const isCurrentView = view.id === matchingOutfitFiltersSavedWardrobeViewId;
+
+                            return (
+                              <button
+                                key={view.id}
+                                type="button"
+                                className={`ghost-button outfit-saved-view-chip ${isCurrentView ? "is-current" : ""}`}
+                                onClick={(event) => applyOutfitFiltersSavedWardrobeView(view, event)}
+                                aria-pressed={isCurrentView}
+                              >
+                                {view.pinned ? <span aria-hidden="true">📌</span> : null}
+                                <span>{view.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ) : null}
                     <div className="outfit-filter-groups">
                       {Object.entries(outfitFilterOptions).map(([group, options]) => (
                         <section key={group} className="outfit-filter-group">

@@ -1,4 +1,8 @@
 import {
+  emptyOutfitFilters,
+  normalizeOutfitFilters
+} from "./generation.js";
+import {
   emptyWardrobeFilters,
   normalizeWardrobeFilters,
   normalizeWardrobeSort
@@ -126,12 +130,34 @@ export function applySavedWardrobeView(savedView) {
   });
 }
 
+export function applySavedWardrobeViewToOutfitFilters(savedView) {
+  const normalizedSavedView = normalizeSavedWardrobeView(savedView);
+
+  if (!normalizedSavedView) {
+    return { ...emptyOutfitFilters };
+  }
+
+  const { filters } = normalizedSavedView;
+  return normalizeOutfitFilters({
+    style: filters.style,
+    styleExcluded: filters.styleExcluded,
+    climate: filters.climate,
+    climateExcluded: filters.climateExcluded,
+    collections: filters.collections,
+    collectionsExcluded: filters.collectionsExcluded
+  });
+}
+
 export function areSavedWardrobeViewsEquivalent(leftView, rightState) {
   return JSON.stringify(applySavedWardrobeView(leftView)) === JSON.stringify(createSavedWardrobeViewSnapshot(rightState));
 }
 
 export function matchesCurrentWardrobeView(savedView, currentState) {
   return areSavedWardrobeViewsEquivalent(savedView, currentState);
+}
+
+export function matchesCurrentOutfitFiltersSavedWardrobeView(savedView, outfitFilters) {
+  return JSON.stringify(applySavedWardrobeViewToOutfitFilters(savedView)) === JSON.stringify(normalizeOutfitFilters(outfitFilters));
 }
 
 export function upsertSavedWardrobeView(savedViews, name, currentState, options = {}) {
