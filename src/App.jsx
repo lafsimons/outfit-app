@@ -2475,6 +2475,7 @@ export default function App() {
     pointerActivatedControlRef.current = null;
   }
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
+  const isContentActivePanel = activePanel === "wardrobe" || activePanel === "outfits" || activePanel === "dashboard";
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -10761,7 +10762,7 @@ export default function App() {
         {activePanel ? (
           <DismissibleBackdrop className="floating-backdrop active-panel-backdrop" onDismiss={closeWorkspacePanel}>
             <div
-              className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
+              className={`active-panel-overlay ${isContentActivePanel ? "is-content-panel" : ""} ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
               onClick={(event) => event.stopPropagation()}
             >
               {activePanel === "wardrobe" ? (

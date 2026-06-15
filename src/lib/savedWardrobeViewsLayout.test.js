@@ -35,13 +35,14 @@ test("controls panel uses compact generation rows and icon utilities instead of 
   assert.match(appSource, /<span>Layering<\/span>[\s\S]*<span>\{layering \? "On" : "Off"\}<\/span>/);
   assert.match(appSource, /<span>Accessories<\/span>[\s\S]*<span>\{accessoriesEnabled \? "On" : "Off"\}<\/span>/);
   assert.match(appSource, /<span>Mode<\/span>[\s\S]*generationMode === "guided" \? "Guided" : "Random"/);
-  assert.match(appSource, /<div className="controls-section-heading">Actions<\/div>/);
   assert.match(appSource, /className="controls-actions-row" aria-label="Outfit actions"/);
-  assert.match(appSource, /className=\{`ghost-button slot-action-icon-button controls-action-icon \$\{isCurrentOutfitLiked \? "is-active" : ""\}`\}/);
-  assert.match(appSource, /<SlotActionIcon kind="favorite" \/>/);
-  assert.match(appSource, /<SlotActionIcon kind="save" \/>/);
+  assert.match(appSource, /className=\{`controls-action-icon \$\{isCurrentOutfitLiked \? "is-active" : ""\}`\}/);
+  assert.match(appSource, /<SlotActionIcon kind="favorite" active=\{isCurrentOutfitLiked\} \/>/);
+  assert.match(appSource, /<SlotActionIcon kind="save" active=\{isCurrentOutfitSaved\} \/>/);
   assert.match(appSource, /<SlotActionIcon kind="export" \/>/);
   assert.match(appSource, /aria-label="Export outfit image"/);
+  assert.match(appSource, /hasLockedOutfitSlots \? \(/);
+  assert.doesNotMatch(appSource, /controls-section-heading">Actions/);
   assert.match(stylesSource, /\.controls-generation-settings-toggle\s*\{/);
   assert.match(stylesSource, /\.controls-setting-row\s*\{/);
   assert.match(stylesSource, /\.controls-actions-row\s*\{/);
