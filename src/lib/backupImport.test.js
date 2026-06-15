@@ -543,3 +543,59 @@ test("prepareBackupImport normalizes persisted wardrobe filters in app-state", a
   });
   assert.deepEqual(prepared.backup.appState.wardrobeFilters, prepared.appState.wardrobeFilters);
 });
+
+test("prepareBackupImport preserves and normalizes saved wardrobe views in app-state", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [],
+    appState: {
+      savedWardrobeViews: [
+        {
+          name: " Wishlist ",
+          wardrobeSearch: "coat",
+          wardrobeFilters: {
+            list: "Wishlist",
+            collections: ["A/W Rotation"],
+            typeExcluded: ["Loafer"]
+          },
+          wardrobeSort: "oldest",
+          pinned: 1
+        }
+      ]
+    }
+  });
+
+  assert.deepEqual(prepared.appState.savedWardrobeViews, [
+    {
+      id: prepared.appState.savedWardrobeViews[0].id,
+      name: "Wishlist",
+      searchQuery: "coat",
+      filters: {
+        brand: [],
+        brandExcluded: [],
+        type: [],
+        typeExcluded: ["Loafer"],
+        garmentType: [],
+        garmentTypeExcluded: [],
+        color: [],
+        colorExcluded: [],
+        style: [],
+        styleExcluded: [],
+        climate: [],
+        climateExcluded: [],
+        laundry: "",
+        weight: [],
+        weightExcluded: [],
+        status: ["Wishlist"],
+        statusExcluded: [],
+        collections: ["A/W Rotation"],
+        collectionsExcluded: [],
+        favorite: ""
+      },
+      sort: "oldest",
+      pinned: true
+    }
+  ]);
+  assert.deepEqual(prepared.backup.appState.savedWardrobeViews, prepared.appState.savedWardrobeViews);
+});

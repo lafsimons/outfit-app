@@ -1955,6 +1955,62 @@ button:disabled {
   padding-top: 0;
 }
 
+.wardrobe-saved-views-group {
+  gap: 10px;
+}
+
+.wardrobe-filter-group-toggle-static {
+  cursor: default;
+}
+
+.saved-wardrobe-view-save-button {
+  margin-left: auto;
+  padding-block: 5px;
+}
+
+.wardrobe-saved-views-list {
+  display: grid;
+  gap: 8px;
+}
+
+.saved-wardrobe-view-row {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+}
+
+.saved-wardrobe-view-row.is-current {
+  border-color: var(--border);
+  background: var(--soft);
+}
+
+.saved-wardrobe-view-apply {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  padding: 0;
+  text-align: left;
+}
+
+.saved-wardrobe-view-meta {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.saved-wardrobe-view-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.saved-wardrobe-view-action {
+  padding: 4px 0;
+  font-size: 0.74rem;
+}
+
 .wardrobe-filter-search {
   display: grid;
   gap: 4px;

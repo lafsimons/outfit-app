@@ -325,6 +325,18 @@ test("IndexedDB upgrade creates sync stores without breaking existing stores", a
 
 test("appState save and load preserves additive fitpic and saved outfit secondary-entity fields", async () => {
   await saveAppState({
+    savedWardrobeViews: [
+      {
+        id: "view-1",
+        name: "Wishlist",
+        searchQuery: "coat",
+        filters: {
+          status: ["Wishlist"]
+        },
+        sort: "oldest",
+        pinned: true
+      }
+    ],
     savedOutfits: [
       {
         id: "saved_1",
@@ -422,6 +434,9 @@ test("appState save and load preserves additive fitpic and saved outfit secondar
 
   const appState = await loadAppState();
 
+  assert.equal(appState.savedWardrobeViews[0].name, "Wishlist");
+  assert.equal(appState.savedWardrobeViews[0].pinned, true);
+  assert.deepEqual(appState.savedWardrobeViews[0].filters.status, ["Wishlist"]);
   assert.deepEqual(appState.savedOutfits[0].tags, ["Evening"]);
   assert.equal(appState.savedOutfits[0].favorite, true);
   assert.equal(appState.savedOutfits[0].createdAt, "2024-04-01T00:00:00.000Z");

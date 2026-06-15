@@ -177,6 +177,16 @@ import {
   getSavedOutfitTagFilterOptions
 } from "./lib/savedOutfitLibrary";
 import {
+  applySavedWardrobeView,
+  createSavedWardrobeViewSnapshot,
+  deleteSavedWardrobeView,
+  matchesCurrentWardrobeView,
+  normalizeSavedWardrobeViews,
+  renameSavedWardrobeView,
+  togglePinnedSavedWardrobeView,
+  upsertSavedWardrobeView
+} from "./lib/savedWardrobeViews";
+import {
   createEmptySelectorFilters,
   DEFAULT_SELECTOR_SORT,
   filterAndSortSelectorItems,
@@ -2046,6 +2056,7 @@ export default function App() {
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
+  const [savedWardrobeViews, setSavedWardrobeViews] = useState([]);
   const [dashboardFilterSearch, setDashboardFilterSearch] = useState("");
   const [dashboardFilterSectionsOpen, setDashboardFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [dashboardFilters, setDashboardFilters] = useState(emptyWardrobeFilters);
@@ -3225,6 +3236,25 @@ export default function App() {
     0
   );
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
+  const currentSavedWardrobeViewSnapshot = useMemo(
+    () => createSavedWardrobeViewSnapshot({
+      wardrobeSearch,
+      wardrobeFilters,
+      wardrobeSort
+    }),
+    [wardrobeFilters, wardrobeSearch, wardrobeSort]
+  );
+  const matchingSavedWardrobeViewId = useMemo(
+    () =>
+      normalizeSavedWardrobeViews(savedWardrobeViews).find((view) =>
+        matchesCurrentWardrobeView(view, {
+          wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+          wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+          wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+        })
+      )?.id ?? "",
+    [currentSavedWardrobeViewSnapshot, savedWardrobeViews]
+  );
   const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
     (count, [key, value]) =>
       count + (
@@ -4084,6 +4114,7 @@ export default function App() {
       setFitpics(hydratedAppState.fitpics);
       setWardrobeFilters(hydratedAppState.wardrobeFilters);
       setWardrobeSort(hydratedAppState.wardrobeSort);
+      setSavedWardrobeViews(hydratedAppState.savedWardrobeViews);
       setWindowState(hydratedAppState.windowState);
 
       await backfillLocalSyncMetadata({
@@ -4137,6 +4168,7 @@ export default function App() {
       fitpics,
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort,
+      savedWardrobeViews,
       windowState
     });
   }, [
@@ -4160,6 +4192,7 @@ export default function App() {
     fitpics,
     wardrobeFilters,
     wardrobeSort,
+    savedWardrobeViews,
     windowState,
     loading,
     hasHydratedAppState
@@ -5904,6 +5937,128 @@ export default function App() {
   function clearWardrobeFilters() {
     setWardrobeFilters(emptyWardrobeFilters);
     setWardrobeFilterSearch("");
+  }
+
+  function promptForSavedWardrobeViewName(currentName = "") {
+    if (typeof window === "undefined" || typeof window.prompt !== "function") {
+      return currentName.trim();
+    }
+
+    const nextName = window.prompt("Save wardrobe view as:", currentName);
+    return typeof nextName === "string" ? nextName.trim() : "";
+  }
+
+  function confirmSavedWardrobeViewReplacement(name) {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+
+    return window.confirm(`Replace the existing saved view "${name}"?`);
+  }
+
+  function confirmSavedWardrobeViewDelete(name) {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+
+    return window.confirm(`Delete the saved view "${name}"?`);
+  }
+
+  function applyWardrobeSavedView(savedView, event = null) {
+    const nextViewState = applySavedWardrobeView(savedView);
+    setWardrobeSearch(nextViewState.searchQuery);
+    setWardrobeFilters(nextViewState.filters);
+    setWardrobeSort(nextViewState.sort);
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function handleSaveCurrentWardrobeView(event = null) {
+    const activeView = savedWardrobeViews.find((view) => view.id === matchingSavedWardrobeViewId) ?? null;
+    const nextName = promptForSavedWardrobeViewName(activeView?.name ?? "");
+
+    if (!nextName) {
+      return;
+    }
+
+    let saveResult = upsertSavedWardrobeView(
+      savedWardrobeViews,
+      nextName,
+      {
+        wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+        wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+        wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+      },
+      activeView ? { targetId: activeView.id } : {}
+    );
+
+    if (saveResult.conflictingView) {
+      const shouldReplace = confirmSavedWardrobeViewReplacement(saveResult.conflictingView.name);
+
+      if (!shouldReplace) {
+        return;
+      }
+
+      saveResult = upsertSavedWardrobeView(
+        savedWardrobeViews,
+        nextName,
+        {
+          wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+          wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+          wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+        },
+        {
+          targetId: activeView?.id ?? "",
+          allowReplace: true
+        }
+      );
+    }
+
+    setSavedWardrobeViews(saveResult.savedViews);
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function handleRenameSavedWardrobeView(view) {
+    const nextName = promptForSavedWardrobeViewName(view?.name ?? "");
+
+    if (!nextName || !view?.id) {
+      return;
+    }
+
+    let renameResult = renameSavedWardrobeView(savedWardrobeViews, view.id, nextName);
+
+    if (renameResult.conflictingView) {
+      const shouldReplace = confirmSavedWardrobeViewReplacement(renameResult.conflictingView.name);
+
+      if (!shouldReplace) {
+        return;
+      }
+
+      renameResult = renameSavedWardrobeView(savedWardrobeViews, view.id, nextName, { allowReplace: true });
+    }
+
+    setSavedWardrobeViews(renameResult.savedViews);
+  }
+
+  function handleDeleteSavedWardrobeView(view) {
+    if (!view?.id || !confirmSavedWardrobeViewDelete(view.name)) {
+      return;
+    }
+
+    setSavedWardrobeViews((current) => deleteSavedWardrobeView(current, view.id));
+  }
+
+  function handleTogglePinnedSavedWardrobeView(view) {
+    if (!view?.id) {
+      return;
+    }
+
+    setSavedWardrobeViews((current) => togglePinnedSavedWardrobeView(current, view.id));
   }
 
   function clearFitpicFilters() {
@@ -10540,6 +10695,69 @@ export default function App() {
                             placeholder="Search filter options"
                           />
                         </div>
+                        <section className="wardrobe-filter-group wardrobe-saved-views-group is-open">
+                          <div className="wardrobe-filter-group-toggle wardrobe-filter-group-toggle-static">
+                            <span className="wardrobe-filter-group-copy">
+                              <strong>Views</strong>
+                              {matchingSavedWardrobeViewId ? (
+                                <span className="wardrobe-filter-group-count">Current</span>
+                              ) : null}
+                            </span>
+                            <button
+                              type="button"
+                              className="ghost-button saved-wardrobe-view-save-button"
+                              onClick={handleSaveCurrentWardrobeView}
+                            >
+                              Save current view
+                            </button>
+                          </div>
+                          <div className="wardrobe-filter-options wardrobe-saved-views-list">
+                            {savedWardrobeViews.length ? savedWardrobeViews.map((view) => {
+                              const isCurrentView = view.id === matchingSavedWardrobeViewId;
+
+                              return (
+                                <div key={view.id} className={`saved-wardrobe-view-row ${isCurrentView ? "is-current" : ""}`}>
+                                  <button
+                                    type="button"
+                                    className="ghost-button saved-wardrobe-view-apply"
+                                    onClick={(event) => applyWardrobeSavedView(view, event)}
+                                  >
+                                    <span>{view.name}</span>
+                                    <span className="saved-wardrobe-view-meta">
+                                      {view.pinned ? "Pinned" : ""}
+                                      {isCurrentView ? (view.pinned ? " · Current" : "Current") : ""}
+                                    </span>
+                                  </button>
+                                  <div className="saved-wardrobe-view-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleTogglePinnedSavedWardrobeView(view)}
+                                    >
+                                      {view.pinned ? "Unpin" : "Pin"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleRenameSavedWardrobeView(view)}
+                                    >
+                                      Rename
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action danger"
+                                      onClick={() => handleDeleteSavedWardrobeView(view)}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }) : (
+                              <p className="wardrobe-filter-empty">No saved views yet.</p>
+                            )}
+                          </div>
+                        </section>
                         {wardrobeFilterPanelSections.map((section) => {
                           const selectedCount = section.kind === "multi"
                             ? getSelectedFilterValueCount(wardrobeFilters, section.key)
