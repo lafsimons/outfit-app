@@ -27,3 +27,23 @@ test("generation controls prioritize saved wardrobe views and tuck advanced filt
   assert.match(stylesSource, /\.outfit-filters-advanced-toggle\s*\{/);
   assert.match(stylesSource, /\.outfit-filter-section-toggle\s*\{/);
 });
+
+test("controls panel uses compact generation rows and icon utilities instead of stacked action buttons", () => {
+  assert.match(appSource, /aria-label="Generation settings"/);
+  assert.match(appSource, /generationSettingsOpen \? "is-active" : ""/);
+  assert.match(appSource, /className=\{`controls-setting-row \$\{layering \? "is-active" : ""\}`\}/);
+  assert.match(appSource, /<span>Layering<\/span>[\s\S]*<span>\{layering \? "On" : "Off"\}<\/span>/);
+  assert.match(appSource, /<span>Accessories<\/span>[\s\S]*<span>\{accessoriesEnabled \? "On" : "Off"\}<\/span>/);
+  assert.match(appSource, /<span>Mode<\/span>[\s\S]*generationMode === "guided" \? "Guided" : "Random"/);
+  assert.match(appSource, /<div className="controls-section-heading">Actions<\/div>/);
+  assert.match(appSource, /className="controls-actions-row" aria-label="Outfit actions"/);
+  assert.match(appSource, /className=\{`ghost-button slot-action-icon-button controls-action-icon \$\{isCurrentOutfitLiked \? "is-active" : ""\}`\}/);
+  assert.match(appSource, /<SlotActionIcon kind="favorite" \/>/);
+  assert.match(appSource, /<SlotActionIcon kind="save" \/>/);
+  assert.match(appSource, /<SlotActionIcon kind="export" \/>/);
+  assert.match(appSource, /aria-label="Export outfit image"/);
+  assert.match(stylesSource, /\.controls-generation-settings-toggle\s*\{/);
+  assert.match(stylesSource, /\.controls-setting-row\s*\{/);
+  assert.match(stylesSource, /\.controls-actions-row\s*\{/);
+  assert.match(stylesSource, /\.controls-action-icon\s*\{/);
+});

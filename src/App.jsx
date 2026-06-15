@@ -1925,6 +1925,30 @@ export default function App() {
       );
     }
 
+    if (kind === "favorite") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 12.7 3.85 8.63a2.55 2.55 0 0 1 0-3.68 2.62 2.62 0 0 1 3.7 0L8 5.4l.45-.45a2.62 2.62 0 0 1 3.7 0 2.55 2.55 0 0 1 0 3.68Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "save") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M4.25 2.75h7.5v10.5L8 10.35l-3.75 2.9Z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "export") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 10.75v-6.5M8 4.25l-2.35 2.35M8 4.25l2.35 2.35M4.25 9.75v2h7.5v-2" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="m4.25 4.25 7.5 7.5M11.75 4.25l-7.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -2072,6 +2096,7 @@ export default function App() {
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
   const [weatherOpen, setWeatherOpen] = useState(false);
+  const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [outfitFiltersAdvancedOpen, setOutfitFiltersAdvancedOpen] = useState(false);
   const [outfitFilterSectionsOpen, setOutfitFilterSectionsOpen] = useState(defaultOutfitFilterSectionsOpen);
@@ -10425,43 +10450,75 @@ export default function App() {
             </div>
 
             <div className="controls-group controls-group-top">
-              <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
-                Layering: {layering ? "On" : "Off"}
-              </button>
-              <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
-                Accessories: {accessoriesEnabled ? "On" : "Off"}
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${generationMode === "guided" ? "is-active" : ""}`}
-                onClick={() =>
-                  setGenerationMode((current) => (current === "guided" ? "random" : "guided"))
-                }
-              >
-                Generation: {generationMode === "guided" ? "Guided" : "Random"}
-              </button>
+              <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
+                <button
+                  type="button"
+                  className={`controls-generation-settings-toggle ${generationSettingsOpen ? "is-active" : ""}`}
+                  onClick={() => setGenerationSettingsOpen((current) => !current)}
+                  aria-expanded={generationSettingsOpen}
+                >
+                  <span>Generation</span>
+                  <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
+                </button>
+
+                {generationSettingsOpen ? (
+                  <div className="controls-generation-settings-panel">
+                    <button type="button" className={`controls-setting-row ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
+                      <span>Layering</span>
+                      <span>{layering ? "On" : "Off"}</span>
+                    </button>
+                    <button type="button" className={`controls-setting-row ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
+                      <span>Accessories</span>
+                      <span>{accessoriesEnabled ? "On" : "Off"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`controls-setting-row ${generationMode === "guided" ? "is-active" : ""}`}
+                      onClick={() =>
+                        setGenerationMode((current) => (current === "guided" ? "random" : "guided"))
+                      }
+                    >
+                      <span>Mode</span>
+                      <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="controls-group controls-group-bottom">
-              <button
-                type="button"
-                className={`ghost-button ${isCurrentOutfitLiked ? "is-active" : ""}`}
-                onClick={toggleCurrentOutfitLike}
-              >
-                {isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
-              </button>
-              <button
-                type="button"
-                className={`ghost-button ${isCurrentOutfitSaved ? "is-active" : ""}`}
-                onClick={saveCurrentOutfit}
-              >
-                {isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
-              </button>
-              <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-                Export outfit image
-              </button>
+              <div className="controls-section-heading">Actions</div>
+              <div className="controls-actions-row" aria-label="Outfit actions">
+                <button
+                  type="button"
+                  className={`ghost-button slot-action-icon-button controls-action-icon ${isCurrentOutfitLiked ? "is-active" : ""}`}
+                  onClick={toggleCurrentOutfitLike}
+                  aria-label={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                  title={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                >
+                  <SlotActionIcon kind="favorite" />
+                </button>
+                <button
+                  type="button"
+                  className={`ghost-button slot-action-icon-button controls-action-icon ${isCurrentOutfitSaved ? "is-active" : ""}`}
+                  onClick={saveCurrentOutfit}
+                  aria-label={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                  title={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                >
+                  <SlotActionIcon kind="save" />
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button slot-action-icon-button controls-action-icon"
+                  onClick={handleExportOutfitImage}
+                  aria-label="Export outfit image"
+                  title="Export outfit image"
+                >
+                  <SlotActionIcon kind="export" />
+                </button>
+              </div>
               {hasLockedOutfitSlots ? (
-                <button type="button" className="ghost-button" onClick={unlockAllOutfitSlots}>
+                <button type="button" className="ghost-button controls-utility-button" onClick={unlockAllOutfitSlots}>
                   Unlock all
                 </button>
               ) : null}
