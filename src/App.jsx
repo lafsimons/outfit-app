@@ -11061,8 +11061,9 @@ export default function App() {
                         className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                         onClick={toggleWardrobeManage}
                         aria-expanded={wardrobeManageOpen}
+                        aria-label="Manage wardrobe"
                       >
-                        Manage
+                        {isMobileViewport ? "More" : "Manage"}
                       </button>
                       <div
                         className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`}
@@ -11108,8 +11109,10 @@ export default function App() {
                       className={`primary-button ${editingId === "new" && editorReturnTarget !== "outfit" ? "is-active" : ""}`}
                       onClick={(event) => startCreate(event)}
                       aria-pressed={editingId === "new" && editorReturnTarget !== "outfit"}
+                      aria-label="Add item"
+                      title="Add item"
                     >
-                      Add Item
+                      {isMobileViewport ? "+" : "Add Item"}
                     </button>
                   </div>
                 </div>
