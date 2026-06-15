@@ -10438,8 +10438,9 @@ export default function App() {
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">
-            <div className="controls-group controls-group-top">
-              <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
+            <div className="controls-window-scroll">
+              <div className="controls-group controls-group-top">
+                <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
                 <button
                   type="button"
                   className={`controls-generation-settings-toggle ${generationSettingsOpen ? "is-active" : ""}`}
@@ -10506,11 +10507,11 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
+                </div>
               </div>
-            </div>
 
-            <div className="controls-group">
-              <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
+              <div className="controls-group">
+                <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
                 <button
                   type="button"
                   className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
@@ -10638,9 +10639,9 @@ export default function App() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
+                </div>
 
-              <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
+                <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
                 <button
                   type="button"
                   className={`controls-weather-toggle ${weatherOpen ? "is-active" : ""}`}
@@ -10703,9 +10704,9 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-              </div>
+                </div>
 
-              <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
+                <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
                 <button
                   type="button"
                   className={`controls-advanced-toggle ${controlsAdvancedOpen ? "is-active" : ""}`}
@@ -10751,6 +10752,7 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
+                </div>
               </div>
             </div>
           </div>

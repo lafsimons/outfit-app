@@ -357,6 +357,8 @@ button:disabled {
 .weather-window-controls {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -388,6 +390,7 @@ button:disabled {
 .weather-summary {
   min-width: 0;
   line-height: 1.3;
+  overflow: hidden;
 }
 
 .weather-summary strong {
@@ -441,6 +444,17 @@ button:disabled {
   box-shadow: none;
   backdrop-filter: blur(18px);
   pointer-events: none;
+}
+
+.controls-window-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.controls-window-scroll > .controls-group {
+  flex: 0 0 auto;
 }
 
 .controls-window * {
@@ -5052,6 +5066,18 @@ button:disabled {
     left: 12px;
     bottom: calc(72px + env(safe-area-inset-bottom));
     width: min(260px, calc(100vw - 24px));
+    max-height: calc(100dvh - 84px - env(safe-area-inset-bottom));
+    overflow: hidden;
+  }
+
+  .controls-window-scroll {
+    min-height: 0;
+    max-height: calc(100dvh - 108px - env(safe-area-inset-bottom));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
   }
 
   .workspace-tab-group {
@@ -5096,6 +5122,84 @@ button:disabled {
 
   .weather-window {
     width: min(300px, calc(100vw - 20px));
+  }
+
+  .controls-window .weather-window,
+  .controls-window .weather-window-controls,
+  .controls-window .controls-group,
+  .controls-window .outfit-filters-panel,
+  .controls-window .outfit-filter-groups,
+  .controls-window .controls-advanced-panel {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .controls-window .weather-window {
+    width: 100%;
+  }
+
+  .controls-window .weather-form {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .controls-window .weather-form > * {
+    min-width: 0;
+  }
+
+  .controls-window .weather-form input {
+    flex: 1 1 0;
+    width: 0;
+  }
+
+  .controls-window .weather-form .secondary-button {
+    flex-shrink: 0;
+  }
+
+  .controls-window .weather-summary {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    width: 100%;
+    white-space: nowrap;
+  }
+
+  .controls-window .weather-summary strong,
+  .controls-window .weather-summary span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .controls-window .weather-summary strong {
+    flex: 0 0 auto;
+  }
+
+  .controls-window .weather-summary span {
+    flex: 0 1 auto;
+    max-width: 100%;
+    overflow-wrap: normal;
+  }
+
+  .controls-window .controls-metadata-row span:last-child,
+  .controls-window .outfit-filter-section-summary,
+  .controls-window .outfit-filter-section-copy {
+    min-width: 0;
+  }
+
+  .controls-window .controls-metadata-row span:last-child,
+  .controls-window .outfit-filter-section-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .controls-window .controls-advanced-debug,
+  .controls-window .outfit-feedback-panel {
+    min-width: 0;
+    overflow-x: hidden;
   }
 
   .workspace-tabs {
