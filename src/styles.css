@@ -569,74 +569,6 @@ button:disabled {
   border-color: var(--controls-active);
 }
 
-.controls-generation-lists {
-  position: relative;
-}
-
-.controls-generation-lists-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface-soft);
-  color: var(--text);
-  font-size: 0.74rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-}
-
-.controls-generation-lists-toggle span:last-child {
-  min-width: 0;
-  color: var(--muted-strong);
-  text-transform: none;
-  letter-spacing: 0;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.controls-generation-lists-toggle.is-active {
-  border-color: var(--primary);
-}
-
-.controls-window .controls-generation-lists-toggle.is-active {
-  border-color: var(--controls-active);
-}
-
-.controls-generation-lists-panel {
-  display: grid;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-panel);
-  background: var(--surface);
-}
-
-.controls-generation-list-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  font-size: 0.74rem;
-  font-weight: 600;
-}
-
-.controls-generation-list-mark {
-  min-width: 1ch;
-  text-align: right;
-}
-
-.controls-generation-list-option input {
-  margin: 0;
-}
-
 .controls-group-generate-count {
   display: flex;
   align-items: center;
@@ -655,8 +587,7 @@ button:disabled {
 .controls-window .secondary-button,
 .controls-window .ghost-button,
 .controls-window .controls-weather-toggle,
- .controls-window .controls-outfit-filters-toggle,
- .controls-window .controls-generation-lists-toggle {
+ .controls-window .controls-outfit-filters-toggle {
   padding-top: 4px;
   padding-bottom: 4px;
 }
@@ -1422,53 +1353,89 @@ button:disabled {
   gap: 8px;
 }
 
-.outfit-filter-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 7px;
+.outfit-filter-view-row {
+  display: grid;
+  gap: 4px;
 }
 
-.outfit-filter-group .eyebrow {
+.outfit-filter-view-row .eyebrow {
   margin: 0;
 }
 
-.outfit-filter-views-group {
-  align-items: flex-start;
+.outfit-filter-view-row select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  padding: 6px 8px;
+  font-size: 0.72rem;
 }
 
-.outfit-saved-views-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.outfit-saved-view-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
+.outfit-filters-advanced-toggle {
+  justify-content: flex-start;
+  width: fit-content;
   min-height: 24px;
-  padding: 4px 8px;
-  border: 1px solid var(--border-soft);
-  border-radius: 999px;
-  font-size: 0.7rem;
+  padding-left: 0;
+  padding-right: 0;
+  font-size: 0.72rem;
+}
+
+.outfit-filter-section {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.outfit-filter-section + .outfit-filter-section {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 10px;
+}
+
+.outfit-filter-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.outfit-filter-section-copy {
+  display: flex;
+  align-items: baseline;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.outfit-filter-section-copy strong {
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.outfit-filter-section-summary {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.outfit-filter-section-icon {
+  color: var(--muted);
+  font-size: 0.95rem;
   line-height: 1;
-  background: rgba(255, 255, 255, 0.72);
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-.outfit-saved-view-chip.is-current {
-  background: var(--soft);
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-.outfit-saved-view-chip:hover,
-.outfit-saved-view-chip:focus-visible {
-  background: rgba(0, 0, 0, 0.04);
 }
 
 .outfit-filter-options {
-  display: contents;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
 }
 
 .metadata-tag-group {
