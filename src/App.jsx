@@ -68,7 +68,6 @@ import {
   normalizeOutfitAffinity,
   normalizeOutfitFilters,
   normalizeRecentOutfits,
-  outfitFilterOptions,
   pickNextItemForGeneration,
   pickRandom,
   rememberRecentOutfit,
@@ -176,6 +175,18 @@ import {
   filterAndSortSavedOutfits,
   getSavedOutfitTagFilterOptions
 } from "./lib/savedOutfitLibrary";
+import {
+  applySavedWardrobeView,
+  applySavedWardrobeViewToOutfitFilters,
+  createSavedWardrobeViewSnapshot,
+  deleteSavedWardrobeView,
+  matchesCurrentOutfitFiltersSavedWardrobeView,
+  matchesCurrentWardrobeView,
+  normalizeSavedWardrobeViews,
+  renameSavedWardrobeView,
+  togglePinnedSavedWardrobeView,
+  upsertSavedWardrobeView
+} from "./lib/savedWardrobeViews";
 import {
   createEmptySelectorFilters,
   DEFAULT_SELECTOR_SORT,
@@ -708,6 +719,12 @@ const defaultFitpicFilterSectionsOpen = {
   status: false,
   collections: false,
   favorite: false
+};
+const defaultOutfitFilterSectionsOpen = {
+  climate: false,
+  style: false,
+  collections: false,
+  status: false
 };
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
@@ -1860,7 +1877,7 @@ async function fetchWeatherForSavedLocation(settings) {
 }
 
 export default function App() {
-  function SlotActionIcon({ kind, locked: isLocked = false }) {
+  function SlotActionIcon({ kind, locked: isLocked = false, active = false }) {
     if (kind === "lock") {
       return isLocked ? (
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -1908,6 +1925,30 @@ export default function App() {
       );
     }
 
+    if (kind === "favorite") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 12.7 3.85 8.63a2.55 2.55 0 0 1 0-3.68 2.62 2.62 0 0 1 3.7 0L8 5.4l.45-.45a2.62 2.62 0 0 1 3.7 0 2.55 2.55 0 0 1 0 3.68Z" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "save") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M4.25 2.75h7.5v10.5L8 10.35l-3.75 2.9Z" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
+    if (kind === "export") {
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M8 10.75v-6.5M8 4.25l-2.35 2.35M8 4.25l2.35 2.35M4.25 9.75v2h7.5v-2" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    }
+
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="m4.25 4.25 7.5 7.5M11.75 4.25l-7.5 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
@@ -1930,7 +1971,6 @@ export default function App() {
   const slotActionsPopoverRef = useRef(null);
   const inlineEditorResizeRef = useRef(null);
   const outfitDebugRef = useRef(null);
-  const generationListsRef = useRef(null);
   const workspaceTabsRef = useRef(null);
   const editorImageFrameRef = useRef(null);
   const editorImageRef = useRef(null);
@@ -2046,6 +2086,7 @@ export default function App() {
   const [wardrobeFilterSectionsOpen, setWardrobeFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [wardrobeFilters, setWardrobeFilters] = useState(emptyWardrobeFilters);
   const [wardrobeSort, setWardrobeSort] = useState(DEFAULT_WARDROBE_SORT);
+  const [savedWardrobeViews, setSavedWardrobeViews] = useState([]);
   const [dashboardFilterSearch, setDashboardFilterSearch] = useState("");
   const [dashboardFilterSectionsOpen, setDashboardFilterSectionsOpen] = useState(defaultWardrobeFilterSectionsOpen);
   const [dashboardFilters, setDashboardFilters] = useState(emptyWardrobeFilters);
@@ -2055,8 +2096,11 @@ export default function App() {
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
   const [weatherOpen, setWeatherOpen] = useState(false);
+  const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
-  const [generationListsOpen, setGenerationListsOpen] = useState(false);
+  const [outfitFiltersAdvancedOpen, setOutfitFiltersAdvancedOpen] = useState(false);
+  const [controlsAdvancedOpen, setControlsAdvancedOpen] = useState(false);
+  const [outfitFilterSectionsOpen, setOutfitFilterSectionsOpen] = useState(defaultOutfitFilterSectionsOpen);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
   const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
   const [weatherData, setWeatherData] = useState(null);
@@ -3225,6 +3269,36 @@ export default function App() {
     0
   );
   const hasActiveWardrobeFilters = activeWardrobeFilterCount > 0;
+  const currentSavedWardrobeViewSnapshot = useMemo(
+    () => createSavedWardrobeViewSnapshot({
+      wardrobeSearch,
+      wardrobeFilters,
+      wardrobeSort
+    }),
+    [wardrobeFilters, wardrobeSearch, wardrobeSort]
+  );
+  const matchingSavedWardrobeViewId = useMemo(
+    () =>
+      normalizeSavedWardrobeViews(savedWardrobeViews).find((view) =>
+        matchesCurrentWardrobeView(view, {
+          wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+          wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+          wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+        })
+      )?.id ?? "",
+    [currentSavedWardrobeViewSnapshot, savedWardrobeViews]
+  );
+  const matchingOutfitFiltersSavedWardrobeViewId = useMemo(
+    () =>
+      normalizeSavedWardrobeViews(savedWardrobeViews).find((view) =>
+        matchesCurrentOutfitFiltersSavedWardrobeView(view, outfitFilters)
+      )?.id ?? "",
+    [outfitFilters, savedWardrobeViews]
+  );
+  const matchingOutfitFiltersSavedWardrobeView = useMemo(
+    () => savedWardrobeViews.find((view) => view.id === matchingOutfitFiltersSavedWardrobeViewId) ?? null,
+    [matchingOutfitFiltersSavedWardrobeViewId, savedWardrobeViews]
+  );
   const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
     (count, [key, value]) =>
       count + (
@@ -3241,17 +3315,71 @@ export default function App() {
     () => itemListOptions.filter((list) => isGenerationListEnabled(list)),
     [itemListOptions, generationLists]
   );
-  const generationListsSummary = useMemo(() => {
-    if (!includedGenerationLists.length) {
-      return "None";
+  const excludedGenerationLists = useMemo(
+    () => itemListOptions.filter((list) => isGenerationListExcluded(list)),
+    [itemListOptions, generationLists]
+  );
+  const outfitFiltersControlSummary = useMemo(() => {
+    if (matchingOutfitFiltersSavedWardrobeView?.name) {
+      return matchingOutfitFiltersSavedWardrobeView.name;
     }
 
-    if (includedGenerationLists.length <= 2) {
-      return includedGenerationLists.join(", ");
+    const hasDefaultStatusSelection = includedGenerationLists.length === 1
+      && includedGenerationLists[0] === defaultItemList
+      && !excludedGenerationLists.length;
+
+    if (activeOutfitFilterCount > 0 || !hasDefaultStatusSelection) {
+      return "Custom";
     }
 
-    return `${includedGenerationLists.length} included`;
-  }, [includedGenerationLists]);
+    return "None";
+  }, [
+    activeOutfitFilterCount,
+    excludedGenerationLists.length,
+    includedGenerationLists,
+    matchingOutfitFiltersSavedWardrobeView?.name
+  ]);
+  const outfitFilterSections = useMemo(
+    () => [
+      {
+        key: "climate",
+        label: "Climate",
+        options: climateTagOptions,
+        summary: getSelectedFilterValueCount(outfitFilters, "climate")
+          ? `${getSelectedFilterValueCount(outfitFilters, "climate")} selected`
+          : "None"
+      },
+      {
+        key: "style",
+        label: "Style",
+        options: styleTagOptions,
+        summary: getSelectedFilterValueCount(outfitFilters, "style")
+          ? `${getSelectedFilterValueCount(outfitFilters, "style")} selected`
+          : "None"
+      },
+      {
+        key: "collections",
+        label: "Collections",
+        options: collectionOptions,
+        summary: getSelectedFilterValueCount(outfitFilters, "collections")
+          ? `${getSelectedFilterValueCount(outfitFilters, "collections")} selected`
+          : "None"
+      },
+      {
+        key: "status",
+        label: "Status",
+        options: itemListOptions,
+        summary: includedGenerationLists.length && excludedGenerationLists.length
+          ? `${includedGenerationLists.length} included, ${excludedGenerationLists.length} excluded`
+          : includedGenerationLists.length
+            ? `${includedGenerationLists.length} included`
+            : excludedGenerationLists.length
+              ? `${excludedGenerationLists.length} excluded`
+              : "None"
+      }
+    ],
+    [collectionOptions, excludedGenerationLists.length, includedGenerationLists.length, itemListOptions, outfitFilters]
+  );
   const buildActiveFilterChips = (filters) => [
     ...[
       ["Brand", "brand"],
@@ -4084,6 +4212,7 @@ export default function App() {
       setFitpics(hydratedAppState.fitpics);
       setWardrobeFilters(hydratedAppState.wardrobeFilters);
       setWardrobeSort(hydratedAppState.wardrobeSort);
+      setSavedWardrobeViews(hydratedAppState.savedWardrobeViews);
       setWindowState(hydratedAppState.windowState);
 
       await backfillLocalSyncMetadata({
@@ -4137,6 +4266,7 @@ export default function App() {
       fitpics,
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort,
+      savedWardrobeViews,
       windowState
     });
   }, [
@@ -4160,6 +4290,7 @@ export default function App() {
     fitpics,
     wardrobeFilters,
     wardrobeSort,
+    savedWardrobeViews,
     windowState,
     loading,
     hasHydratedAppState
@@ -4331,27 +4462,6 @@ export default function App() {
   }, [outfitDebugOpen]);
 
   useEffect(() => {
-    if (!generationListsOpen) {
-      return undefined;
-    }
-
-    function handleDocumentPointerDown(event) {
-      if (workspaceTabsRef.current?.contains(event.target)) {
-        return;
-      }
-
-      if (generationListsRef.current?.contains(event.target)) {
-        return;
-      }
-
-      setGenerationListsOpen(false);
-    }
-
-    document.addEventListener("pointerdown", handleDocumentPointerDown, true);
-    return () => document.removeEventListener("pointerdown", handleDocumentPointerDown, true);
-  }, [generationListsOpen]);
-
-  useEffect(() => {
     document.addEventListener("pointerdown", noteInteractionModality, true);
     document.addEventListener("keydown", noteInteractionModality, true);
     return () => {
@@ -4487,13 +4597,6 @@ export default function App() {
         return;
       }
 
-      if (generationListsOpen) {
-        event.preventDefault();
-        blurRetainedPointerFocus();
-        setGenerationListsOpen(false);
-        return;
-      }
-
       if (activePanel) {
         event.preventDefault();
         blurRetainedPointerFocus();
@@ -4521,7 +4624,6 @@ export default function App() {
     selectedWardrobeItemCount,
     wardrobeFiltersOpen,
     wardrobeManageOpen,
-    generationListsOpen,
     activeSlotActionsSlot,
     selectedAccessorySlot,
     selectedOutfitSlot
@@ -5906,6 +6008,136 @@ export default function App() {
     setWardrobeFilterSearch("");
   }
 
+  function promptForSavedWardrobeViewName(currentName = "") {
+    if (typeof window === "undefined" || typeof window.prompt !== "function") {
+      return currentName.trim();
+    }
+
+    const nextName = window.prompt("Save wardrobe view as:", currentName);
+    return typeof nextName === "string" ? nextName.trim() : "";
+  }
+
+  function confirmSavedWardrobeViewReplacement(name) {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+
+    return window.confirm(`Replace the existing saved view "${name}"?`);
+  }
+
+  function confirmSavedWardrobeViewDelete(name) {
+    if (typeof window === "undefined" || typeof window.confirm !== "function") {
+      return true;
+    }
+
+    return window.confirm(`Delete the saved view "${name}"?`);
+  }
+
+  function applyWardrobeSavedView(savedView, event = null) {
+    const nextViewState = applySavedWardrobeView(savedView);
+    setWardrobeSearch(nextViewState.searchQuery);
+    setWardrobeFilters(nextViewState.filters);
+    setWardrobeSort(nextViewState.sort);
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function applyOutfitFiltersSavedWardrobeView(savedView, event = null) {
+    setOutfitFilters(applySavedWardrobeViewToOutfitFilters(savedView));
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function handleSaveCurrentWardrobeView(event = null) {
+    const activeView = savedWardrobeViews.find((view) => view.id === matchingSavedWardrobeViewId) ?? null;
+    const nextName = promptForSavedWardrobeViewName(activeView?.name ?? "");
+
+    if (!nextName) {
+      return;
+    }
+
+    let saveResult = upsertSavedWardrobeView(
+      savedWardrobeViews,
+      nextName,
+      {
+        wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+        wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+        wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+      },
+      activeView ? { targetId: activeView.id } : {}
+    );
+
+    if (saveResult.conflictingView) {
+      const shouldReplace = confirmSavedWardrobeViewReplacement(saveResult.conflictingView.name);
+
+      if (!shouldReplace) {
+        return;
+      }
+
+      saveResult = upsertSavedWardrobeView(
+        savedWardrobeViews,
+        nextName,
+        {
+          wardrobeSearch: currentSavedWardrobeViewSnapshot.searchQuery,
+          wardrobeFilters: currentSavedWardrobeViewSnapshot.filters,
+          wardrobeSort: currentSavedWardrobeViewSnapshot.sort
+        },
+        {
+          targetId: activeView?.id ?? "",
+          allowReplace: true
+        }
+      );
+    }
+
+    setSavedWardrobeViews(saveResult.savedViews);
+
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+  }
+
+  function handleRenameSavedWardrobeView(view) {
+    const nextName = promptForSavedWardrobeViewName(view?.name ?? "");
+
+    if (!nextName || !view?.id) {
+      return;
+    }
+
+    let renameResult = renameSavedWardrobeView(savedWardrobeViews, view.id, nextName);
+
+    if (renameResult.conflictingView) {
+      const shouldReplace = confirmSavedWardrobeViewReplacement(renameResult.conflictingView.name);
+
+      if (!shouldReplace) {
+        return;
+      }
+
+      renameResult = renameSavedWardrobeView(savedWardrobeViews, view.id, nextName, { allowReplace: true });
+    }
+
+    setSavedWardrobeViews(renameResult.savedViews);
+  }
+
+  function handleDeleteSavedWardrobeView(view) {
+    if (!view?.id || !confirmSavedWardrobeViewDelete(view.name)) {
+      return;
+    }
+
+    setSavedWardrobeViews((current) => deleteSavedWardrobeView(current, view.id));
+  }
+
+  function handleTogglePinnedSavedWardrobeView(view) {
+    if (!view?.id) {
+      return;
+    }
+
+    setSavedWardrobeViews((current) => togglePinnedSavedWardrobeView(current, view.id));
+  }
+
   function clearFitpicFilters() {
     setFitpicFilters(emptyFitpicFilters);
     setFitpicFilterSearch("");
@@ -5986,6 +6218,13 @@ export default function App() {
     setOutfitFilters(emptyOutfitFilters);
   }
 
+  function toggleOutfitFilterSection(key) {
+    setOutfitFilterSectionsOpen((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  }
+
   async function refreshWeather(locationOverride = weatherLocationDraft) {
     const query = locationOverride.trim();
 
@@ -6031,17 +6270,6 @@ export default function App() {
 
   function toggleDraftTag(field, value, options) {
     setDraft((current) => toggleItemEditorDraftTag(current, field, value, options));
-  }
-
-  function toggleGenerationList(list) {
-    setGenerationLists((current) => {
-      const currentValue = getGenerationListState(list, current);
-
-      return {
-        ...current,
-        [list]: !currentValue
-      };
-    });
   }
 
   function toggleGenerationListWithMode(list, shouldExclude = false) {
@@ -6819,7 +7047,6 @@ export default function App() {
   function closeUtilityWindows() {
     setWeatherOpen(false);
     setOutfitFiltersOpen(false);
-    setGenerationListsOpen(false);
   }
 
   function toggleWorkspacePanel(panel, event) {
@@ -6886,7 +7113,6 @@ export default function App() {
     setFitpicPreview(null);
     cancelEditFitpic();
     setOutfitFiltersOpen(false);
-    setGenerationListsOpen(false);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
@@ -10212,59 +10438,75 @@ export default function App() {
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">
-            <div className="controls-window-header">
-              <p className="eyebrow">Current outfit</p>
-              <button
-                type="button"
-                className="controls-hide-button"
-                onClick={() => setControlsOpen(false)}
-                aria-label="Hide controls"
-              >
-                ×
-              </button>
-            </div>
-
             <div className="controls-group controls-group-top">
-              <button type="button" className={`secondary-button ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
-                Layering: {layering ? "On" : "Off"}
-              </button>
-              <button type="button" className={`secondary-button ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
-                Accessories: {accessoriesEnabled ? "On" : "Off"}
-              </button>
-              <button
-                type="button"
-                className={`secondary-button ${generationMode === "guided" ? "is-active" : ""}`}
-                onClick={() =>
-                  setGenerationMode((current) => (current === "guided" ? "random" : "guided"))
-                }
-              >
-                Generation: {generationMode === "guided" ? "Guided" : "Random"}
-              </button>
-            </div>
-
-            <div className="controls-group controls-group-bottom">
-              <button
-                type="button"
-                className={`ghost-button ${isCurrentOutfitLiked ? "is-active" : ""}`}
-                onClick={toggleCurrentOutfitLike}
-              >
-                {isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
-              </button>
-              <button
-                type="button"
-                className={`ghost-button ${isCurrentOutfitSaved ? "is-active" : ""}`}
-                onClick={saveCurrentOutfit}
-              >
-                {isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
-              </button>
-              <button type="button" className="ghost-button" onClick={handleExportOutfitImage}>
-                Export outfit image
-              </button>
-              {hasLockedOutfitSlots ? (
-                <button type="button" className="ghost-button" onClick={unlockAllOutfitSlots}>
-                  Unlock all
+              <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
+                <button
+                  type="button"
+                  className={`controls-generation-settings-toggle ${generationSettingsOpen ? "is-active" : ""}`}
+                  onClick={() => setGenerationSettingsOpen((current) => !current)}
+                  aria-expanded={generationSettingsOpen}
+                >
+                  <span>Generation</span>
+                  <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
                 </button>
-              ) : null}
+
+                {generationSettingsOpen ? (
+                  <div className="controls-generation-settings-panel">
+                    <button type="button" className={`controls-setting-row ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
+                      <span>Layering</span>
+                      <span>{layering ? "On" : "Off"}</span>
+                    </button>
+                    <button type="button" className={`controls-setting-row ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
+                      <span>Accessories</span>
+                      <span>{accessoriesEnabled ? "On" : "Off"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`controls-setting-row ${generationMode === "guided" ? "is-active" : ""}`}
+                      onClick={() =>
+                        setGenerationMode((current) => (current === "guided" ? "random" : "guided"))
+                      }
+                    >
+                      <span>Mode</span>
+                      <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
+                    </button>
+                    <div className="controls-actions-row" aria-label="Outfit actions">
+                      <button
+                        type="button"
+                        className={`controls-action-icon ${isCurrentOutfitLiked ? "is-active" : ""}`}
+                        onClick={toggleCurrentOutfitLike}
+                        aria-label={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                        title={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                      >
+                        <SlotActionIcon kind="favorite" active={isCurrentOutfitLiked} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`controls-action-icon ${isCurrentOutfitSaved ? "is-active" : ""}`}
+                        onClick={saveCurrentOutfit}
+                        aria-label={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                        title={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                      >
+                        <SlotActionIcon kind="save" active={isCurrentOutfitSaved} />
+                      </button>
+                      <button
+                        type="button"
+                        className="controls-action-icon"
+                        onClick={handleExportOutfitImage}
+                        aria-label="Export outfit image"
+                        title="Export outfit image"
+                      >
+                        <SlotActionIcon kind="export" />
+                      </button>
+                      {hasLockedOutfitSlots ? (
+                        <button type="button" className="ghost-button controls-utility-button" onClick={unlockAllOutfitSlots}>
+                          Unlock all
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
             <div className="controls-group">
@@ -10276,112 +10518,124 @@ export default function App() {
                   aria-expanded={outfitFiltersOpen}
                 >
                   <span>Outfit filters</span>
-                  <span>
-                    {activeOutfitFilterCount > 0
-                      ? `${activeOutfitFilterCount} active`
-                      : "None"}
-                  </span>
+                  <span>{outfitFiltersControlSummary}</span>
                 </button>
 
                 {outfitFiltersOpen ? (
                   <div className="outfit-filters-panel">
-                    <div className="outfit-filter-groups">
-                      {Object.entries(outfitFilterOptions).map(([group, options]) => (
-                        <section key={group} className="outfit-filter-group">
-                          <p className="eyebrow">{group}</p>
-                          <div className="outfit-filter-options">
-                            {options.map((option) => {
-                              const isIncluded = getIncludedFilterValues(outfitFilters, group).includes(option);
-                              const isExcluded = getExcludedFilterValues(outfitFilters, group).includes(option);
-                              const isSelected = isIncluded || isExcluded;
+                    <div className="outfit-filter-view-row">
+                      <span className="eyebrow">view</span>
+                      <select
+                        aria-label="Saved wardrobe view for outfit filters"
+                        value={matchingOutfitFiltersSavedWardrobeViewId || "__custom__"}
+                        onChange={(event) => {
+                          const nextViewId = event.target.value;
 
-                              return (
-                                <button
-                                  key={option}
-                                  type="button"
-                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => toggleOutfitFilter(group, option, event.shiftKey)}
-                                  aria-pressed={isSelected}
-                                >
-                                  {option}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ))}
-                      {collectionOptions.length ? (
-                        <section className="outfit-filter-group">
-                          <p className="eyebrow">collections</p>
-                          <div className="outfit-filter-options">
-                            {collectionOptions.map((collection) => {
-                              const isIncluded = getIncludedFilterValues(outfitFilters, "collections").includes(collection);
-                              const isExcluded = getExcludedFilterValues(outfitFilters, "collections").includes(collection);
-                              const isSelected = isIncluded || isExcluded;
+                          if (!nextViewId || nextViewId === "__custom__") {
+                            return;
+                          }
 
-                              return (
-                                <button
-                                  key={collection}
-                                  type="button"
-                                  className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={(event) => toggleOutfitFilter("collections", collection, event.shiftKey)}
-                                  aria-pressed={isSelected}
-                                >
-                                  {collection}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      ) : null}
+                          const nextView = savedWardrobeViews.find((view) => view.id === nextViewId);
+
+                          if (nextView) {
+                            applyOutfitFiltersSavedWardrobeView(nextView);
+                          }
+                        }}
+                        disabled={!savedWardrobeViews.length}
+                      >
+                        <option value="__custom__">
+                          {savedWardrobeViews.length
+                            ? (matchingOutfitFiltersSavedWardrobeView?.name ?? "Custom")
+                            : "No saved views"}
+                        </option>
+                        {savedWardrobeViews.map((view) => (
+                          <option key={view.id} value={view.id}>
+                            {view.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
-                      Clear outfit filters
+                    <button
+                      type="button"
+                      className={`ghost-button outfit-filters-advanced-toggle ${outfitFiltersAdvancedOpen ? "is-active" : ""}`}
+                      onClick={() => setOutfitFiltersAdvancedOpen((current) => !current)}
+                      aria-expanded={outfitFiltersAdvancedOpen}
+                    >
+                      {outfitFiltersAdvancedOpen ? "Hide Filters" : "More Filters"}
                     </button>
-                  </div>
-                ) : null}
-              </div>
 
-              <div
-                ref={generationListsRef}
-                className={`controls-generation-lists ${generationListsOpen ? "is-open" : ""}`}
-                aria-label="Generation lists"
-              >
-                <button
-                  type="button"
-                  className={`controls-generation-lists-toggle ${generationListsOpen ? "is-active" : ""}`}
-                  onClick={() => setGenerationListsOpen((current) => !current)}
-                  aria-expanded={generationListsOpen}
-                >
-                  <span>Status</span>
-                  <span>{generationListsSummary}</span>
-                </button>
+                    {outfitFiltersAdvancedOpen ? (
+                      <div className="outfit-filter-groups">
+                        {outfitFilterSections.map((section) => {
+                          const isOpen = Boolean(outfitFilterSectionsOpen[section.key]);
 
-                {generationListsOpen ? (
-                  <div className="controls-generation-lists-panel">
-                    {itemListOptions.map((list) => {
-                      const isSelected = isGenerationListEnabled(list);
-                      const isExcluded = isGenerationListExcluded(list);
+                          return (
+                            <section key={section.key} className={`outfit-filter-section ${isOpen ? "is-open" : ""}`}>
+                              <button
+                                type="button"
+                                className="outfit-filter-section-toggle"
+                                onClick={() => toggleOutfitFilterSection(section.key)}
+                                aria-expanded={isOpen}
+                              >
+                                <span className="outfit-filter-section-copy">
+                                  <strong>{section.label}</strong>
+                                  <span className="outfit-filter-section-summary">{section.summary}</span>
+                                </span>
+                                <span className="outfit-filter-section-icon" aria-hidden="true">
+                                  {isOpen ? "⌄" : "›"}
+                                </span>
+                              </button>
 
-                      return (
-                        <button
-                          key={list}
-                          type="button"
-                          className={`list-toggle controls-generation-list-option ${isSelected ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
-                          onMouseDown={(event) => event.preventDefault()}
-                          onClick={(event) => toggleGenerationListWithMode(list, event.shiftKey)}
-                          aria-pressed={isSelected || isExcluded}
-                        >
-                          <span>{list}</span>
-                          <span className="controls-generation-list-mark" aria-hidden="true">
-                            {isSelected ? "✓" : isExcluded ? "X" : ""}
-                          </span>
+                              {isOpen ? (
+                                <div className="outfit-filter-options">
+                                  {section.key === "status"
+                                    ? section.options.map((list) => {
+                                      const isSelected = isGenerationListEnabled(list);
+                                      const isExcluded = isGenerationListExcluded(list);
+
+                                      return (
+                                        <button
+                                          key={list}
+                                          type="button"
+                                          className={`list-toggle ${isSelected ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => toggleGenerationListWithMode(list, event.shiftKey)}
+                                          aria-pressed={isSelected || isExcluded}
+                                        >
+                                          {list}
+                                        </button>
+                                      );
+                                    })
+                                    : section.options.map((option) => {
+                                      const isIncluded = getIncludedFilterValues(outfitFilters, section.key).includes(option);
+                                      const isExcluded = getExcludedFilterValues(outfitFilters, section.key).includes(option);
+                                      const isSelected = isIncluded || isExcluded;
+
+                                      return (
+                                        <button
+                                          key={option}
+                                          type="button"
+                                          className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                                          onMouseDown={(event) => event.preventDefault()}
+                                          onClick={(event) => toggleOutfitFilter(section.key, option, event.shiftKey)}
+                                          aria-pressed={isSelected}
+                                        >
+                                          {option}
+                                        </button>
+                                      );
+                                    })}
+                                </div>
+                              ) : null}
+                            </section>
+                          );
+                        })}
+
+                        <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
+                          Clear outfit filters
                         </button>
-                      );
-                    })}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -10450,36 +10704,54 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
-            </div>
 
-            <div className="controls-group">
-              <div ref={outfitDebugRef} className="outfit-feedback-panel">
-                <div className="outfit-feedback-header">
-                  <div className="outfit-feedback-chips" aria-label="Outfit reasons">
-                    <span className="active-filter-chip">{currentOutfitStyleChip}</span>
-                    <span className="active-filter-chip">{currentOutfitClimateChip}</span>
+              <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
+                <button
+                  type="button"
+                  className={`controls-advanced-toggle ${controlsAdvancedOpen ? "is-active" : ""}`}
+                  onClick={() => setControlsAdvancedOpen((current) => !current)}
+                  aria-expanded={controlsAdvancedOpen}
+                >
+                  <span>Advanced</span>
+                  <span aria-hidden="true">{controlsAdvancedOpen ? "⌄" : "›"}</span>
+                </button>
+
+                {controlsAdvancedOpen ? (
+                  <div className="controls-advanced-panel">
+                    <div className="controls-metadata-row">
+                      <span>Style</span>
+                      <span>{currentOutfitStyleChip}</span>
+                    </div>
+                    <div className="controls-metadata-row">
+                      <span>Climate</span>
+                      <span>{currentOutfitClimateChip}</span>
+                    </div>
+                    <div className="controls-metadata-row">
+                      <span>Generate Count</span>
+                      <span>{generateCount}</span>
+                    </div>
+
+                    <div ref={outfitDebugRef} className="outfit-feedback-panel controls-advanced-debug">
+                      <div className="controls-advanced-actions-row">
+                        <button
+                          type="button"
+                          className={`ghost-button controls-advanced-action ${outfitDebugOpen ? "is-active" : ""}`}
+                          onClick={() => setOutfitDebugOpen((current) => !current)}
+                          aria-expanded={outfitDebugOpen}
+                        >
+                          {outfitDebugOpen ? "Hide Debug" : "Debug"}
+                        </button>
+                        <button type="button" className="ghost-button controls-advanced-action" onClick={() => setGenerateCount(0)}>
+                          Reset
+                        </button>
+                      </div>
+
+                      {outfitDebugOpen && !showDebugPopout ? renderOutfitDebugPanel("is-inline") : null}
+                      {showDebugPopout ? renderOutfitDebugPanel("outfit-debug-popout") : null}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className={`ghost-button outfit-debug-toggle ${outfitDebugOpen ? "is-active" : ""}`}
-                    onClick={() => setOutfitDebugOpen((current) => !current)}
-                    aria-expanded={outfitDebugOpen}
-                  >
-                    {outfitDebugOpen ? "Hide" : "Debug"}
-                  </button>
-                </div>
-
-                {outfitDebugOpen && !showDebugPopout ? renderOutfitDebugPanel("is-inline") : null}
-                {showDebugPopout ? renderOutfitDebugPanel("outfit-debug-popout") : null}
+                ) : null}
               </div>
-            </div>
-
-            <div className="controls-group controls-group-generate-count">
-              <span className="controls-generate-count-label">Generate count:</span>
-              <span className="controls-generate-count-value">{generateCount}</span>
-              <button type="button" className="ghost-button controls-generate-count-reset" onClick={() => setGenerateCount(0)}>
-                Reset
-              </button>
             </div>
           </div>
         ) : null}
@@ -10540,6 +10812,71 @@ export default function App() {
                             placeholder="Search filter options"
                           />
                         </div>
+                        <section className="wardrobe-filter-group wardrobe-saved-views-group is-open">
+                          <div className="wardrobe-filter-group-toggle wardrobe-filter-group-toggle-static">
+                            <span className="wardrobe-filter-group-copy">
+                              <strong>Views</strong>
+                            </span>
+                            <button
+                              type="button"
+                              className="ghost-button saved-wardrobe-view-save-button"
+                              onClick={handleSaveCurrentWardrobeView}
+                            >
+                              + Save
+                            </button>
+                          </div>
+                          <div className="wardrobe-filter-options wardrobe-saved-views-list">
+                            {savedWardrobeViews.length ? savedWardrobeViews.map((view) => {
+                              const isCurrentView = view.id === matchingSavedWardrobeViewId;
+
+                              return (
+                                <div key={view.id} className={`saved-wardrobe-view-row ${isCurrentView ? "is-current" : ""}`}>
+                                  <button
+                                    type="button"
+                                    className="ghost-button saved-wardrobe-view-apply"
+                                    onClick={(event) => applyWardrobeSavedView(view, event)}
+                                  >
+                                    <span className="saved-wardrobe-view-label">
+                                      {view.pinned ? <span className="saved-wardrobe-view-pin" aria-hidden="true">📌</span> : null}
+                                      <span>{view.name}</span>
+                                    </span>
+                                  </button>
+                                  <div className="saved-wardrobe-view-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleTogglePinnedSavedWardrobeView(view)}
+                                      aria-label={view.pinned ? `Unpin ${view.name}` : `Pin ${view.name}`}
+                                      title={view.pinned ? "Unpin" : "Pin"}
+                                    >
+                                      {view.pinned ? "📍" : "📌"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleRenameSavedWardrobeView(view)}
+                                      aria-label={`Rename ${view.name}`}
+                                      title="Rename"
+                                    >
+                                      ✎
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action danger"
+                                      onClick={() => handleDeleteSavedWardrobeView(view)}
+                                      aria-label={`Delete ${view.name}`}
+                                      title="Delete"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }) : (
+                              <p className="wardrobe-filter-empty">No saved views yet.</p>
+                            )}
+                          </div>
+                        </section>
                         {wardrobeFilterPanelSections.map((section) => {
                           const selectedCount = section.kind === "multi"
                             ? getSelectedFilterValueCount(wardrobeFilters, section.key)

@@ -55,6 +55,7 @@ const defaultAppState = {
     favorite: ""
   },
   wardrobeSort: "newest",
+  savedWardrobeViews: [],
   outfitFilters: {
     style: [],
     styleExcluded: [],

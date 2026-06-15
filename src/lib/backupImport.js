@@ -92,7 +92,8 @@ export async function prepareBackupImport(
         weatherData: loadedAppState.weatherData,
         fitpics: loadedAppState.fitpics,
         wardrobeFilters: loadedAppState.wardrobeFilters,
-        wardrobeSort: loadedAppState.wardrobeSort
+        wardrobeSort: loadedAppState.wardrobeSort,
+        savedWardrobeViews: loadedAppState.savedWardrobeViews
       }
     },
     items: effectiveItems,

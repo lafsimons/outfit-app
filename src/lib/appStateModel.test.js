@@ -240,6 +240,7 @@ test("hydrated app-state missing fields normalize to current defaults", () => {
       weatherLocationDraft: "",
       weatherData: null,
       fitpics: [],
+      savedWardrobeViews: [],
       wardrobeFilters: {
         brand: [],
         brandExcluded: [],
@@ -308,7 +309,14 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     generationMode: "unknown-mode",
     outfitFilters: { style: ["Casual", "Casual"], climate: ["Rain", "Bad"], extra: ["x"] },
     wardrobeFilters: { brand: "Our Legacy", list: "Wardrobe", style: 42, extra: "ignored" },
-    wardrobeSort: "bad-sort"
+    wardrobeSort: "bad-sort",
+    savedWardrobeViews: [{
+      name: " Wishlist ",
+      wardrobeSearch: "coat",
+      wardrobeFilters: { status: ["Wishlist", "Wishlist"], collections: ["A/W"] },
+      wardrobeSort: "oldest",
+      pinned: 1
+    }]
   }, {
     fallbackOutfit: {},
     normalizeWeatherSettings: (settings) => settings ?? { locationName: "", latitude: null, longitude: null },
@@ -361,6 +369,38 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
     favorite: ""
   });
   assert.equal(hydrated.wardrobeSort, "newest");
+  assert.deepEqual(hydrated.savedWardrobeViews, [{
+    id: hydrated.savedWardrobeViews[0].id,
+    name: "Wishlist",
+    scope: "wardrobe",
+    searchQuery: "coat",
+    filters: {
+      brand: [],
+      brandExcluded: [],
+      type: [],
+      typeExcluded: [],
+      garmentType: [],
+      garmentTypeExcluded: [],
+      color: [],
+      colorExcluded: [],
+      style: [],
+      styleExcluded: [],
+      climate: [],
+      climateExcluded: [],
+      laundry: "",
+      weight: [],
+      weightExcluded: [],
+      status: ["Wishlist"],
+      statusExcluded: [],
+      collections: ["A/W"],
+      collectionsExcluded: [],
+      favorite: ""
+    },
+    sort: "oldest",
+    pinned: true,
+    createdAt: "",
+    updatedAt: ""
+  }]);
   assert.deepEqual(hydrated.windowState, {
     outfitEditor: { width: 396 },
     wardrobeEditor: { width: 396 },

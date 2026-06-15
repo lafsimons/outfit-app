@@ -8,6 +8,7 @@ import {
   normalizeRecentOutfits
 } from "./generation.js";
 import { normalizeFitpics } from "./fitpics.js";
+import { normalizeSavedWardrobeViews } from "./savedWardrobeViews.js";
 import { normalizeWardrobeFilters, normalizeWardrobeSort } from "./wardrobeLibrary.js";
 
 const MIN_EDITOR_WIDTH = 344;
@@ -185,6 +186,7 @@ export function normalizeHydratedAppState(
     fitpics: normalizeFitpics(appStateLike?.fitpics),
     wardrobeFilters: normalizeWardrobeFilters(appStateLike?.wardrobeFilters),
     wardrobeSort: normalizeWardrobeSort(appStateLike?.wardrobeSort),
+    savedWardrobeViews: normalizeSavedWardrobeViews(appStateLike?.savedWardrobeViews),
     windowState: normalizeWindowState(appStateLike?.windowState)
   };
 }
