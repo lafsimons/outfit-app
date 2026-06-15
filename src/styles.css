@@ -486,6 +486,11 @@ button:disabled {
   border-top: 1px solid var(--border-soft);
 }
 
+.controls-group-top + .controls-group {
+  padding-top: 0;
+  border-top: 0;
+}
+
 .controls-section-heading {
   color: var(--muted);
   font-size: 0.64rem;
@@ -582,14 +587,38 @@ button:disabled {
 }
 
 .controls-action-icon {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted-strong);
+  transition: color 120ms ease, opacity 120ms ease, transform 120ms ease;
+}
+
+.controls-action-icon.is-active {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text);
 }
 
 .controls-action-icon:hover,
 .controls-action-icon:focus-visible {
   transform: none;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--text);
+}
+
+.controls-action-icon:active {
+  transform: scale(0.94);
+  color: var(--text);
 }
 
 .controls-action-icon svg {
@@ -767,6 +796,12 @@ button:disabled {
 .controls-window .controls-setting-row.is-active {
   background: transparent;
   border-color: var(--border-soft);
+  color: var(--text);
+}
+
+.controls-window .controls-action-icon.is-active {
+  background: transparent;
+  border-color: transparent;
   color: var(--text);
 }
 

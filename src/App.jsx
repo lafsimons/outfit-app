@@ -1877,7 +1877,7 @@ async function fetchWeatherForSavedLocation(settings) {
 }
 
 export default function App() {
-  function SlotActionIcon({ kind, locked: isLocked = false }) {
+  function SlotActionIcon({ kind, locked: isLocked = false, active = false }) {
     if (kind === "lock") {
       return isLocked ? (
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -1928,7 +1928,7 @@ export default function App() {
     if (kind === "favorite") {
       return (
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <path d="M8 12.7 3.85 8.63a2.55 2.55 0 0 1 0-3.68 2.62 2.62 0 0 1 3.7 0L8 5.4l.45-.45a2.62 2.62 0 0 1 3.7 0 2.55 2.55 0 0 1 0 3.68Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M8 12.7 3.85 8.63a2.55 2.55 0 0 1 0-3.68 2.62 2.62 0 0 1 3.7 0L8 5.4l.45-.45a2.62 2.62 0 0 1 3.7 0 2.55 2.55 0 0 1 0 3.68Z" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     }
@@ -1936,7 +1936,7 @@ export default function App() {
     if (kind === "save") {
       return (
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <path d="M4.25 2.75h7.5v10.5L8 10.35l-3.75 2.9Z" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M4.25 2.75h7.5v10.5L8 10.35l-3.75 2.9Z" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       );
     }
@@ -10470,47 +10470,43 @@ export default function App() {
                       <span>Mode</span>
                       <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
                     </button>
+                    <div className="controls-actions-row" aria-label="Outfit actions">
+                      <button
+                        type="button"
+                        className={`controls-action-icon ${isCurrentOutfitLiked ? "is-active" : ""}`}
+                        onClick={toggleCurrentOutfitLike}
+                        aria-label={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                        title={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
+                      >
+                        <SlotActionIcon kind="favorite" active={isCurrentOutfitLiked} />
+                      </button>
+                      <button
+                        type="button"
+                        className={`controls-action-icon ${isCurrentOutfitSaved ? "is-active" : ""}`}
+                        onClick={saveCurrentOutfit}
+                        aria-label={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                        title={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
+                      >
+                        <SlotActionIcon kind="save" active={isCurrentOutfitSaved} />
+                      </button>
+                      <button
+                        type="button"
+                        className="controls-action-icon"
+                        onClick={handleExportOutfitImage}
+                        aria-label="Export outfit image"
+                        title="Export outfit image"
+                      >
+                        <SlotActionIcon kind="export" />
+                      </button>
+                      {hasLockedOutfitSlots ? (
+                        <button type="button" className="ghost-button controls-utility-button" onClick={unlockAllOutfitSlots}>
+                          Unlock all
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ) : null}
               </div>
-            </div>
-
-            <div className="controls-group controls-group-bottom">
-              <div className="controls-section-heading">Actions</div>
-              <div className="controls-actions-row" aria-label="Outfit actions">
-                <button
-                  type="button"
-                  className={`ghost-button slot-action-icon-button controls-action-icon ${isCurrentOutfitLiked ? "is-active" : ""}`}
-                  onClick={toggleCurrentOutfitLike}
-                  aria-label={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
-                  title={isCurrentOutfitLiked ? "Liked outfit" : "Like outfit"}
-                >
-                  <SlotActionIcon kind="favorite" />
-                </button>
-                <button
-                  type="button"
-                  className={`ghost-button slot-action-icon-button controls-action-icon ${isCurrentOutfitSaved ? "is-active" : ""}`}
-                  onClick={saveCurrentOutfit}
-                  aria-label={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
-                  title={isCurrentOutfitSaved ? "Saved outfit" : "Save outfit"}
-                >
-                  <SlotActionIcon kind="save" />
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button slot-action-icon-button controls-action-icon"
-                  onClick={handleExportOutfitImage}
-                  aria-label="Export outfit image"
-                  title="Export outfit image"
-                >
-                  <SlotActionIcon kind="export" />
-                </button>
-              </div>
-              {hasLockedOutfitSlots ? (
-                <button type="button" className="ghost-button controls-utility-button" onClick={unlockAllOutfitSlots}>
-                  Unlock all
-                </button>
-              ) : null}
             </div>
 
             <div className="controls-group">
