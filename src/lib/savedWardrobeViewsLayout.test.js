@@ -47,3 +47,17 @@ test("controls panel uses compact generation rows and icon utilities instead of 
   assert.match(stylesSource, /\.controls-actions-row\s*\{/);
   assert.match(stylesSource, /\.controls-action-icon\s*\{/);
 });
+
+test("controls panel tucks generated metadata and developer utilities behind an advanced row", () => {
+  assert.match(appSource, /aria-label="Advanced controls"/);
+  assert.match(appSource, /className=\{`controls-advanced-toggle \$\{controlsAdvancedOpen \? "is-active" : ""\}`\}/);
+  assert.match(appSource, /<span>Style<\/span>[\s\S]*<span>\{currentOutfitStyleChip\}<\/span>/);
+  assert.match(appSource, /<span>Climate<\/span>[\s\S]*<span>\{currentOutfitClimateChip\}<\/span>/);
+  assert.match(appSource, /<span>Generate Count<\/span>[\s\S]*<span>\{generateCount\}<\/span>/);
+  assert.match(appSource, /className=\{`ghost-button controls-advanced-action \$\{outfitDebugOpen \? "is-active" : ""\}`\}/);
+  assert.match(appSource, /showDebugPopout \? renderOutfitDebugPanel\("outfit-debug-popout"\) : null/);
+  assert.doesNotMatch(appSource, /controls-group-generate-count/);
+  assert.match(stylesSource, /\.controls-advanced-toggle\s*\{/);
+  assert.match(stylesSource, /\.controls-metadata-row\s*\{/);
+  assert.match(stylesSource, /\.controls-advanced-actions-row\s*\{/);
+});

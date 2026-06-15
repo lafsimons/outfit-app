@@ -2099,6 +2099,7 @@ export default function App() {
   const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
   const [outfitFiltersAdvancedOpen, setOutfitFiltersAdvancedOpen] = useState(false);
+  const [controlsAdvancedOpen, setControlsAdvancedOpen] = useState(false);
   const [outfitFilterSectionsOpen, setOutfitFilterSectionsOpen] = useState(defaultOutfitFilterSectionsOpen);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
   const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
@@ -10437,18 +10438,6 @@ export default function App() {
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">
-            <div className="controls-window-header">
-              <p className="eyebrow">Current outfit</p>
-              <button
-                type="button"
-                className="controls-hide-button"
-                onClick={() => setControlsOpen(false)}
-                aria-label="Hide controls"
-              >
-                ×
-              </button>
-            </div>
-
             <div className="controls-group controls-group-top">
               <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
                 <button
@@ -10719,36 +10708,54 @@ export default function App() {
                   </div>
                 ) : null}
               </div>
-            </div>
 
-            <div className="controls-group">
-              <div ref={outfitDebugRef} className="outfit-feedback-panel">
-                <div className="outfit-feedback-header">
-                  <div className="outfit-feedback-chips" aria-label="Outfit reasons">
-                    <span className="active-filter-chip">{currentOutfitStyleChip}</span>
-                    <span className="active-filter-chip">{currentOutfitClimateChip}</span>
+              <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
+                <button
+                  type="button"
+                  className={`controls-advanced-toggle ${controlsAdvancedOpen ? "is-active" : ""}`}
+                  onClick={() => setControlsAdvancedOpen((current) => !current)}
+                  aria-expanded={controlsAdvancedOpen}
+                >
+                  <span>Advanced</span>
+                  <span aria-hidden="true">{controlsAdvancedOpen ? "⌄" : "›"}</span>
+                </button>
+
+                {controlsAdvancedOpen ? (
+                  <div className="controls-advanced-panel">
+                    <div className="controls-metadata-row">
+                      <span>Style</span>
+                      <span>{currentOutfitStyleChip}</span>
+                    </div>
+                    <div className="controls-metadata-row">
+                      <span>Climate</span>
+                      <span>{currentOutfitClimateChip}</span>
+                    </div>
+                    <div className="controls-metadata-row">
+                      <span>Generate Count</span>
+                      <span>{generateCount}</span>
+                    </div>
+
+                    <div ref={outfitDebugRef} className="outfit-feedback-panel controls-advanced-debug">
+                      <div className="controls-advanced-actions-row">
+                        <button
+                          type="button"
+                          className={`ghost-button controls-advanced-action ${outfitDebugOpen ? "is-active" : ""}`}
+                          onClick={() => setOutfitDebugOpen((current) => !current)}
+                          aria-expanded={outfitDebugOpen}
+                        >
+                          {outfitDebugOpen ? "Hide Debug" : "Debug"}
+                        </button>
+                        <button type="button" className="ghost-button controls-advanced-action" onClick={() => setGenerateCount(0)}>
+                          Reset
+                        </button>
+                      </div>
+
+                      {outfitDebugOpen && !showDebugPopout ? renderOutfitDebugPanel("is-inline") : null}
+                      {showDebugPopout ? renderOutfitDebugPanel("outfit-debug-popout") : null}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    className={`ghost-button outfit-debug-toggle ${outfitDebugOpen ? "is-active" : ""}`}
-                    onClick={() => setOutfitDebugOpen((current) => !current)}
-                    aria-expanded={outfitDebugOpen}
-                  >
-                    {outfitDebugOpen ? "Hide" : "Debug"}
-                  </button>
-                </div>
-
-                {outfitDebugOpen && !showDebugPopout ? renderOutfitDebugPanel("is-inline") : null}
-                {showDebugPopout ? renderOutfitDebugPanel("outfit-debug-popout") : null}
+                ) : null}
               </div>
-            </div>
-
-            <div className="controls-group controls-group-generate-count">
-              <span className="controls-generate-count-label">Generate count:</span>
-              <span className="controls-generate-count-value">{generateCount}</span>
-              <button type="button" className="ghost-button controls-generate-count-reset" onClick={() => setGenerateCount(0)}>
-                Reset
-              </button>
             </div>
           </div>
         ) : null}

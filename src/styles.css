@@ -652,6 +652,11 @@ button:disabled {
   gap: 8px;
 }
 
+.controls-advanced {
+  display: grid;
+  gap: 8px;
+}
+
 .controls-outfit-filters-toggle {
   width: 100%;
   display: flex;
@@ -688,10 +693,67 @@ button:disabled {
   border-color: var(--controls-active);
 }
 
-.controls-group-generate-count {
+.controls-advanced-toggle {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.controls-advanced-toggle span:last-child {
+  min-width: 0;
+  color: var(--muted-strong);
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: right;
+}
+
+.controls-advanced-toggle.is-active {
+  border-color: var(--primary);
+}
+
+.controls-window .controls-advanced-toggle.is-active {
+  border-color: var(--controls-active);
+}
+
+.controls-advanced-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.controls-metadata-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  color: var(--text);
+  font-size: 0.74rem;
+}
+
+.controls-metadata-row span:last-child {
+  color: var(--muted-strong);
+  text-align: right;
+}
+
+.controls-advanced-debug {
+  gap: 8px;
+}
+
+.controls-advanced-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .controls-window .list-toggle.is-active,
@@ -717,7 +779,8 @@ button:disabled {
 .controls-window .ghost-button,
 .controls-window .controls-weather-toggle,
  .controls-window .controls-outfit-filters-toggle,
- .controls-window .controls-generation-settings-toggle {
+ .controls-window .controls-generation-settings-toggle,
+ .controls-window .controls-advanced-toggle {
   padding-top: 4px;
   padding-bottom: 4px;
 }
@@ -746,27 +809,9 @@ button:disabled {
   font-size: 0.68rem;
 }
 
-.controls-generate-count-label {
-  min-width: 0;
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  font-weight: 600;
-}
-
-.controls-generate-count-value {
-  min-width: 1.5rem;
-  padding: 4px 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  background: var(--surface-solid);
-  font-size: 0.74rem;
-  font-weight: 600;
-  text-align: center;
-}
-
-.controls-generate-count-reset {
-  margin-left: auto;
+.controls-advanced-action {
+  min-height: 28px;
+  font-size: 0.68rem;
 }
 
 .workspace-tabs {
