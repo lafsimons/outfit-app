@@ -5288,11 +5288,11 @@ button:disabled {
 
   .active-panel-overlay.is-wardrobe-panel {
     top: 8px;
-    bottom: auto;
-    height: calc(100dvh - 94px - env(safe-area-inset-bottom));
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    height: auto;
     width: calc(100vw - 8px);
     min-height: 0;
-    padding: 8px 0 16px;
+    padding: 8px 0 8px;
     border: none;
     background: var(--bg);
     backdrop-filter: none;
@@ -5451,8 +5451,8 @@ button:disabled {
     padding-right: 0;
     padding-left: 10px;
     padding-right: 10px;
-    padding-bottom: 16px;
-    scroll-padding-bottom: 24px;
+    padding-bottom: 10px;
+    scroll-padding-bottom: 16px;
   }
 
   .wardrobe-inline-utilities {
