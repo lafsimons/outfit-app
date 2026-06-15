@@ -5,6 +5,12 @@ import {
 } from "./wardrobeLibrary.js";
 
 export const emptySavedWardrobeViews = [];
+export const savedWardrobeViewScope = "wardrobe";
+
+function normalizeTimestampLike(value) {
+  const timestamp = typeof value === "string" ? value : "";
+  return Number.isFinite(Date.parse(timestamp)) ? timestamp : "";
+}
 
 function normalizeWardrobeSearch(value) {
   return typeof value === "string" ? value : "";
@@ -31,13 +37,21 @@ function normalizeSavedWardrobeViewPinned(value) {
   return Boolean(value);
 }
 
+function normalizeSavedWardrobeViewScope(value) {
+  return value === savedWardrobeViewScope ? value : savedWardrobeViewScope;
+}
+
+function getSavedWardrobeViewTimestamp(value = new Date().toISOString()) {
+  return normalizeTimestampLike(value) || new Date().toISOString();
+}
+
 function sortSavedWardrobeViews(views) {
   return [...views].sort((left, right) => {
     if (left.pinned !== right.pinned) {
       return Number(Boolean(right.pinned)) - Number(Boolean(left.pinned));
     }
 
-    return 0;
+    return left.name.localeCompare(right.name);
   });
 }
 
@@ -49,10 +63,13 @@ export function normalizeSavedWardrobeView(view, index = 0) {
   return {
     id: typeof view.id === "string" && view.id.trim() ? view.id.trim() : createSavedWardrobeViewId(),
     name: normalizeSavedWardrobeViewName(view.name, index),
+    scope: normalizeSavedWardrobeViewScope(view.scope),
     searchQuery: normalizeWardrobeSearch(view.searchQuery ?? view.wardrobeSearch),
     filters: normalizeWardrobeFilters(view.filters ?? view.wardrobeFilters),
     sort: normalizeWardrobeSort(view.sort ?? view.wardrobeSort),
-    pinned: normalizeSavedWardrobeViewPinned(view.pinned)
+    pinned: normalizeSavedWardrobeViewPinned(view.pinned),
+    createdAt: normalizeTimestampLike(view.createdAt),
+    updatedAt: normalizeTimestampLike(view.updatedAt)
   };
 }
 
@@ -121,6 +138,7 @@ export function upsertSavedWardrobeView(savedViews, name, currentState, options 
   const normalizedSavedViews = normalizeSavedWardrobeViews(savedViews);
   const normalizedName = normalizeSavedWardrobeViewName(name);
   const targetId = typeof options.targetId === "string" ? options.targetId.trim() : "";
+  const timestamp = getSavedWardrobeViewTimestamp(options.updatedAt);
   const conflictingView = normalizedSavedViews.find(
     (view) => normalizeSavedWardrobeViewNameKey(view.name) === normalizeSavedWardrobeViewNameKey(normalizedName) && view.id !== targetId
   ) ?? null;
@@ -137,7 +155,10 @@ export function upsertSavedWardrobeView(savedViews, name, currentState, options 
   const nextSavedView = {
     id: targetId || conflictingView?.id || createSavedWardrobeViewId(),
     name: normalizedName,
+    scope: savedWardrobeViewScope,
     pinned: normalizeSavedWardrobeViewPinned(options.pinned ?? targetView?.pinned ?? conflictingView?.pinned),
+    createdAt: targetView?.createdAt || conflictingView?.createdAt || timestamp,
+    updatedAt: timestamp,
     ...createSavedWardrobeViewSnapshot(currentState)
   };
   const nextSavedViews = normalizedSavedViews.filter(
@@ -194,6 +215,7 @@ export function deleteSavedWardrobeView(savedViews, id) {
 
 export function togglePinnedSavedWardrobeView(savedViews, id) {
   const normalizedId = typeof id === "string" ? id.trim() : "";
+  const timestamp = getSavedWardrobeViewTimestamp();
 
   return normalizeSavedWardrobeViews(
     normalizeSavedWardrobeViews(savedViews)
@@ -201,7 +223,8 @@ export function togglePinnedSavedWardrobeView(savedViews, id) {
       view.id === normalizedId
         ? {
             ...view,
-            pinned: !view.pinned
+            pinned: !view.pinned,
+            updatedAt: timestamp
           }
         : view
       ))

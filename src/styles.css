@@ -1956,59 +1956,106 @@ button:disabled {
 }
 
 .wardrobe-saved-views-group {
-  gap: 10px;
+  gap: 6px;
 }
 
 .wardrobe-filter-group-toggle-static {
   cursor: default;
+  align-items: center;
 }
 
 .saved-wardrobe-view-save-button {
   margin-left: auto;
-  padding-block: 5px;
+  padding: 2px 0;
+  font-size: 0.72rem;
 }
 
 .wardrobe-saved-views-list {
   display: grid;
-  gap: 8px;
+  gap: 2px;
 }
 
 .saved-wardrobe-view-row {
   display: grid;
-  gap: 6px;
-  padding: 8px;
-  border: 1px solid var(--border-soft);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
-  background: var(--surface-solid);
+  background: transparent;
+  transition: background 140ms ease, border-color 140ms ease;
 }
 
 .saved-wardrobe-view-row.is-current {
-  border-color: var(--border);
   background: var(--soft);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.saved-wardrobe-view-row:hover,
+.saved-wardrobe-view-row:focus-within {
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .saved-wardrobe-view-apply {
-  display: grid;
-  justify-items: start;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
   padding: 0;
   text-align: left;
 }
 
-.saved-wardrobe-view-meta {
-  color: var(--muted);
-  font-size: 0.7rem;
+.saved-wardrobe-view-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.76rem;
+}
+
+.saved-wardrobe-view-label span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-wardrobe-view-pin {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
 }
 
 .saved-wardrobe-view-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.saved-wardrobe-view-row:hover .saved-wardrobe-view-actions,
+.saved-wardrobe-view-row:focus-within .saved-wardrobe-view-actions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .saved-wardrobe-view-action {
-  padding: 4px 0;
-  font-size: 0.74rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.saved-wardrobe-view-action:hover,
+.saved-wardrobe-view-action:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
 }
 
 .wardrobe-filter-search {

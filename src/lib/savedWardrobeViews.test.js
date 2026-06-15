@@ -18,6 +18,7 @@ test("normalizeSavedWardrobeViews handles legacy aliases, dedupes ids, preserves
     {
       id: "view-1",
       name: " Wishlist ",
+      scope: "bad-scope",
       wardrobeSearch: "coat",
       wardrobeFilters: {
         status: ["Wishlist", "Wishlist"],
@@ -29,11 +30,29 @@ test("normalizeSavedWardrobeViews handles legacy aliases, dedupes ids, preserves
         favorite: "yes"
       },
       wardrobeSort: "oldest",
-      pinned: true
+      pinned: true,
+      createdAt: "2024-06-01T00:00:00.000Z",
+      updatedAt: "2024-06-02T00:00:00.000Z"
     },
     {
       id: "view-1",
-      name: "",
+      name: " Alpha ",
+      searchQuery: "",
+      filters: emptyWardrobeFilters,
+      sort: "newest",
+      pinned: true
+    },
+    {
+      id: "view-3",
+      name: "Summer",
+      searchQuery: "",
+      filters: emptyWardrobeFilters,
+      sort: "newest",
+      pinned: false
+    },
+    {
+      id: "view-4",
+      name: "Incoming",
       searchQuery: "",
       filters: emptyWardrobeFilters,
       sort: "newest",
@@ -41,13 +60,19 @@ test("normalizeSavedWardrobeViews handles legacy aliases, dedupes ids, preserves
     }
   ]);
 
-  assert.equal(normalized.length, 2);
-  assert.equal(normalized[0].name, "Wishlist");
+  assert.equal(normalized.length, 4);
+  assert.equal(normalized[0].name, "Alpha");
+  assert.equal(normalized[1].name, "Wishlist");
+  assert.equal(normalized[2].name, "Incoming");
+  assert.equal(normalized[3].name, "Summer");
+  assert.equal(normalized[1].scope, "wardrobe");
   assert.equal(normalized[0].pinned, true);
-  assert.deepEqual(normalized[0].filters.status, ["Wishlist"]);
-  assert.deepEqual(normalized[0].filters.statusExcluded, ["Sold"]);
-  assert.deepEqual(normalized[0].filters.collectionsExcluded, ["Old collection"]);
-  assert.deepEqual(normalized[0].filters.typeExcluded, ["Loafer"]);
+  assert.deepEqual(normalized[1].filters.status, ["Wishlist"]);
+  assert.deepEqual(normalized[1].filters.statusExcluded, ["Sold"]);
+  assert.deepEqual(normalized[1].filters.collectionsExcluded, ["Old collection"]);
+  assert.deepEqual(normalized[1].filters.typeExcluded, ["Loafer"]);
+  assert.equal(normalized[1].createdAt, "2024-06-01T00:00:00.000Z");
+  assert.equal(normalized[1].updatedAt, "2024-06-02T00:00:00.000Z");
   assert.notEqual(normalized[0].id, normalized[1].id);
 });
 
@@ -79,13 +104,16 @@ test("matchesCurrentWardrobeView compares normalized current state by replacemen
   const savedView = {
     id: "view-1",
     name: "Wishlist",
+    scope: "wardrobe",
     searchQuery: "coat",
     filters: {
       ...emptyWardrobeFilters,
       status: ["Wishlist"]
     },
     sort: "oldest",
-    pinned: false
+    pinned: false,
+    createdAt: "2024-06-01T00:00:00.000Z",
+    updatedAt: "2024-06-01T00:00:00.000Z"
   };
 
   assert.equal(matchesCurrentWardrobeView(savedView, {
@@ -110,6 +138,9 @@ test("upsertSavedWardrobeView reports duplicate-name conflicts unless replacemen
 
   assert.equal(firstResult.savedViews.length, 1);
   assert.equal(firstResult.savedViews[0].name, "Wishlist");
+  assert.equal(firstResult.savedViews[0].scope, "wardrobe");
+  assert.equal(Boolean(firstResult.savedViews[0].createdAt), true);
+  assert.equal(Boolean(firstResult.savedViews[0].updatedAt), true);
 
   const conflictResult = upsertSavedWardrobeView(firstResult.savedViews, " wishlist ", {
     wardrobeSearch: "jacket",
@@ -132,6 +163,7 @@ test("upsertSavedWardrobeView reports duplicate-name conflicts unless replacemen
   assert.equal(replaceResult.savedViews.length, 1);
   assert.equal(replaceResult.savedViews[0].searchQuery, "jacket");
   assert.deepEqual(replaceResult.savedViews[0].filters.status, ["Wardrobe"]);
+  assert.equal(replaceResult.savedViews[0].createdAt, firstResult.savedViews[0].createdAt);
 });
 
 test("rename delete and pin preserve view list behavior", () => {
@@ -145,7 +177,10 @@ test("rename delete and pin preserve view list behavior", () => {
         status: ["Wishlist"]
       },
       sort: "newest",
-      pinned: false
+      pinned: false,
+      scope: "wardrobe",
+      createdAt: "2024-06-01T00:00:00.000Z",
+      updatedAt: "2024-06-01T00:00:00.000Z"
     },
     {
       id: "view-2",
@@ -156,27 +191,34 @@ test("rename delete and pin preserve view list behavior", () => {
         status: ["Wardrobe"]
       },
       sort: "newest",
-      pinned: false
+      pinned: false,
+      scope: "wardrobe",
+      createdAt: "2024-06-01T00:00:00.000Z",
+      updatedAt: "2024-06-01T00:00:00.000Z"
     }
   ];
 
   const renamed = renameSavedWardrobeView(sourceViews, "view-1", "Wishlist edited");
-  assert.equal(renamed.savedViews[0].name, "Wishlist edited");
+  assert.equal(renamed.savedViews.find((view) => view.id === "view-1")?.name, "Wishlist edited");
 
   const pinned = togglePinnedSavedWardrobeView(renamed.savedViews, "view-2");
   assert.equal(pinned[0].id, "view-2");
   assert.equal(pinned[0].pinned, true);
+  assert.equal(pinned[0].updatedAt > "2024-06-01T00:00:00.000Z", true);
 
   const deleted = deleteSavedWardrobeView(pinned, "view-1");
   assert.deepEqual(deleted, [{
     id: "view-2",
     name: "Current Wardrobe",
+    scope: "wardrobe",
     searchQuery: "",
     filters: {
       ...emptyWardrobeFilters,
       status: ["Wardrobe"]
     },
     sort: "newest",
-    pinned: true
+    pinned: true,
+    createdAt: "2024-06-01T00:00:00.000Z",
+    updatedAt: pinned[0].updatedAt
   }]);
 });

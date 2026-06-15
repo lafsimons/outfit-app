@@ -570,6 +570,7 @@ test("prepareBackupImport preserves and normalizes saved wardrobe views in app-s
     {
       id: prepared.appState.savedWardrobeViews[0].id,
       name: "Wishlist",
+      scope: "wardrobe",
       searchQuery: "coat",
       filters: {
         brand: [],
@@ -594,7 +595,9 @@ test("prepareBackupImport preserves and normalizes saved wardrobe views in app-s
         favorite: ""
       },
       sort: "oldest",
-      pinned: true
+      pinned: true,
+      createdAt: "",
+      updatedAt: ""
     }
   ]);
   assert.deepEqual(prepared.backup.appState.savedWardrobeViews, prepared.appState.savedWardrobeViews);

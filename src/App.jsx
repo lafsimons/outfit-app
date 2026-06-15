@@ -10699,16 +10699,13 @@ export default function App() {
                           <div className="wardrobe-filter-group-toggle wardrobe-filter-group-toggle-static">
                             <span className="wardrobe-filter-group-copy">
                               <strong>Views</strong>
-                              {matchingSavedWardrobeViewId ? (
-                                <span className="wardrobe-filter-group-count">Current</span>
-                              ) : null}
                             </span>
                             <button
                               type="button"
                               className="ghost-button saved-wardrobe-view-save-button"
                               onClick={handleSaveCurrentWardrobeView}
                             >
-                              Save current view
+                              + Save
                             </button>
                           </div>
                           <div className="wardrobe-filter-options wardrobe-saved-views-list">
@@ -10722,10 +10719,9 @@ export default function App() {
                                     className="ghost-button saved-wardrobe-view-apply"
                                     onClick={(event) => applyWardrobeSavedView(view, event)}
                                   >
-                                    <span>{view.name}</span>
-                                    <span className="saved-wardrobe-view-meta">
-                                      {view.pinned ? "Pinned" : ""}
-                                      {isCurrentView ? (view.pinned ? " · Current" : "Current") : ""}
+                                    <span className="saved-wardrobe-view-label">
+                                      {view.pinned ? <span className="saved-wardrobe-view-pin" aria-hidden="true">📌</span> : null}
+                                      <span>{view.name}</span>
                                     </span>
                                   </button>
                                   <div className="saved-wardrobe-view-actions">
@@ -10733,22 +10729,28 @@ export default function App() {
                                       type="button"
                                       className="ghost-button saved-wardrobe-view-action"
                                       onClick={() => handleTogglePinnedSavedWardrobeView(view)}
+                                      aria-label={view.pinned ? `Unpin ${view.name}` : `Pin ${view.name}`}
+                                      title={view.pinned ? "Unpin" : "Pin"}
                                     >
-                                      {view.pinned ? "Unpin" : "Pin"}
+                                      {view.pinned ? "📍" : "📌"}
                                     </button>
                                     <button
                                       type="button"
                                       className="ghost-button saved-wardrobe-view-action"
                                       onClick={() => handleRenameSavedWardrobeView(view)}
+                                      aria-label={`Rename ${view.name}`}
+                                      title="Rename"
                                     >
-                                      Rename
+                                      ✎
                                     </button>
                                     <button
                                       type="button"
                                       className="ghost-button saved-wardrobe-view-action danger"
                                       onClick={() => handleDeleteSavedWardrobeView(view)}
+                                      aria-label={`Delete ${view.name}`}
+                                      title="Delete"
                                     >
-                                      Delete
+                                      ×
                                     </button>
                                   </div>
                                 </div>

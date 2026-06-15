@@ -372,6 +372,7 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
   assert.deepEqual(hydrated.savedWardrobeViews, [{
     id: hydrated.savedWardrobeViews[0].id,
     name: "Wishlist",
+    scope: "wardrobe",
     searchQuery: "coat",
     filters: {
       brand: [],
@@ -396,7 +397,9 @@ test("hydrated app-state normalizes fields through existing helpers", () => {
       favorite: ""
     },
     sort: "oldest",
-    pinned: true
+    pinned: true,
+    createdAt: "",
+    updatedAt: ""
   }]);
   assert.deepEqual(hydrated.windowState, {
     outfitEditor: { width: 396 },
