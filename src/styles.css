@@ -5464,23 +5464,25 @@ button:disabled {
 
   .wardrobe-toolbar {
     align-items: stretch;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) {
-    gap: 6px;
+    gap: 4px;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-toolbar-leading {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 96px) auto;
-    gap: 6px;
-    width: 100%;
+    grid-template-columns: minmax(88px, 1fr) 56px 88px 82px;
+    gap: 4px;
+    width: auto;
     flex: none;
+    min-width: 0;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-search-field {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-search-field,
@@ -5501,8 +5503,8 @@ button:disabled {
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 40px;
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 32px;
+    gap: 4px;
     align-items: stretch;
     min-width: 0;
   }
@@ -5513,12 +5515,12 @@ button:disabled {
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-manage-anchor > button,
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions > button {
     min-height: 32px;
-    padding: 5px 8px;
-    font-size: 0.68rem;
+    padding: 5px 6px;
+    font-size: 0.64rem;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-search-field input {
-    font-size: 0.72rem;
+    font-size: 0.68rem;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-sort-field select {
@@ -5530,17 +5532,18 @@ button:disabled {
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-primary-actions > .primary-button {
     padding-left: 0;
     padding-right: 0;
-    font-size: 0.9rem;
+    font-size: 0.82rem;
     line-height: 1;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-toolbar-context {
-    margin-left: 0;
-    width: 100%;
-    justify-content: space-between;
+    margin-left: auto;
+    width: auto;
+    justify-content: flex-end;
     align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+    gap: 4px;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-results-count {
@@ -5548,6 +5551,7 @@ button:disabled {
     min-width: 0;
     align-self: center;
     white-space: nowrap;
+    font-size: 0.62rem;
   }
 
   .wardrobe-panel .wardrobe-toolbar:not(.wardrobe-toolbar-dashboard) .wardrobe-selection-summary,
@@ -5718,10 +5722,10 @@ button:disabled {
     position: fixed;
     left: 10px;
     right: 10px;
-    top: 16px;
+    top: calc(40px + env(safe-area-inset-top));
     z-index: 45;
     display: none;
-    max-height: calc(100vh - 112px - env(safe-area-inset-bottom));
+    max-height: calc(100dvh - 136px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     overflow: hidden;
     padding: 14px;
     border: 1px solid var(--border);

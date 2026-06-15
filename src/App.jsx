@@ -10786,7 +10786,7 @@ export default function App() {
                                 }
                               }}
                               onChange={(event) => setWardrobeSearch(event.target.value)}
-                              placeholder="Search wardrobe"
+                              placeholder={isMobileViewport ? "Search" : "Search wardrobe"}
                             />
                           </div>
                   <div className={`wardrobe-filter-anchor ${wardrobeFiltersOpen ? "is-open" : ""}`}>
@@ -11064,7 +11064,7 @@ export default function App() {
                         aria-expanded={wardrobeManageOpen}
                         aria-label="Manage wardrobe"
                       >
-                        {isMobileViewport ? "More" : "Manage"}
+                        Manage
                       </button>
                       <div
                         className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`}
@@ -11118,8 +11118,12 @@ export default function App() {
                   </div>
                 </div>
                 <div className="wardrobe-toolbar-context">
-                  <span className="wardrobe-results-count">
-                    {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
+                  <span
+                    className="wardrobe-results-count"
+                    aria-label={`${visibleWardrobeItems.length} item${visibleWardrobeItems.length === 1 ? "" : "s"}`}
+                  >
+                    {visibleWardrobeItems.length}
+                    {isMobileViewport ? "" : ` item${visibleWardrobeItems.length === 1 ? "" : "s"}`}
                   </span>
                   {hasWardrobeSelection ? (
                     <WardrobeSelectionBar
