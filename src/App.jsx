@@ -2017,6 +2017,8 @@ export default function App() {
   const [savedOutfitSort, setSavedOutfitSort] = useState("updatedNewest");
   const [savedOutfitFavoritesOnly, setSavedOutfitFavoritesOnly] = useState(false);
   const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
+  const [savedOutfitFiltersOpen, setSavedOutfitFiltersOpen] = useState(false);
+  const [savedOutfitManageOpen, setSavedOutfitManageOpen] = useState(false);
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [activeSlotActionsSlot, setActiveSlotActionsSlot] = useState(null);
@@ -2052,6 +2054,8 @@ export default function App() {
   const [fitpicFilterSearch, setFitpicFilterSearch] = useState("");
   const [fitpicFilterSectionsOpen, setFitpicFilterSectionsOpen] = useState(defaultFitpicFilterSectionsOpen);
   const [fitpicFilters, setFitpicFilters] = useState(emptyFitpicFilters);
+  const [fitpicManageOpen, setFitpicManageOpen] = useState(false);
+  const [fitpicAddOpen, setFitpicAddOpen] = useState(false);
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
@@ -7259,6 +7263,10 @@ export default function App() {
     setFitpicFilterSearch("");
   }
 
+  function dismissSavedOutfitFilters() {
+    setSavedOutfitFiltersOpen(false);
+  }
+
   function dismissDashboardFilters() {
     setDashboardFiltersOpen(false);
     setDashboardFilterSearch("");
@@ -7329,6 +7337,8 @@ export default function App() {
     }
 
     closeUtilityWindows();
+    setFitpicManageOpen(false);
+    setFitpicAddOpen(false);
     setFitpicFiltersOpen((current) => {
       const nextOpen = !current;
 
@@ -7371,6 +7381,56 @@ export default function App() {
     }
 
     dismissFitpicFilters();
+  }
+
+  function toggleSavedOutfitFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    setSavedOutfitManageOpen(false);
+    setSavedOutfitFiltersOpen((current) => !current);
+  }
+
+  function closeSavedOutfitFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    dismissSavedOutfitFilters();
+  }
+
+  function toggleSavedOutfitManage(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissSavedOutfitFilters();
+    setSavedOutfitManageOpen((current) => !current);
+  }
+
+  function toggleFitpicManage(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissFitpicFilters();
+    setFitpicAddOpen(false);
+    setFitpicManageOpen((current) => !current);
+  }
+
+  function toggleFitpicAdd(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissFitpicFilters();
+    setFitpicManageOpen(false);
+    setFitpicAddOpen((current) => !current);
   }
 
   function toggleWardrobeManage(event) {
@@ -7704,121 +7764,140 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className="saved-outfit-controls" aria-label="Saved outfit controls">
-              <div className="saved-outfit-controls-header">
-                <p className="saved-outfit-controls-count">
-                  {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
-                </p>
-                <div className="wardrobe-toolbar-context-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportSavedOutfitsCsv}
-                  >
-                    Export CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportSavedOutfitsJson}
-                  >
-                    Export JSON
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={resetSavedOutfitControls}
-                    disabled={!hasActiveSavedOutfitControls}
-                  >
-                    Clear filters
-                  </button>
+            <div className="wardrobe-toolbar saved-outfit-toolbar-base" aria-label="Saved outfit controls">
+              <div className="wardrobe-toolbar-leading saved-outfit-toolbar-leading">
+                <div className="wardrobe-search-field">
+                  <input
+                    type="search"
+                    value={savedOutfitSearch}
+                    onChange={(event) => setSavedOutfitSearch(event.target.value)}
+                    placeholder={isMobileViewport ? "Search saved" : "Search saved outfits"}
+                    aria-label="Search saved outfits"
+                  />
                 </div>
-              </div>
-              <label>
-                Search
-                <input
-                  type="search"
-                  value={savedOutfitSearch}
-                  onChange={(event) => setSavedOutfitSearch(event.target.value)}
-                  placeholder="Search saved outfits"
-                />
-              </label>
-              <label>
-                Sort
-                <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)}>
-                  <option value="updatedNewest">Updated newest</option>
-                  <option value="createdNewest">Created newest</option>
-                  <option value="titleAz">Title A-Z</option>
-                </select>
-              </label>
-              <label>
-                Tag
-                <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)}>
-                  <option value="">All tags</option>
-                  {savedOutfitTagFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="saved-outfit-controls-toggle">
-                <input
-                  type="checkbox"
-                  checked={savedOutfitFavoritesOnly}
-                  onChange={(event) => setSavedOutfitFavoritesOnly(event.target.checked)}
-                />
-                <span>Favorites only</span>
-              </label>
-            </div>
-            {hasSavedOutfitSelection ? (
-              <div className="wardrobe-toolbar saved-outfit-toolbar" aria-label="Saved outfit library actions">
-                <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
-                  <span className="wardrobe-results-count">
-                    {visibleSavedOutfits.length} saved outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="wardrobe-toolbar-context">
-                  <div className="wardrobe-selection-summary fitpic-selection-summary">
-                    <div className="wardrobe-selection-count wardrobe-selection-chip">
-                      <span>{selectedSavedOutfitCount} selected</span>
+                <div className={`wardrobe-filter-anchor ${savedOutfitFiltersOpen ? "is-open" : ""}`}>
+                  <button
+                    type="button"
+                    className={`secondary-button filter-button ${savedOutfitFiltersOpen || savedOutfitFavoritesOnly || Boolean(savedOutfitTagFilter) ? "is-active" : ""}`}
+                    onClick={toggleSavedOutfitFilters}
+                    aria-pressed={savedOutfitFiltersOpen}
+                    aria-expanded={savedOutfitFiltersOpen}
+                  >
+                    {savedOutfitFavoritesOnly || savedOutfitTagFilter ? "Filter (active)" : "Filter"}
+                  </button>
+                  <div className={`wardrobe-controls ${savedOutfitFiltersOpen ? "is-open" : ""}`} aria-label="Saved outfit filters">
+                    <div className="wardrobe-controls-body saved-outfit-filter-body">
+                      <section className="saved-outfit-filter-group">
+                        <label>
+                          <span>Tag</span>
+                          <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)} aria-label="Filter saved outfits by tag">
+                            <option value="">All tags</option>
+                            {savedOutfitTagFilterOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </section>
+                      <section className="saved-outfit-filter-group">
+                        <button
+                          type="button"
+                          className={`secondary-button filter-button saved-outfit-favorites-toggle ${savedOutfitFavoritesOnly ? "is-active" : ""}`}
+                          onClick={() => setSavedOutfitFavoritesOnly((current) => !current)}
+                          aria-pressed={savedOutfitFavoritesOnly}
+                        >
+                          Favorites
+                        </button>
+                      </section>
+                    </div>
+                    <div className="wardrobe-controls-footer">
                       <button
                         type="button"
-                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
-                        onMouseDown={preventMouseButtonFocus}
-                        onClick={clearSavedOutfitSelection}
-                        aria-label="Clear saved outfit selection"
+                        className="ghost-button"
+                        onClick={() => {
+                          setSavedOutfitFavoritesOnly(false);
+                          setSavedOutfitTagFilter("");
+                        }}
+                        disabled={!savedOutfitFavoritesOnly && !savedOutfitTagFilter}
                       >
-                        ×
+                        Clear filters
                       </button>
                     </div>
                   </div>
-                  <div className="wardrobe-toolbar-context-actions">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={editSelectedSavedOutfit}
-                      disabled={!isSingleSavedOutfitSelected}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className={`ghost-button ${areAllSelectedSavedOutfitsFavorite ? "is-active" : ""}`}
-                      onClick={toggleSelectedSavedOutfitFavorites}
-                    >
-                      {savedOutfitFavoriteActionLabel}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button danger"
-                      onClick={deleteSelectedSavedOutfits}
-                    >
-                      Delete
-                    </button>
-                  </div>
+                </div>
+                <div className="wardrobe-sort-field">
+                  <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)} aria-label="Sort saved outfits">
+                    <option value="updatedNewest">Updated newest</option>
+                    <option value="createdNewest">Created newest</option>
+                    <option value="titleAz">Title A-Z</option>
+                  </select>
                 </div>
               </div>
+              <div className="wardrobe-toolbar-context">
+                <span className="wardrobe-results-count">
+                  {visibleSavedOutfits.length} outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
+                </span>
+                <div className="wardrobe-manage-anchor">
+                  <button
+                    type="button"
+                    className={`secondary-button ${savedOutfitManageOpen ? "is-active" : ""}`}
+                    onClick={toggleSavedOutfitManage}
+                    aria-expanded={savedOutfitManageOpen}
+                    aria-label="Manage saved outfits"
+                  >
+                    Manage
+                  </button>
+                  <div
+                    className={`wardrobe-manage-window saved-outfit-manage-window ${savedOutfitManageOpen ? "is-open" : ""}`}
+                    aria-label="Saved outfit management"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div className="wardrobe-manage-actions">
+                      <button type="button" className="ghost-button" onClick={handleExportSavedOutfitsCsv}>
+                        Export CSV
+                      </button>
+                      <button type="button" className="ghost-button" onClick={handleExportSavedOutfitsJson}>
+                        Export JSON
+                      </button>
+                      <button type="button" className="ghost-button" onClick={resetSavedOutfitControls} disabled={!hasActiveSavedOutfitControls}>
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                {hasSavedOutfitSelection ? (
+                  <WardrobeSelectionBar
+                    inline
+                    selectedCount={selectedSavedOutfitCount}
+                    clearButtonLabel={isMobileViewport ? "Done" : null}
+                    separateClearButton={isMobileViewport}
+                    onEdit={editSelectedSavedOutfit}
+                    onClear={clearSavedOutfitSelection}
+                    onCloseEdit={cancelEditSavedOutfit}
+                    customMenuItems={[
+                      {
+                        label: savedOutfitFavoriteActionLabel,
+                        onClick: toggleSelectedSavedOutfitFavorites,
+                        isActive: areAllSelectedSavedOutfitsFavorite
+                      }
+                    ]}
+                    customDangerMenuItems={[
+                      {
+                        label: "Delete",
+                        onClick: deleteSelectedSavedOutfits
+                      }
+                    ]}
+                  />
+                ) : null}
+              </div>
+            </div>
+            {savedOutfitFiltersOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeSavedOutfitFilters} />
+            ) : null}
+            {savedOutfitManageOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setSavedOutfitManageOpen(false)} />
             ) : null}
             {hasActiveSavedOutfitControls ? (
               <div className="active-filter-summary saved-outfit-controls-summary" aria-label="Active saved outfit controls">
@@ -7974,61 +8053,58 @@ export default function App() {
   function renderFitpicsContent() {
     return (
       <section className="fitpics-content" aria-label="Fitpics">
-        <div
-          className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
-          onDragEnter={handleFitpicDragEnter}
-          onDragOver={handleFitpicDragOver}
-          onDragLeave={handleFitpicDragLeave}
-          onDrop={handleFitpicDrop}
-        >
-          <div className="fitpic-dropzone-copy">
-            <p className="eyebrow">Import fitpics</p>
-            {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
-          </div>
-          <div className="fitpic-dropzone-actions">
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => fitpicUploadInputRef.current?.click()}
-              disabled={fitpicImporting}
-            >
-              {fitpicImporting ? "Importing…" : "Choose images"}
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => fitpicGroupedUploadInputRef.current?.click()}
-              disabled={fitpicImporting}
-            >
-              {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
-            </button>
-          </div>
-          <input
-            ref={fitpicUploadInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="fitpic-file-input"
-            onChange={handleFitpicUpload}
-          />
-          <input
-            ref={fitpicGroupedUploadInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="fitpic-file-input"
-            onChange={handleGroupedFitpicUpload}
-          />
-        </div>
+        <input
+          ref={fitpicUploadInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="fitpic-file-input"
+          onChange={handleFitpicUpload}
+        />
+        <input
+          ref={fitpicGroupedUploadInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="fitpic-file-input"
+          onChange={handleGroupedFitpicUpload}
+        />
 
         {!fitpics.length ? (
-          <div className="editor-placeholder fitpics-empty-state">
-            <p>No fitpics yet.</p>
-            <p>Import outfit photos here to build an editable visual archive.</p>
+          <div
+            className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
+            onDragEnter={handleFitpicDragEnter}
+            onDragOver={handleFitpicDragOver}
+            onDragLeave={handleFitpicDragLeave}
+            onDrop={handleFitpicDrop}
+          >
+            <div className="fitpic-dropzone-copy">
+              <p className="eyebrow">Import fitpics</p>
+              <p>No fitpics yet.</p>
+              {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Import outfit photos here to build an editable visual archive.</p>}
+            </div>
+            <div className="fitpic-dropzone-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => fitpicUploadInputRef.current?.click()}
+                disabled={fitpicImporting}
+              >
+                {fitpicImporting ? "Importing…" : "Choose images"}
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => fitpicGroupedUploadInputRef.current?.click()}
+                disabled={fitpicImporting}
+              >
+                {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
+            <div className={`wardrobe-toolbar fitpic-toolbar ${hasFitpicSelection ? "wardrobe-toolbar-selection" : ""}`.trim()} aria-label="Fitpic library actions">
               <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
                 <div className="wardrobe-search-field">
                   <input
@@ -8267,80 +8343,121 @@ export default function App() {
                     <option value="titleAz">Title A-Z</option>
                   </select>
                 </div>
-              </div>
-                <span className="wardrobe-results-count">
-                  {visibleFitpics.length} of {fitpics.length} fitpics
-                </span>
-              <div className="wardrobe-toolbar-context">
-                <div className="wardrobe-toolbar-context-actions">
+                <div className="wardrobe-manage-anchor">
                   <button
                     type="button"
-                    className="ghost-button"
-                    onClick={openFitpicExportDialog}
+                    className={`secondary-button ${fitpicManageOpen ? "is-active" : ""}`}
+                    onClick={toggleFitpicManage}
+                    aria-expanded={fitpicManageOpen}
+                    aria-label="Manage fitpics"
                   >
-                    Export PNG
+                    Manage
                   </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportFitpicsCsv}
+                  <div
+                    className={`wardrobe-manage-window fitpic-manage-window ${fitpicManageOpen ? "is-open" : ""}`}
+                    aria-label="Fitpic management"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
                   >
-                    Export CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportFitpicsJson}
-                  >
-                    Export JSON
-                  </button>
+                    <div className="wardrobe-manage-actions">
+                      <button type="button" className="ghost-button" onClick={openFitpicExportDialog}>
+                        Export PNG
+                      </button>
+                      <button type="button" className="ghost-button" onClick={handleExportFitpicsCsv}>
+                        Export CSV
+                      </button>
+                      <button type="button" className="ghost-button" onClick={handleExportFitpicsJson}>
+                        Export JSON
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                {hasFitpicSelection ? (
-                  <>
-                    <div className="wardrobe-selection-summary fitpic-selection-summary">
-                      <div className="wardrobe-selection-count wardrobe-selection-chip">
-                        <span>{selectedFitpicCount} selected</span>
+                <div className="wardrobe-manage-anchor">
+                  <button
+                    type="button"
+                    className={`secondary-button ${fitpicAddOpen ? "is-active" : ""}`}
+                    onClick={toggleFitpicAdd}
+                    aria-expanded={fitpicAddOpen}
+                    aria-label="Add fitpics"
+                  >
+                    Add fitpics
+                  </button>
+                  <div
+                    className={`wardrobe-manage-window fitpic-add-window ${fitpicAddOpen ? "is-open" : ""}`}
+                    aria-label="Add fitpics"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div
+                      className={`fitpic-dropzone fitpic-add-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
+                      onDragEnter={handleFitpicDragEnter}
+                      onDragOver={handleFitpicDragOver}
+                      onDragLeave={handleFitpicDragLeave}
+                      onDrop={handleFitpicDrop}
+                    >
+                      <div className="fitpic-dropzone-copy">
+                        {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Drag and drop fitpics here</p>}
+                      </div>
+                      <div className="fitpic-dropzone-actions">
                         <button
                           type="button"
-                          className="wardrobe-selection-clear wardrobe-selection-chip-clear"
-                          onMouseDown={preventMouseButtonFocus}
-                          onClick={clearFitpicSelection}
-                          aria-label="Clear fitpic selection"
+                          className="primary-button"
+                          onClick={() => fitpicUploadInputRef.current?.click()}
+                          disabled={fitpicImporting}
                         >
-                          ×
+                          {fitpicImporting ? "Importing…" : "Choose images"}
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => fitpicGroupedUploadInputRef.current?.click()}
+                          disabled={fitpicImporting}
+                        >
+                          {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
                         </button>
                       </div>
                     </div>
-                    <div className="wardrobe-toolbar-context-actions">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={editSelectedFitpic}
-                        disabled={!isSingleFitpicSelected}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
-                        onClick={toggleSelectedFitpicFavorites}
-                      >
-                        {fitpicFavoriteActionLabel}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button danger"
-                        onClick={deleteSelectedFitpics}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
+                  </div>
+                </div>
+              </div>
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} fitpics
+                </span>
+              <div className="wardrobe-toolbar-context">
+                {hasFitpicSelection ? (
+                  <WardrobeSelectionBar
+                    inline
+                    selectedCount={selectedFitpicCount}
+                    clearButtonLabel={isMobileViewport ? "Done" : null}
+                    separateClearButton={isMobileViewport}
+                    onEdit={editSelectedFitpic}
+                    onClear={clearFitpicSelection}
+                    onCloseEdit={cancelEditFitpic}
+                    customMenuItems={[
+                      {
+                        label: fitpicFavoriteActionLabel,
+                        onClick: toggleSelectedFitpicFavorites,
+                        isActive: areAllSelectedFitpicsFavorite
+                      }
+                    ]}
+                    customDangerMenuItems={[
+                      {
+                        label: "Delete",
+                        onClick: deleteSelectedFitpics
+                      }
+                    ]}
+                  />
                 ) : null}
               </div>
             </div>
             {fitpicFiltersOpen ? (
               <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeFitpicFilters} />
+            ) : null}
+            {fitpicManageOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setFitpicManageOpen(false)} />
+            ) : null}
+            {fitpicAddOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setFitpicAddOpen(false)} />
             ) : null}
             {hasActiveFitpicFilters ? (
               <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic filters">

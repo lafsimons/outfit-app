@@ -3334,6 +3334,8 @@ button:disabled {
   display: inline-flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+  align-self: start;
 }
 
 .outfits-panel-tab {
@@ -3345,6 +3347,9 @@ button:disabled {
   font: inherit;
   cursor: pointer;
   transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  align-self: start;
+  min-height: 32px;
+  white-space: nowrap;
 }
 
 .outfits-panel-tab.is-active {
@@ -3433,6 +3438,16 @@ button:disabled {
   gap: 14px;
 }
 
+.outfits-panel .saved-outfit-toolbar-base,
+.outfits-panel .fitpic-toolbar {
+  position: sticky;
+  top: -14px;
+  z-index: 8;
+  margin-top: 0;
+  padding-bottom: 2px;
+  background: var(--surface);
+}
+
 .fitpic-controls,
 .saved-outfit-controls {
   display: grid;
@@ -3501,6 +3516,30 @@ button:disabled {
   align-items: center;
 }
 
+.saved-outfit-toolbar-base {
+  align-items: center;
+}
+
+.saved-outfit-toolbar-leading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.saved-outfit-toolbar-base .wardrobe-toolbar-context,
+.fitpic-toolbar .wardrobe-toolbar-context {
+  flex-wrap: nowrap;
+}
+
+.saved-outfit-toolbar-base .wardrobe-selection-bar.is-inline {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.saved-outfit-toolbar-base .saved-outfit-tag-field,
+.saved-outfit-toolbar-base .saved-outfit-favorites-toggle {
+  flex: 0 0 auto;
+}
+
 .fitpic-toolbar-leading {
   flex: 1 1 auto;
   min-width: 0;
@@ -3508,6 +3547,47 @@ button:disabled {
 
 .fitpic-selection-summary {
   padding-left: 0;
+}
+
+.saved-outfit-filter-body {
+  display: grid;
+  gap: 12px;
+}
+
+.saved-outfit-filter-group {
+  display: grid;
+  gap: 6px;
+}
+
+.fitpic-add-window,
+.fitpic-manage-window,
+.saved-outfit-manage-window {
+  width: max-content;
+  min-width: 180px;
+}
+
+.fitpic-add-window {
+  min-width: 240px;
+}
+
+.fitpic-add-dropzone {
+  min-width: min(320px, calc(100vw - 48px));
+  padding: 12px;
+  gap: 10px;
+  border-style: dashed;
+  background: var(--surface-solid);
+}
+
+.fitpic-add-dropzone .fitpic-dropzone-copy {
+  gap: 0;
+}
+
+.fitpic-add-dropzone .fitpic-dropzone-copy p {
+  margin: 0;
+}
+
+.fitpic-add-dropzone .fitpic-dropzone-actions {
+  justify-content: flex-start;
 }
 
 .fitpics-empty-state .ghost-button {
@@ -6035,6 +6115,78 @@ button:disabled {
 
   .saved-outfits-list {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .saved-outfit-toolbar-base {
+    gap: 8px 10px;
+  }
+
+  .saved-outfit-toolbar-base .saved-outfit-toolbar-leading,
+  .fitpic-toolbar .fitpic-toolbar-leading {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+
+  .fitpic-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "controls controls"
+      "count actions";
+    row-gap: 6px;
+    align-items: center;
+  }
+
+  .fitpic-toolbar .fitpic-toolbar-leading {
+    grid-area: controls;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 50px 92px 58px 86px;
+    width: 100%;
+  }
+
+  .fitpic-toolbar > .wardrobe-results-count {
+    grid-area: count;
+    justify-self: start;
+  }
+
+  .fitpic-toolbar > .wardrobe-toolbar-context {
+    grid-area: actions;
+    width: auto;
+    justify-self: end;
+  }
+
+  .saved-outfit-toolbar-base .wardrobe-search-field,
+  .saved-outfit-toolbar-base .wardrobe-sort-field,
+  .saved-outfit-toolbar-base .wardrobe-filter-anchor,
+  .fitpic-toolbar .wardrobe-search-field,
+  .fitpic-toolbar .wardrobe-filter-anchor,
+  .fitpic-toolbar .wardrobe-sort-field,
+  .fitpic-toolbar .wardrobe-manage-anchor {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .saved-outfit-toolbar-base .wardrobe-search-field {
+    flex: 1 1 auto;
+  }
+
+  .saved-outfit-toolbar-base .wardrobe-search-field input,
+  .saved-outfit-toolbar-base .wardrobe-sort-field select,
+  .saved-outfit-toolbar-base .wardrobe-filter-anchor > button,
+  .fitpic-toolbar .wardrobe-search-field input,
+  .fitpic-toolbar .wardrobe-filter-anchor > button,
+  .fitpic-toolbar .wardrobe-sort-field select,
+  .fitpic-toolbar .wardrobe-manage-anchor > button {
+    min-height: 32px;
+    padding: 5px 6px;
+    font-size: 0.64rem;
+  }
+
+  .saved-outfit-toolbar-base .wardrobe-toolbar-context,
+  .fitpic-toolbar .wardrobe-toolbar-context {
+    width: 100%;
+    justify-content: space-between;
     gap: 6px;
   }
 
