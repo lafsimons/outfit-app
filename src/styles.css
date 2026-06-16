@@ -3442,7 +3442,7 @@ button:disabled {
 .outfits-panel .fitpic-toolbar {
   position: sticky;
   top: -14px;
-  z-index: 8;
+  z-index: 24;
   margin-top: 0;
   padding-bottom: 2px;
   background: var(--surface);
@@ -3640,7 +3640,40 @@ button:disabled {
 }
 
 .fitpic-file-input {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+label.primary-button[aria-disabled="true"],
+label.ghost-button[aria-disabled="true"] {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.file-input-button {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.file-input-button-control {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
 }
 
 .fitpics-empty-state {
@@ -6126,6 +6159,33 @@ button:disabled {
   .fitpic-toolbar .fitpic-toolbar-leading {
     gap: 6px;
     flex-wrap: nowrap;
+  }
+
+  .saved-outfit-toolbar-base {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "controls controls"
+      "count actions";
+    row-gap: 6px;
+    align-items: center;
+  }
+
+  .saved-outfit-toolbar-base .saved-outfit-toolbar-leading {
+    grid-area: controls;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 56px 104px;
+    width: 100%;
+  }
+
+  .saved-outfit-toolbar-base > .wardrobe-toolbar-context {
+    grid-area: actions;
+    width: auto;
+    justify-self: end;
+  }
+
+  .saved-outfit-toolbar-base .wardrobe-results-count {
+    justify-self: start;
   }
 
   .fitpic-toolbar {

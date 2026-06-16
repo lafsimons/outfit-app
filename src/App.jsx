@@ -1962,8 +1962,6 @@ export default function App() {
   ];
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
-  const fitpicUploadInputRef = useRef(null);
-  const fitpicGroupedUploadInputRef = useRef(null);
   const fitpicReplaceInputRef = useRef(null);
   const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
@@ -8050,26 +8048,26 @@ export default function App() {
     );
   }
 
+  function openFilePicker(inputRef) {
+    const input = inputRef?.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.value = "";
+
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
+  }
+
   function renderFitpicsContent() {
     return (
       <section className="fitpics-content" aria-label="Fitpics">
-        <input
-          ref={fitpicUploadInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="fitpic-file-input"
-          onChange={handleFitpicUpload}
-        />
-        <input
-          ref={fitpicGroupedUploadInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          className="fitpic-file-input"
-          onChange={handleGroupedFitpicUpload}
-        />
-
         {!fitpics.length ? (
           <div
             className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
@@ -8084,22 +8082,28 @@ export default function App() {
               {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Import outfit photos here to build an editable visual archive.</p>}
             </div>
             <div className="fitpic-dropzone-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => fitpicUploadInputRef.current?.click()}
-                disabled={fitpicImporting}
-              >
+              <label className="primary-button file-input-button" aria-disabled={fitpicImporting}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={fitpicImporting}
+                  className="file-input-button-control"
+                  onChange={handleFitpicUpload}
+                />
                 {fitpicImporting ? "Importing…" : "Choose images"}
-              </button>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => fitpicGroupedUploadInputRef.current?.click()}
-                disabled={fitpicImporting}
-              >
+              </label>
+              <label className="ghost-button file-input-button" aria-disabled={fitpicImporting}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={fitpicImporting}
+                  className="file-input-button-control"
+                  onChange={handleGroupedFitpicUpload}
+                />
                 {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
-              </button>
+              </label>
             </div>
           </div>
         ) : (
@@ -8399,22 +8403,28 @@ export default function App() {
                         {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Drag and drop fitpics here</p>}
                       </div>
                       <div className="fitpic-dropzone-actions">
-                        <button
-                          type="button"
-                          className="primary-button"
-                          onClick={() => fitpicUploadInputRef.current?.click()}
-                          disabled={fitpicImporting}
-                        >
+                        <label className="primary-button file-input-button" aria-disabled={fitpicImporting}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={fitpicImporting}
+                            className="file-input-button-control"
+                            onChange={handleFitpicUpload}
+                          />
                           {fitpicImporting ? "Importing…" : "Choose images"}
-                        </button>
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => fitpicGroupedUploadInputRef.current?.click()}
-                          disabled={fitpicImporting}
-                        >
+                        </label>
+                        <label className="ghost-button file-input-button" aria-disabled={fitpicImporting}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={fitpicImporting}
+                            className="file-input-button-control"
+                            onChange={handleGroupedFitpicUpload}
+                          />
                           {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
-                        </button>
+                        </label>
                       </div>
                     </div>
                   </div>
@@ -11837,14 +11847,14 @@ export default function App() {
                   <button
                     type="button"
                     className="ghost-button"
-                    onClick={() => fitpicReplaceInputRef.current?.click()}
+                    onClick={() => openFilePicker(fitpicReplaceInputRef)}
                   >
                     Replace image
                   </button>
                   <button
                     type="button"
                     className="ghost-button"
-                    onClick={() => fitpicAddImagesInputRef.current?.click()}
+                    onClick={() => openFilePicker(fitpicAddImagesInputRef)}
                   >
                     Add image
                   </button>
