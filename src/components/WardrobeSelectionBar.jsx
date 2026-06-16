@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 export default function WardrobeSelectionBar({
   inline = false,
   selectedCount,
+  clearButtonLabel = null,
+  separateClearButton = false,
   bulkCollectionDraft,
   bulkListDraft,
   collectionOptions,
@@ -60,16 +62,28 @@ export default function WardrobeSelectionBar({
       <div className="wardrobe-selection-summary">
         <div className="wardrobe-selection-count wardrobe-selection-chip">
           <span>{selectedCount} selected</span>
+        </div>
+        {separateClearButton && clearButtonLabel ? (
           <button
             type="button"
-            className="wardrobe-selection-clear wardrobe-selection-chip-clear"
+            className="ghost-button wardrobe-selection-done-button"
             onMouseDown={preventPointerFocus}
             onClick={onClear}
-            aria-label="Clear selection"
+            aria-label={clearButtonLabel}
           >
-            ×
+            {clearButtonLabel}
           </button>
-        </div>
+        ) : (
+          <button
+            type="button"
+            className={`wardrobe-selection-clear wardrobe-selection-chip-clear ${clearButtonLabel ? "is-label" : ""}`.trim()}
+            onMouseDown={preventPointerFocus}
+            onClick={onClear}
+            aria-label={clearButtonLabel || "Clear selection"}
+          >
+            {clearButtonLabel || "×"}
+          </button>
+        )}
         <div className="wardrobe-selection-actions wardrobe-toolbar-context-actions">
           <button
             type="button"

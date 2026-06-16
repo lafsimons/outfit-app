@@ -6,12 +6,26 @@ export default function PreviewOverlay({
   title,
   meta = null,
   onClose,
+  closeLabel = "Close",
+  closeAriaLabel = null,
   actions = null,
   children
 }) {
   if (!open) {
     return null;
   }
+
+  const showBackStyleClose = closeLabel === "<";
+  const closeButton = (
+    <button
+      type="button"
+      className={`ghost-button ${showBackStyleClose ? "preview-overlay-close-button is-back" : "preview-overlay-close-button"}`.trim()}
+      onClick={onClose}
+      aria-label={closeAriaLabel || closeLabel}
+    >
+      {closeLabel}
+    </button>
+  );
 
   return (
     <DismissibleBackdrop className="floating-backdrop preview-overlay-backdrop" onDismiss={onClose}>
@@ -29,10 +43,9 @@ export default function PreviewOverlay({
             {meta ? <p className="preview-overlay-subtitle">{meta}</p> : null}
           </div>
           <div className="preview-overlay-header-actions">
+            {showBackStyleClose ? closeButton : null}
             {actions}
-            <button type="button" className="ghost-button" onClick={onClose}>
-              Close
-            </button>
+            {showBackStyleClose ? null : closeButton}
           </div>
         </div>
         <div className="preview-overlay-body">{children}</div>

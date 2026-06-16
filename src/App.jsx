@@ -2057,6 +2057,7 @@ export default function App() {
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobePreviewItemImageUuid, setWardrobePreviewItemImageUuid] = useState(null);
   const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
+  const [mobileWardrobePreviewActionsOpen, setMobileWardrobePreviewActionsOpen] = useState(false);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
@@ -2095,6 +2096,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
+  const [mobileWardrobeSelectionMode, setMobileWardrobeSelectionMode] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
@@ -2112,6 +2114,7 @@ export default function App() {
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const mobileWardrobePreviewActionsRef = useRef(null);
   const savedOutfitSelectClickTimeoutRef = useRef(null);
   const savedOutfitPendingSelectionRef = useRef(null);
   const fitpicSelectClickTimeoutRef = useRef(null);
@@ -3541,6 +3544,7 @@ export default function App() {
   function clearWardrobeSelection() {
     setSelectedWardrobeItemIds([]);
     setWardrobeSelectionAnchorId(null);
+    setMobileWardrobeSelectionMode(false);
     setBulkCollectionDraft("");
     setBulkMetadataEditorOpen(false);
     setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -3935,6 +3939,7 @@ export default function App() {
   );
   const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
   const hasWardrobeSelection = selectedWardrobeItemCount > 0;
+  const showMobileWardrobeSelectionToolbar = isMobileViewport && mobileWardrobeSelectionMode;
   const favoriteWardrobeItemCount = useMemo(
     () => items.reduce((count, item) => count + (item.favorite ? 1 : 0), 0),
     [items]
@@ -4014,6 +4019,30 @@ export default function App() {
       closeWardrobePreview();
     }
   }, [visibleWardrobeItemIds, wardrobePreviewItemId]);
+  useEffect(() => {
+    setMobileWardrobePreviewActionsOpen(false);
+  }, [wardrobePreviewItemId]);
+  useEffect(() => {
+    if (!mobileWardrobePreviewActionsOpen) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (mobileWardrobePreviewActionsRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setMobileWardrobePreviewActionsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [mobileWardrobePreviewActionsOpen]);
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileWardrobeSelectionMode(false);
+    }
+  }, [isMobileViewport]);
   const wardrobePreviewMeta = useMemo(() => {
     if (!wardrobePreviewItem) {
       return null;
@@ -5485,6 +5514,19 @@ export default function App() {
 
   function handleWardrobePreviewClick(item, event) {
     registerPointerActivatedControl(event);
+
+    if (isMobileViewport && !mobileWardrobeSelectionMode) {
+      blurPointerActivatedControl(event);
+      openWardrobePreview(item.id);
+      return;
+    }
+
+    if (isMobileViewport && mobileWardrobeSelectionMode) {
+      blurPointerActivatedControl(event);
+      handleWardrobeSelection(item, false, true);
+      return;
+    }
+
     const shiftKey = event.shiftKey;
     const toggleKey = event.metaKey || event.ctrlKey;
     const pendingSelection = wardrobePendingSelectionRef.current;
@@ -5566,6 +5608,7 @@ export default function App() {
     const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
     setWardrobePreviewItemImageUuid(null);
+    setMobileWardrobePreviewActionsOpen(false);
 
     if (restoreFitpicPreview && returnFitpicPreview) {
       setFitpicPreview(returnFitpicPreview);
@@ -5599,6 +5642,12 @@ export default function App() {
   }
 
   function handleWardrobePreviewDoubleClick(item, event) {
+    if (isMobileViewport && !mobileWardrobeSelectionMode) {
+      event.currentTarget.blur();
+      openWardrobePreview(item.id);
+      return;
+    }
+
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
@@ -5622,7 +5671,27 @@ export default function App() {
     }
 
     wardrobePendingSelectionRef.current = null;
+
+    if (isMobileViewport && mobileWardrobeSelectionMode) {
+      handleWardrobeSelection(item, false, true);
+      return;
+    }
+
     openWardrobePreview(item.id);
+  }
+
+  function toggleMobileWardrobeSelectionMode(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    if (mobileWardrobeSelectionMode) {
+      clearWardrobeSelection();
+      return;
+    }
+
+    closeUtilityWindows();
+    setMobileWardrobeSelectionMode(true);
   }
 
   function handleFitpicCardClick(fitpic, event) {
@@ -7110,6 +7179,7 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
+    setMobileWardrobeSelectionMode(false);
     closeWardrobePreview({ restoreFitpicPreview: false });
     setFitpicPreview(null);
     cancelEditFitpic();
@@ -8653,6 +8723,10 @@ export default function App() {
         {visibleWardrobeItems.map((item) => {
           const isEquipped = Object.values(outfit).includes(item.id);
           const isSelected = selectedWardrobeItemIds.includes(item.id);
+          const useTapPreview = isMobileViewport && !mobileWardrobeSelectionMode;
+          const cardLabel = useTapPreview
+            ? `Preview ${buildDisplayName(item)}.`
+            : `Select ${buildDisplayName(item)}${isMobileViewport ? "." : ". Double-click or press Enter to preview."}`;
 
           return (
             <article
@@ -8665,8 +8739,8 @@ export default function App() {
                 onClick={(event) => handleWardrobePreviewClick(item, event)}
                 onDoubleClick={(event) => handleWardrobePreviewDoubleClick(item, event)}
                 onKeyDown={(event) => handleWardrobePreviewKeyDown(item, event)}
-                aria-pressed={isSelected}
-                aria-label={`Select ${buildDisplayName(item)}. Double-click or press Enter to preview.`}
+                aria-pressed={useTapPreview ? undefined : isSelected}
+                aria-label={cardLabel}
               >
                 <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
                 {item.favorite ? (
@@ -10769,6 +10843,34 @@ export default function App() {
                 <div className="wardrobe-workspace">
                   <div className="panel wardrobe-panel">
                     <div className="panel-header">
+                      {showMobileWardrobeSelectionToolbar ? (
+                        <div className="wardrobe-toolbar wardrobe-toolbar-selection" aria-label="Wardrobe selection actions">
+                          <WardrobeSelectionBar
+                            inline
+                            selectedCount={selectedWardrobeItemCount}
+                            clearButtonLabel="Done"
+                            separateClearButton
+                            bulkCollectionDraft={bulkCollectionDraft}
+                            bulkListDraft={bulkListDraft}
+                            collectionOptions={collectionOptions}
+                            itemListOptions={itemListOptions}
+                            setBulkCollectionDraft={setBulkCollectionDraft}
+                            setBulkListDraft={setBulkListDraft}
+                            favoriteActionLabel={bulkFavoriteActionLabel}
+                            excludeActionLabel={bulkExcludeActionLabel}
+                            onEdit={editSelectedWardrobeItems}
+                            onClear={clearWardrobeSelection}
+                            onMoveToList={moveSelectedItemsToList}
+                            onAddCollection={addCollectionToSelectedItems}
+                            onRemoveCollection={removeCollectionFromSelectedItems}
+                            onClearCollections={clearSelectedItemCollections}
+                            onFavoriteToggle={() => setSelectedItemsFavoriteState(!areAllSelectedWardrobeItemsFavorite)}
+                            onExcludeToggle={() => setSelectedItemsExcludedState(!areAllSelectedWardrobeItemsExcluded)}
+                            onDelete={handleBulkDeleteSelected}
+                            onCloseEdit={cancelEdit}
+                          />
+                        </div>
+                      ) : (
                       <div className="wardrobe-toolbar">
                         <div className="wardrobe-toolbar-leading">
                           <div className="wardrobe-search-field">
@@ -11055,10 +11157,21 @@ export default function App() {
                       <option value="oldest">Oldest</option>
                     </select>
                   </div>
-                  <div className="wardrobe-primary-actions">
-                    <div className="wardrobe-manage-anchor">
-                      <button
-                        type="button"
+                    <div className={`wardrobe-primary-actions ${isMobileViewport ? "has-mobile-select-toggle" : ""}`}>
+                      {isMobileViewport ? (
+                        <button
+                          type="button"
+                          className={`secondary-button ${mobileWardrobeSelectionMode ? "is-active" : ""}`}
+                          onClick={toggleMobileWardrobeSelectionMode}
+                          aria-pressed={mobileWardrobeSelectionMode}
+                          aria-label={mobileWardrobeSelectionMode ? "Exit multi-select mode" : "Select multiple items"}
+                        >
+                          Select
+                        </button>
+                      ) : null}
+                      <div className="wardrobe-manage-anchor">
+                        <button
+                          type="button"
                         className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                         onClick={toggleWardrobeManage}
                         aria-expanded={wardrobeManageOpen}
@@ -11151,6 +11264,7 @@ export default function App() {
                   ) : null}
                 </div>
               </div>
+              )}
             </div>
 
             {wardrobeFiltersOpen ? (
@@ -11296,35 +11410,107 @@ export default function App() {
           title={wardrobePreviewItem ? buildDisplayName(wardrobePreviewItem) : ""}
           meta={wardrobePreviewMeta}
           onClose={closeWardrobePreview}
+          closeLabel={isMobileViewport ? "<" : "Close"}
+          closeAriaLabel={isMobileViewport ? "Back" : "Close"}
           actions={wardrobePreviewItem ? (
-            <>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={equipWardrobePreviewItem}
-                disabled={!resolveSlotForItem(wardrobePreviewItem)}
-              >
-                {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
-              </button>
-              <button
-                type="button"
-                className={`ghost-button preview-overlay-favorite-button ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
-                onClick={toggleWardrobePreviewFavorite}
-                aria-label={wardrobePreviewItem.favorite ? "Remove from favorites" : "Add to favorites"}
-                title={wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
-              >
-                <span aria-hidden="true">{wardrobePreviewItem.favorite ? "♥" : "♡"}</span>
-              </button>
-              <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
-                {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
-              </button>
-              <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
-                Edit
-              </button>
-              <button type="button" className="ghost-button danger" onClick={deleteWardrobePreviewItem}>
-                Delete
-              </button>
-            </>
+            isMobileViewport ? (
+              <div ref={mobileWardrobePreviewActionsRef} className="preview-overlay-actions-menu">
+                <button
+                  type="button"
+                  className={`ghost-button preview-overlay-actions-trigger ${mobileWardrobePreviewActionsOpen ? "is-active" : ""}`}
+                  onClick={() => setMobileWardrobePreviewActionsOpen((current) => !current)}
+                  aria-label="More wardrobe item actions"
+                  aria-expanded={mobileWardrobePreviewActionsOpen}
+                  aria-haspopup="menu"
+                >
+                  ...
+                </button>
+                {mobileWardrobePreviewActionsOpen ? (
+                  <div className="preview-overlay-actions-popover" role="menu" aria-label="Wardrobe item actions">
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        equipWardrobePreviewItem();
+                      }}
+                      disabled={!resolveSlotForItem(wardrobePreviewItem)}
+                    >
+                      {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
+                    </button>
+                    <button
+                      type="button"
+                      className={`preview-overlay-actions-popover-item ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        void toggleWardrobePreviewFavorite();
+                      }}
+                    >
+                      {wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        toggleWardrobePreviewExcluded();
+                      }}
+                    >
+                      {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        editWardrobePreviewItem();
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item is-danger"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        deleteWardrobePreviewItem();
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={equipWardrobePreviewItem}
+                  disabled={!resolveSlotForItem(wardrobePreviewItem)}
+                >
+                  {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
+                </button>
+                <button
+                  type="button"
+                  className={`ghost-button preview-overlay-favorite-button ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
+                  onClick={toggleWardrobePreviewFavorite}
+                  aria-label={wardrobePreviewItem.favorite ? "Remove from favorites" : "Add to favorites"}
+                  title={wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+                >
+                  <span aria-hidden="true">{wardrobePreviewItem.favorite ? "♥" : "♡"}</span>
+                </button>
+                <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
+                  {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
+                </button>
+                <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
+                  Edit
+                </button>
+                <button type="button" className="ghost-button danger" onClick={deleteWardrobePreviewItem}>
+                  Delete
+                </button>
+              </>
+            )
           ) : null}
         >
           {wardrobePreviewItem ? (
