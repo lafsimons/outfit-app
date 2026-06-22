@@ -4,6 +4,7 @@ export default function OaAiExportDialog({
   open,
   options,
   collections,
+  statuses,
   exporting = false,
   onChange,
   onCancel,
@@ -20,7 +21,7 @@ export default function OaAiExportDialog({
     });
   }
 
-  function toggleCollection(key, collection) {
+  function toggleSelection(key, collection) {
     const selectedValues = Array.isArray(options[key]) ? options[key] : [];
     const isSelected = selectedValues.includes(collection);
 
@@ -101,7 +102,7 @@ export default function OaAiExportDialog({
                     type="checkbox"
                     checked={(options.excludedCollections ?? []).includes(collection)}
                     disabled={!options.excludeCollectionsFromCurrentWardrobe}
-                    onChange={() => toggleCollection("excludedCollections", collection)}
+                    onChange={() => toggleSelection("excludedCollections", collection)}
                   />
                   <span>{collection}</span>
                 </label>
@@ -121,7 +122,7 @@ export default function OaAiExportDialog({
                   <input
                     type="checkbox"
                     checked={(options.collectionExports ?? []).includes(collection)}
-                    onChange={() => toggleCollection("collectionExports", collection)}
+                    onChange={() => toggleSelection("collectionExports", collection)}
                   />
                   <span>{collection}</span>
                 </label>
@@ -129,6 +130,46 @@ export default function OaAiExportDialog({
             </div>
           ) : (
             <p className="oa-ai-export-empty">No collections available.</p>
+          )}
+        </div>
+
+        <div className="wardrobe-export-section">
+          <p className="eyebrow">Status Exports</p>
+          {statuses.length ? (
+            <>
+              <label className="controls-generation-list-option">
+                <input
+                  type="radio"
+                  name="oa-ai-status-export-mode"
+                  checked={options.statusExportMode !== "separate"}
+                  onChange={() => updateOption("statusExportMode", "combined")}
+                />
+                <span>One combined status export</span>
+              </label>
+              <label className="controls-generation-list-option">
+                <input
+                  type="radio"
+                  name="oa-ai-status-export-mode"
+                  checked={options.statusExportMode === "separate"}
+                  onChange={() => updateOption("statusExportMode", "separate")}
+                />
+                <span>Separate export per status</span>
+              </label>
+              <div className="oa-ai-export-list">
+                {statuses.map((status) => (
+                  <label key={status} className="controls-generation-list-option">
+                    <input
+                      type="checkbox"
+                      checked={(options.statusExports ?? []).includes(status)}
+                      onChange={() => toggleSelection("statusExports", status)}
+                    />
+                    <span>{status}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="oa-ai-export-empty">No statuses available.</p>
           )}
         </div>
 

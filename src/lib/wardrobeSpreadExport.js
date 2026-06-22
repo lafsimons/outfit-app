@@ -1,3 +1,5 @@
+import { getActiveWardrobeItemImageAsset } from "./itemModel.js";
+
 export const WARDROBE_SPREAD_CELL_SIZE = 190;
 export const WARDROBE_SPREAD_PADDING = 44;
 export const WARDROBE_SPREAD_STANDARD_SCALE = 2;
@@ -46,13 +48,64 @@ function getImageAssetSrc(asset) {
   return "";
 }
 
+function getWardrobeAssetSourceCandidates(asset, sourceTypePrefix) {
+  const normalizedAsset = asset && typeof asset === "object" ? asset : {};
+
+  return [
+    {
+      src: getImageAssetSrc(normalizedAsset?.images?.original),
+      sourceType: `${sourceTypePrefix}:original`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.images?.display),
+      sourceType: `${sourceTypePrefix}:display`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.images?.preview),
+      sourceType: `${sourceTypePrefix}:preview`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.imageUrl),
+      sourceType: `${sourceTypePrefix}:imageUrl`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.src),
+      sourceType: `${sourceTypePrefix}:src`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.dataUrl),
+      sourceType: `${sourceTypePrefix}:dataUrl`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.imageData),
+      sourceType: `${sourceTypePrefix}:imageData`
+    },
+    {
+      src: getImageAssetSrc(normalizedAsset?.images?.thumbnail),
+      sourceType: `${sourceTypePrefix}:thumbnail`
+    }
+  ];
+}
+
+export function getWardrobeSpreadExportImageSource(item = {}) {
+  const activeAsset = getActiveWardrobeItemImageAsset(item);
+  const candidates = [
+    ...getWardrobeAssetSourceCandidates(activeAsset, "active-asset"),
+    ...getWardrobeAssetSourceCandidates(item, "item"),
+    {
+      src: getImageAssetSrc(item?.imageUrl),
+      sourceType: "legacy:imageUrl"
+    }
+  ];
+
+  return candidates.find((candidate) => candidate.src) ?? {
+    src: "",
+    sourceType: "missing"
+  };
+}
+
 export function getWardrobeSpreadExportImageUrl(item = {}) {
-  return (
-    getImageAssetSrc(item?.images?.display) ||
-    getImageAssetSrc(item?.images?.preview) ||
-    getImageAssetSrc(item?.imageUrl) ||
-    ""
-  );
+  return getWardrobeSpreadExportImageSource(item).src;
 }
 
 export function createWardrobeSpreadExportOptions(preset = "compact") {

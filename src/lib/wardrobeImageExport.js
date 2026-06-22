@@ -1,18 +1,41 @@
 import { downloadExportFile } from "./metadataExport.js";
 import { getManagedImageDrawBox, getManagedImageSourceRect } from "./imagePresentation.js";
 import {
+  WARDROBE_SPREAD_CELL_SIZE,
+  WARDROBE_SPREAD_HIGH_QUALITY_SCALE,
   WARDROBE_SPREAD_LABEL_FONT_SIZE,
   WARDROBE_SPREAD_LABEL_GAP,
   WARDROBE_SPREAD_LABEL_LINE_HEIGHT,
   WARDROBE_SPREAD_LABEL_SIDE_PADDING,
   WARDROBE_SPREAD_LABEL_TOP_GAP,
-  getWardrobeSpreadExportImageUrl,
+  getWardrobeSpreadExportImageSource,
   getWardrobeSpreadExportLabelRowCount,
   getWardrobeSpreadExportLabelRows,
   getWardrobeSpreadExportOrderedItems,
   getWardrobeSpreadExportRenderConfig,
   normalizeWardrobeSpreadExportOptions
 } from "./wardrobeSpreadExport.js";
+
+export const WARDROBE_IMAGE_EXPORT_TARGET_BYTES = 30 * 1024 * 1024;
+
+export const wardrobeImageExportProfiles = {
+  png: {
+    format: "png",
+    quality: null,
+    qualityScale: null,
+    adaptiveQuality: [],
+    adaptiveScale: [],
+    targetBytes: null
+  },
+  ai: {
+    format: "webp",
+    quality: 0.96,
+    qualityScale: 6,
+    adaptiveQuality: [0.94, 0.9],
+    adaptiveScale: [5.5, 5, 4.5, 4, WARDROBE_SPREAD_HIGH_QUALITY_SCALE],
+    targetBytes: WARDROBE_IMAGE_EXPORT_TARGET_BYTES
+  }
+};
 
 function loadImage(source) {
   return new Promise((resolve, reject) => {
@@ -23,25 +46,77 @@ function loadImage(source) {
   });
 }
 
-function truncateCanvasText(context, text, maxWidth) {
-  const normalizedText = String(text || "").trim();
+function getWrappedCanvasTextLines(context, text, maxWidth) {
+  const normalizedText = String(text || "").trim().replace(/\s+/g, " ");
 
-  if (!normalizedText || context.measureText(normalizedText).width <= maxWidth) {
-    return normalizedText;
+  if (!normalizedText) {
+    return [];
   }
 
-  const ellipsis = "...";
-  let truncatedText = normalizedText;
+  const words = normalizedText.split(" ");
+  const lines = [];
+  let currentLine = "";
 
-  while (truncatedText.length > 0) {
-    truncatedText = truncatedText.slice(0, -1).trimEnd();
-
-    if (context.measureText(`${truncatedText}${ellipsis}`).width <= maxWidth) {
-      return `${truncatedText}${ellipsis}`;
+  function splitLongWord(word) {
+    if (context.measureText(word).width <= maxWidth) {
+      return [word];
     }
+
+    const segments = [];
+    let currentSegment = "";
+
+    [...word].forEach((character) => {
+      const nextSegment = `${currentSegment}${character}`;
+
+      if (!currentSegment || context.measureText(nextSegment).width <= maxWidth) {
+        currentSegment = nextSegment;
+        return;
+      }
+
+      segments.push(currentSegment);
+      currentSegment = character;
+    });
+
+    if (currentSegment) {
+      segments.push(currentSegment);
+    }
+
+    return segments;
   }
 
-  return ellipsis;
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (!currentLine || context.measureText(nextLine).width <= maxWidth) {
+      currentLine = nextLine;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    const wrappedWordSegments = splitLongWord(word);
+    currentLine = wrappedWordSegments.shift() || "";
+    lines.push(...wrappedWordSegments);
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+}
+
+function getItemLabelLines(context, item, options, textWidth) {
+  const labelRows = getWardrobeSpreadExportLabelRows(item, options);
+
+  return labelRows.flatMap(({ key, text }) =>
+    getWrappedCanvasTextLines(context, text, textWidth).map((line) => ({
+      key,
+      text: line
+    }))
+  );
 }
 
 function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight) {
@@ -92,115 +167,322 @@ async function canvasToBlob(canvas) {
   return response.blob();
 }
 
+function resolveWardrobeImageExportProfile(profile = "png", overrides = {}) {
+  const resolvedProfile = typeof profile === "string"
+    ? wardrobeImageExportProfiles[profile] ?? wardrobeImageExportProfiles.png
+    : wardrobeImageExportProfiles.png;
+
+  return {
+    ...resolvedProfile,
+    ...(overrides && typeof overrides === "object" ? overrides : {})
+  };
+}
+
+function createWardrobeExportEncodingPlan(profile = {}) {
+  const format = profile.format === "webp" ? "webp" : "png";
+  const qualityValues = [];
+  const scaleValues = [];
+
+  if (Number.isFinite(profile.quality)) {
+    qualityValues.push(profile.quality);
+  }
+
+  (Array.isArray(profile.adaptiveQuality) ? profile.adaptiveQuality : []).forEach((value) => {
+    if (Number.isFinite(value) && !qualityValues.includes(value)) {
+      qualityValues.push(value);
+    }
+  });
+
+  if (!qualityValues.length) {
+    qualityValues.push(null);
+  }
+
+  if (Number.isFinite(profile.qualityScale)) {
+    scaleValues.push(profile.qualityScale);
+  }
+
+  (Array.isArray(profile.adaptiveScale) ? profile.adaptiveScale : []).forEach((value) => {
+    if (Number.isFinite(value) && value > 0 && !scaleValues.includes(value)) {
+      scaleValues.push(value);
+    }
+  });
+
+  if (!scaleValues.length) {
+    scaleValues.push(undefined);
+  }
+
+  return scaleValues.flatMap((qualityScale) =>
+    qualityValues.map((quality) => ({
+      format,
+      quality,
+      qualityScale
+    }))
+  );
+}
+
+export async function encodeWardrobeExportCanvas(
+  canvas,
+  {
+    format = "png",
+    quality = null,
+    fallbackFormat = "png",
+    warningCollector = null
+  } = {}
+) {
+  const requestedFormat = format === "webp" ? "webp" : "png";
+  const requestedMimeType = requestedFormat === "webp" ? "image/webp" : "image/png";
+  const fallbackMimeType = fallbackFormat === "webp" ? "image/webp" : "image/png";
+  const warnings = Array.isArray(warningCollector) ? warningCollector : null;
+
+  const createBlob = (mimeType, blobQuality) => new Promise((resolve) => canvas.toBlob(resolve, mimeType, blobQuality));
+  let blob = await createBlob(requestedMimeType, quality ?? undefined);
+
+  if (blob && blob.type === requestedMimeType) {
+    return {
+      blob,
+      mimeType: requestedMimeType,
+      format: requestedFormat,
+      fallbackUsed: false
+    };
+  }
+
+  if (requestedMimeType !== fallbackMimeType) {
+    warnings?.push(`Canvas export fallback: ${requestedMimeType} unsupported, used ${fallbackMimeType}.`);
+    blob = await createBlob(fallbackMimeType);
+
+    if (blob) {
+      return {
+        blob,
+        mimeType: fallbackMimeType,
+        format: fallbackMimeType === "image/webp" ? "webp" : "png",
+        fallbackUsed: true
+      };
+    }
+  }
+
+  const dataUrl = canvas.toDataURL(fallbackMimeType);
+  const response = await fetch(dataUrl);
+  const fallbackBlob = await response.blob();
+
+  return {
+    blob: fallbackBlob,
+    mimeType: fallbackBlob.type || fallbackMimeType,
+    format: fallbackBlob.type === "image/webp" ? "webp" : "png",
+    fallbackUsed: requestedMimeType !== (fallbackBlob.type || fallbackMimeType)
+  };
+}
+
 export async function renderWardrobeImageExport({
   items = [],
   options = {},
+  exportProfile = "png",
+  exportProfileOverrides = {},
   resolveAssetUrl = (value) => value,
   fileName = `oa-wardrobe-export-${new Date().toISOString().slice(0, 10)}.png`,
   random = Math.random
 } = {}) {
   const normalizedOptions = normalizeWardrobeSpreadExportOptions(options);
   const exportItems = getWardrobeSpreadExportOrderedItems(items, normalizedOptions, random);
+  const profile = resolveWardrobeImageExportProfile(exportProfile, exportProfileOverrides);
+  const warnings = [];
 
   if (!exportItems.length) {
     return null;
   }
-
-  const labelRowCount = getWardrobeSpreadExportLabelRowCount(normalizedOptions);
-  const {
-    cellHeight,
-    cellSize,
-    columns,
-    padding,
-    canvasWidth,
-    canvasHeight,
-    exportScale,
-    pixelWidth,
-    pixelHeight
-  } = getWardrobeSpreadExportRenderConfig(exportItems.length, { labelRowCount });
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-
-  if (!context) {
-    throw new Error("The wardrobe image could not be exported.");
-  }
-
-  canvas.width = pixelWidth;
-  canvas.height = pixelHeight;
-  context.scale(exportScale, exportScale);
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
 
   const documentStyles = getDocumentStyles();
   const exportBackgroundColor = documentStyles?.getPropertyValue("--bg").trim() || "#f7f7f7";
   const exportTextColor = documentStyles?.getPropertyValue("--text").trim() || "#111";
   const exportMutedTextColor = documentStyles?.getPropertyValue("--muted-strong").trim() || "rgba(17, 17, 17, 0.75)";
   const exportFontFamily = documentStyles?.getPropertyValue("font-family").trim() || "monospace";
+  const labelTextWidth = WARDROBE_SPREAD_CELL_SIZE - WARDROBE_SPREAD_LABEL_SIDE_PADDING * 2;
+  const measurementCanvas = document.createElement("canvas");
+  const measurementContext = measurementCanvas.getContext("2d");
 
-  context.fillStyle = exportBackgroundColor;
-  context.fillRect(0, 0, canvasWidth, canvasHeight);
+  if (!measurementContext) {
+    throw new Error("The wardrobe image could not be exported.");
+  }
 
-  const loadedItems = await Promise.all(
+  measurementContext.font = `500 ${WARDROBE_SPREAD_LABEL_FONT_SIZE}px ${exportFontFamily}`;
+
+  const itemLabelLines = exportItems.map((item) =>
+    getItemLabelLines(measurementContext, item, normalizedOptions, labelTextWidth)
+  );
+  const labelRowCount = itemLabelLines.length
+    ? Math.max(...itemLabelLines.map((lines) => lines.length))
+    : getWardrobeSpreadExportLabelRowCount(normalizedOptions);
+  const sourceTypeCounts = {};
+  const preparedItems = await Promise.all(
     exportItems.map(async (item) => {
-      const exportImageUrl = resolveAssetUrl(getWardrobeSpreadExportImageUrl(item));
+      const source = getWardrobeSpreadExportImageSource(item);
+      const exportImageUrl = resolveAssetUrl(source.src);
 
       if (!exportImageUrl) {
         throw new Error("Missing export image.");
       }
 
+      sourceTypeCounts[source.sourceType] = (sourceTypeCounts[source.sourceType] ?? 0) + 1;
+
       return {
         item,
-        image: await loadImage(exportImageUrl)
+        image: await loadImage(exportImageUrl),
+        sourceType: source.sourceType
       };
     })
   );
 
-  loadedItems.forEach(({ item, image }, index) => {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    const cellLeft = padding + column * cellSize;
-    const cellTop = padding + row * cellHeight;
-    const maxImageSize = cellSize * 0.78;
-    const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
-    const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
-    const frameWidth = sourceRect.width * baseScale;
-    const frameHeight = sourceRect.height * baseScale;
-    const jitterX = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
-    const jitterY = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
-    const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
-    const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
-    const labelRows = getWardrobeSpreadExportLabelRows(item, normalizedOptions);
+  const encodingPlan = createWardrobeExportEncodingPlan(profile);
+  let selectedEncoding = null;
+  let selectedRenderConfig = null;
 
-    drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
+  for (const encoding of encodingPlan) {
+    const renderConfig = getWardrobeSpreadExportRenderConfig(exportItems.length, {
+      labelRowCount,
+      qualityScale: encoding.qualityScale
+    });
 
-    if (!labelRows.length) {
-      return;
+    const {
+      cellHeight,
+      cellSize,
+      columns,
+      padding,
+      canvasWidth,
+      canvasHeight,
+      exportScale,
+      pixelWidth,
+      pixelHeight
+    } = renderConfig;
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("The wardrobe image could not be exported.");
     }
 
-    context.textAlign = "center";
-    context.textBaseline = "top";
-    context.font = `500 ${WARDROBE_SPREAD_LABEL_FONT_SIZE}px ${exportFontFamily}`;
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+    context.scale(exportScale, exportScale);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
 
-    labelRows.forEach(({ key, text }, labelIndex) => {
-      if (!text) {
+    context.fillStyle = exportBackgroundColor;
+    context.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    preparedItems.forEach(({ item, image }, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const cellLeft = padding + column * cellSize;
+      const cellTop = padding + row * cellHeight;
+      const maxImageSize = cellSize * 0.82;
+      const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
+      const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
+      const frameWidth = sourceRect.width * baseScale;
+      const frameHeight = sourceRect.height * baseScale;
+      const jitterX = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
+      const jitterY = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
+      const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
+      const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
+      const labelLines = itemLabelLines[index] ?? [];
+
+      drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
+
+      if (!labelLines.length) {
         return;
       }
 
-      const textY = cellTop
-        + cellSize
-        + WARDROBE_SPREAD_LABEL_TOP_GAP
-        + labelIndex * (WARDROBE_SPREAD_LABEL_LINE_HEIGHT + WARDROBE_SPREAD_LABEL_GAP);
-      const textWidth = cellSize - WARDROBE_SPREAD_LABEL_SIDE_PADDING * 2;
-      const displayText = truncateCanvasText(context, text, textWidth);
+      context.textAlign = "center";
+      context.textBaseline = "top";
+      context.font = `500 ${WARDROBE_SPREAD_LABEL_FONT_SIZE}px ${exportFontFamily}`;
 
-      context.fillStyle = key === "name" ? exportTextColor : exportMutedTextColor;
-      context.fillText(displayText, cellLeft + cellSize / 2, textY, textWidth);
+      labelLines.forEach(({ key, text }, labelIndex) => {
+        if (!text) {
+          return;
+        }
+
+        const textY = cellTop
+          + cellSize
+          + WARDROBE_SPREAD_LABEL_TOP_GAP
+          + labelIndex * (WARDROBE_SPREAD_LABEL_LINE_HEIGHT + WARDROBE_SPREAD_LABEL_GAP);
+        const textWidth = cellSize - WARDROBE_SPREAD_LABEL_SIDE_PADDING * 2;
+
+        context.fillStyle = key === "name" ? exportTextColor : exportMutedTextColor;
+        context.fillText(text, cellLeft + cellSize / 2, textY, textWidth);
+      });
     });
-  });
+
+    const encoded = encoding.format === "png"
+      ? {
+          blob: await canvasToBlob(canvas),
+          mimeType: "image/png",
+          format: "png",
+          fallbackUsed: false
+        }
+      : await encodeWardrobeExportCanvas(canvas, {
+          format: encoding.format,
+          quality: encoding.quality,
+          fallbackFormat: "png",
+          warningCollector: warnings
+        });
+
+    selectedEncoding = {
+      ...encoding,
+      ...encoded
+    };
+    selectedRenderConfig = renderConfig;
+
+    if (!profile.targetBytes || encoded.blob.size <= profile.targetBytes) {
+      break;
+    }
+  }
+
+  const finalEncoding = selectedEncoding;
+
+  if (!finalEncoding || !selectedRenderConfig) {
+    return null;
+  }
+
+  const actualExtension = finalEncoding.format === "webp" ? "webp" : "png";
+  const normalizedFileName = fileName.replace(/\.(png|webp)$/i, `.${actualExtension}`);
+  const sortedSourceTypeCounts = Object.fromEntries(
+    Object.entries(sourceTypeCounts).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+  );
+  const report = {
+    fileName: normalizedFileName,
+    itemCount: exportItems.length,
+    format: finalEncoding.format,
+    mimeType: finalEncoding.mimeType,
+    sizeBytes: finalEncoding.blob.size,
+    targetBytes: profile.targetBytes ?? null,
+    budgetExceeded: Number.isFinite(profile.targetBytes) && finalEncoding.blob.size > profile.targetBytes,
+    quality: finalEncoding.quality ?? null,
+    qualityScale: finalEncoding.qualityScale ?? null,
+    exportScale: selectedRenderConfig.exportScale,
+    pixelWidth: selectedRenderConfig.pixelWidth,
+    pixelHeight: selectedRenderConfig.pixelHeight,
+    warningCount: warnings.length,
+    fallbackUsed: finalEncoding.fallbackUsed,
+    sourceType: Object.keys(sortedSourceTypeCounts)[0] ?? "missing",
+    sourceTypeCounts: sortedSourceTypeCounts
+  };
+
+  if (typeof console !== "undefined" && console.info) {
+    console.info(
+      `[wardrobe export] ${report.fileName}: ${(report.sizeBytes / (1024 * 1024)).toFixed(2)} MB (${report.mimeType}, ${report.pixelWidth}x${report.pixelHeight}, scale ${report.qualityScale ?? "default"}, quality ${report.quality ?? "n/a"}, fallback ${report.fallbackUsed ? "yes" : "no"})`
+    );
+  }
+
+  if (report.budgetExceeded && typeof console !== "undefined" && console.warn) {
+    console.warn(
+      `[wardrobe export] ${report.fileName} exceeded target ${(report.targetBytes / (1024 * 1024)).toFixed(2)} MB with ${(report.sizeBytes / (1024 * 1024)).toFixed(2)} MB.`
+    );
+  }
 
   return {
-    blob: await canvasToBlob(canvas),
-    fileName
+    blob: finalEncoding.blob,
+    fileName: normalizedFileName,
+    mimeType: finalEncoding.mimeType,
+    report,
+    warnings
   };
 }
 
@@ -213,7 +495,7 @@ export async function downloadWardrobeImageExport(config = {}) {
 
   downloadExportFile(await result.blob.arrayBuffer(), {
     filename: result.fileName,
-    mimeType: "image/png"
+    mimeType: result.mimeType || "image/png"
   });
 
   return result;

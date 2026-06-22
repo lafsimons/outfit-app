@@ -1,6 +1,6 @@
 import { normalizeCollections } from "./itemModel.js";
 import { normalizeStatus } from "./typeDefaults.js";
-import { getExcludedFilterKey } from "./wardrobeLibrary.js";
+import { getExcludedFilterKey, getWardrobeSearchText } from "./wardrobeLibrary.js";
 import { resolveFitpicLinkedItems } from "./fitpicEditorModel.js";
 
 export const fitpicMultiValueFilterKeys = [
@@ -46,7 +46,7 @@ export const emptyFitpicFilters = {
 };
 
 function normalizeSearchText(value) {
-  return typeof value === "string" ? value.trim().toLowerCase() : "";
+  return typeof value === "string" ? value.toLowerCase().replace(/\s+/g, " ").trim() : "";
 }
 
 function normalizeFilterToken(value) {
@@ -117,12 +117,28 @@ function getFitpicDisplayTimestamp(fitpic, field) {
 }
 
 export function buildFitpicSearchText(fitpic, items = []) {
+  const linkedItemSearchText = getResolvedLinkedItems(fitpic, items)
+    .map((item) => getWardrobeSearchText(item))
+    .join(" ");
+
   return [
-    fitpic?.name
+    fitpic?.name,
+    linkedItemSearchText
   ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function matchesFitpicSearch(fitpic, searchQuery, items = []) {
+  const normalizedQuery = normalizeSearchText(searchQuery);
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableText = buildFitpicSearchText(fitpic, items);
+  return normalizedQuery.split(" ").every((term) => searchableText.includes(term));
 }
 
 function getResolvedLinkedItems(fitpic, items = []) {
@@ -410,11 +426,7 @@ export function filterAndSortFitpics(
       return false;
     }
 
-    if (!normalizedSearch) {
-      return true;
-    }
-
-    return buildFitpicSearchText(fitpic, items).includes(normalizedSearch);
+    return matchesFitpicSearch(fitpic, normalizedSearch, items);
   });
 
   const sorted = [...filtered];

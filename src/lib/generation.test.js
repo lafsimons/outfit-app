@@ -708,6 +708,36 @@ test("manual selector slot pool includes statuses that controls explicitly enabl
   );
 });
 
+test("layering rules block shirt-on-shirt combinations across top slots", () => {
+  const topOuterPool = getEligibleSlotPool(
+    syntheticWardrobe,
+    "TopOuter",
+    {},
+    defaultGenerationLists,
+    true,
+    { style: [], climate: [] },
+    null,
+    { TopInner: "top_shirt" },
+    itemsById
+  ).map((item) => item.id);
+
+  const topInnerPool = getEligibleSlotPool(
+    syntheticWardrobe,
+    "TopInner",
+    {},
+    defaultGenerationLists,
+    true,
+    { style: [], climate: [] },
+    null,
+    { TopOuter: "top_wool_shirt" },
+    itemsById
+  ).map((item) => item.id);
+
+  assert.equal(topOuterPool.includes("top_wool_shirt"), false);
+  assert.equal(topInnerPool.includes("top_shirt"), false);
+  assert.equal(topInnerPool.includes("top_casual_shirt"), false);
+});
+
 test("formal forward-check keeps early bridge footwear eligible when remaining slots can still anchor", () => {
   const actual = eligiblePoolIds("Footwear", { style: ["Formal"], climate: [] }, {});
 
