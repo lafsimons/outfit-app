@@ -577,6 +577,28 @@ export function getActiveWardrobeItemImageAsset(item) {
   return candidateAssets.find((asset) => asset.assetUuid === activeImageAssetUuid) ?? activeItemImage.canonicalAsset;
 }
 
+export function getWardrobeImageAssetRenderSrc(asset, preferredTier = "display") {
+  const normalizedAsset = isRecord(asset) ? asset : {};
+  const preferredVariant = preferredTier === "thumbnail"
+    ? normalizedAsset?.images?.thumbnail
+    : normalizedAsset?.images?.display;
+  const fallbackVariant = preferredTier === "thumbnail"
+    ? normalizedAsset?.images?.display
+    : normalizedAsset?.images?.thumbnail;
+
+  return (
+    preferredVariant?.src
+    || normalizedAsset?.images?.preview?.src
+    || fallbackVariant?.src
+    || normalizedAsset?.imageUrl
+    || ""
+  );
+}
+
+export function getActiveWardrobeItemImageRenderSrc(item, preferredTier = "display") {
+  return getWardrobeImageAssetRenderSrc(getActiveWardrobeItemImageAsset(item), preferredTier);
+}
+
 export function mirrorActiveWardrobeImageAssetToLegacyAliases(item) {
   const activeItemImage = getActiveWardrobeItemImage(item);
   const activeAsset = getActiveWardrobeItemImageAsset(item);

@@ -5,6 +5,8 @@ import {
   createUniqueItemId,
   getActiveWardrobeItemImage,
   getActiveWardrobeItemImageAsset,
+  getActiveWardrobeItemImageRenderSrc,
+  getWardrobeImageAssetRenderSrc,
   getWardrobeItemImages,
   getWardrobePreviewMetadata,
   itemNeedsDescriptionMigration,
@@ -379,6 +381,56 @@ test("invalid activeItemImageUuid falls back to the first ordered item image", (
   assert.equal(getActiveWardrobeItemImage(normalized)?.itemImageUuid, "item-image-1");
   assert.equal(normalized.activeItemImageUuid, "item-image-1");
   assert.equal(normalized.imageUrl, "data:image/png;base64,first");
+});
+
+test("getWardrobeImageAssetRenderSrc prefers thumbnails for browsing surfaces", () => {
+  const asset = {
+    imageUrl: "data:image/webp;base64,display",
+    images: {
+      display: { src: "data:image/webp;base64,display" },
+      preview: { src: "data:image/webp;base64,preview" },
+      thumbnail: { src: "data:image/webp;base64,thumb" }
+    }
+  };
+
+  assert.equal(getWardrobeImageAssetRenderSrc(asset, "thumbnail"), "data:image/webp;base64,thumb");
+  assert.equal(getWardrobeImageAssetRenderSrc(asset, "display"), "data:image/webp;base64,display");
+});
+
+test("getActiveWardrobeItemImageRenderSrc falls back from missing thumbnail to preview", () => {
+  const normalized = normalizeItem(
+    {
+      id: "render_src_item",
+      itemUuid: "item-uuid-render",
+      itemImages: [
+        {
+          itemImageUuid: "item-image-1",
+          canonicalAsset: {
+            assetUuid: "asset-1",
+            imageUrl: "data:image/webp;base64,display",
+            images: {
+              display: { src: "data:image/webp;base64,display" },
+              preview: { src: "data:image/webp;base64,preview" },
+              thumbnail: { src: "" }
+            }
+          },
+          activeImageAssetUuid: "asset-1"
+        }
+      ],
+      activeItemImageUuid: "item-image-1"
+    },
+    {
+      emptyForm: baseEmptyForm,
+      resolveImageUrl: (value) => value,
+      normalizeImageFrameScale: (value) => value ?? 100,
+      normalizeImageScale: (value) => value ?? 100,
+      normalizeImageOffset: (value) => value ?? 0,
+      getNormalizedImageCrop: () => ({ x: 0, y: 0, width: 100, height: 100 })
+    }
+  );
+
+  assert.equal(getActiveWardrobeItemImageRenderSrc(normalized, "thumbnail"), "data:image/webp;base64,preview");
+  assert.equal(getActiveWardrobeItemImageRenderSrc(normalized, "display"), "data:image/webp;base64,display");
 });
 
 test("normalizeItem defaults legacy descriptions and preserves explicit item descriptions", () => {

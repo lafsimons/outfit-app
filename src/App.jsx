@@ -77,6 +77,7 @@ import {
 } from "./lib/generation";
 import {
   buildDisplayName,
+  getActiveWardrobeItemImageRenderSrc,
   getActiveWardrobeItemImageAsset,
   createItemUuid,
   createFallbackItemTimestamp,
@@ -550,6 +551,19 @@ function getManagedImageMetricsCacheKey(item, resolvedImageUrl) {
   });
 }
 
+function getManagedItemRenderUrl(item, renderTier = "thumbnail", context = null) {
+  const preferredTier = renderTier === "display" ? "display" : "thumbnail";
+  const rawImageUrl = getActiveWardrobeItemImageRenderSrc(item, preferredTier)
+    || item?.imageUrl?.trim?.()
+    || item?.imageUrl
+    || "";
+
+  return resolveImageUrl(
+    rawImageUrl,
+    context ? { ...context, source: `${context.source || "managed-image"}:${preferredTier}` } : null
+  );
+}
+
 function getCachedImageMetrics(cacheKey, resolvedImageUrl) {
   if (cacheKey && imageMetricsCache.has(cacheKey)) {
     return imageMetricsCache.get(cacheKey);
@@ -911,7 +925,7 @@ function areEditorValuesEqual(left, right) {
 }
 
 async function getAutoImageCrop(item) {
-  const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+  const imageUrl = getManagedItemRenderUrl(item, "display");
   if (!imageUrl) {
     return getNormalizedImageCrop(item);
   }
@@ -1130,7 +1144,7 @@ function getManagedImagePlaceholderAspect(perfSlot, item) {
   return 0.82;
 }
 
-const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
     ? {
@@ -1139,7 +1153,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
         source: "ManagedItemImage"
       }
     : null;
-  const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
+  const targetImageUrl = getManagedItemRenderUrl(item, renderTier, perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
   const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
   const targetReadyKey = `${targetMetricsCacheKey}::${targetImageUrl}`;
   const renderIdentityKey = targetReadyKey || item?.id || dataItemId || perfSlot || "managed-image";
@@ -1278,6 +1292,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
   && previousProps.useCrop === nextProps.useCrop
   && previousProps.usePresentation === nextProps.usePresentation
   && previousProps.perfSlot === nextProps.perfSlot
+  && previousProps.renderTier === nextProps.renderTier
 ));
 
 function getAdvancedOverrideFields(item, defaults) {
@@ -2147,6 +2162,7 @@ export default function App() {
   const pendingSlotActionFrameRef = useRef(null);
   const imageMetricsPrewarmHandleRef = useRef(null);
   const outfitPaletteUpdateHandleRef = useRef(null);
+  const skipNextHydrationAppStateSaveRef = useRef(true);
   appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
@@ -2906,7 +2922,7 @@ export default function App() {
         return;
       }
 
-      const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+      const imageUrl = getManagedItemRenderUrl(item, "display");
       if (!imageUrl) {
         return;
       }
@@ -2948,7 +2964,7 @@ export default function App() {
     });
 
     const prewarmQueue = Array.from(prewarmCandidatesById.values()).filter((item) => {
-      const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+      const resolvedImageUrl = getManagedItemRenderUrl(item, "display", { source: "prewarm:resolve" });
       const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
       return !getCachedImageMetrics(cacheKey, resolvedImageUrl);
     });
@@ -2983,7 +2999,7 @@ export default function App() {
 
         const item = prewarmQueue[nextIndex];
         nextIndex += 1;
-        const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+        const resolvedImageUrl = getManagedItemRenderUrl(item, "display", { source: "prewarm:resolve" });
         const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
         inFlight = true;
 
@@ -4180,6 +4196,11 @@ export default function App() {
         (storedAppState?.itemDefaultsMigrationVersion ?? 0) < ITEM_DEFAULTS_MIGRATION_VERSION;
       const shouldApplyImagePresentationMigration =
         (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION;
+      skipNextHydrationAppStateSaveRef.current = !(
+        !storedAppState
+        || shouldApplyStyleWeightMigration
+        || shouldApplyImagePresentationMigration
+      );
       const styleWeightedItems = shouldApplyStyleWeightMigration
         ? normalizedItems.map(applyMappedStyleWeightDefaults)
         : normalizedItems;
@@ -4287,6 +4308,11 @@ export default function App() {
 
   useEffect(() => {
     if (loading || !hasHydratedAppState) {
+      return;
+    }
+
+    if (skipNextHydrationAppStateSaveRef.current) {
+      skipNextHydrationAppStateSaveRef.current = false;
       return;
     }
 
@@ -7169,7 +7195,7 @@ export default function App() {
       >
         {item ? (
           <span className="item-figure accessory-figure has-item">
-            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation />
+            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation renderTier="display" />
           </span>
         ) : null}
       </button>
@@ -10142,7 +10168,7 @@ export default function App() {
       >
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
-            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} />
+            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} renderTier="display" />
           ) : (
             <span>No image selected</span>
           )}
@@ -10669,7 +10695,7 @@ export default function App() {
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} /> : <span aria-hidden="true" />}
+            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} renderTier="display" /> : <span aria-hidden="true" />}
           </button>
           {item ? (
             <div className="slot-actions-anchor">
@@ -11916,6 +11942,7 @@ export default function App() {
                   alt={buildDisplayName(wardrobePreviewItem)}
                   className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
+                  renderTier="display"
                 />
                 <button
                   type="button"
