@@ -30,6 +30,7 @@ test("legacy fitpic normalizes to one primary fitpic image while preserving lega
   assert.equal(normalized.primaryImageUuid, "fitpic-image-uuid-1");
   assert.equal(normalized.imageData, "data:image/png;base64,abc");
   assert.deepEqual(normalized.images, {
+    display: "data:image/png;base64,abc",
     preview: "data:image/png;base64,abc",
     original: "",
     thumbnail: ""
@@ -41,6 +42,7 @@ test("legacy fitpic normalizes to one primary fitpic image while preserving lega
     order: 0,
     imageData: "data:image/png;base64,abc",
     images: {
+      display: "data:image/png;base64,abc",
       preview: "data:image/png;base64,abc",
       original: "",
       thumbnail: ""
@@ -64,7 +66,9 @@ test("legacy fitpic normalizes to one primary fitpic image while preserving lega
     sourceCameraMake: "",
     sourceCameraModel: "",
     sourceLensModel: "",
-    imageKind: ""
+    imageKind: "",
+    originalPreserved: false,
+    archivalOriginalPreserved: false
   });
   assert.equal(normalized.fitDate, "2024-04-01T00:00:00.000Z");
 });
@@ -128,6 +132,7 @@ test("new multi-image fitpic preserves image sub-records and primary selection",
   assert.equal(normalized.primaryImageUuid, "image-uuid-2");
   assert.equal(normalized.imageData, "data:image/png;base64,two");
   assert.equal(normalized.images.original, "blob:two");
+  assert.equal(normalized.images.display, "data:image/png;base64,two");
 });
 
 test("normalized multi-image fitpics preserve stable image uuids and backfill missing ones", () => {
@@ -238,7 +243,13 @@ test("createImportedFitpicFromFile captures shared metadata and creates one nest
       naturalWidth: 1200,
       naturalHeight: 1600
     }),
-    compressImageSource: async () => "data:image/webp;base64,preview"
+    buildImportedImageAssetSet: async () => ({
+      originalPreserved: false,
+      archivalOriginalPreserved: true,
+      original: { src: "data:image/webp;base64,original" },
+      display: { src: "data:image/webp;base64,preview" },
+      thumbnail: { src: "data:image/webp;base64,thumb" }
+    })
   });
 
   assert.equal(fitpic.name, "Look 01");
@@ -247,7 +258,12 @@ test("createImportedFitpicFromFile captures shared metadata and creates one nest
   assert.equal(fitpic.fitpicImages[0].parentFitpicUuid, "fitpic-uuid-1");
   assert.equal(fitpic.fitpicImages[0].imageData, "data:image/webp;base64,preview");
   assert.equal(fitpic.imageData, "data:image/webp;base64,preview");
+  assert.equal(fitpic.fitpicImages[0].images.original, "data:image/webp;base64,original");
   assert.equal(fitpic.images.preview, "data:image/webp;base64,preview");
+  assert.equal(fitpic.images.display, "data:image/webp;base64,preview");
+  assert.equal(fitpic.images.thumbnail, "data:image/webp;base64,thumb");
+  assert.equal(fitpic.originalPreserved, false);
+  assert.equal(fitpic.archivalOriginalPreserved, true);
   assert.equal(fitpic.importedAt, "2024-05-01T12:34:56.000Z");
   assert.equal(fitpic.fitDate, "2024-05-01T12:34:56.000Z");
 });
@@ -279,7 +295,13 @@ test("createImportedGroupedFitpicFromFiles creates one multi-image fitpic with t
         naturalWidth: 1200,
         naturalHeight: 1600
       }),
-      compressImageSource: async (file) => `data:image/webp;base64,${file.name}`
+      buildImportedImageAssetSet: async (file) => ({
+        originalPreserved: file.name === "Front.png",
+        archivalOriginalPreserved: file.name !== "Front.png",
+        original: { src: `data:image/webp;base64,original-${file.name}` },
+        display: { src: `data:image/webp;base64,${file.name}` },
+        thumbnail: { src: `data:image/webp;base64,thumb-${file.name}` }
+      })
     }
   );
 
@@ -314,6 +336,10 @@ test("createImportedGroupedFitpicFromFiles creates one multi-image fitpic with t
   );
   assert.equal(grouped.imageData, "data:image/webp;base64,Front.png");
   assert.equal(grouped.images.preview, "data:image/webp;base64,Front.png");
+  assert.equal(grouped.images.display, "data:image/webp;base64,Front.png");
+  assert.equal(grouped.images.original, "data:image/webp;base64,original-Front.png");
+  assert.equal(grouped.originalPreserved, true);
+  assert.equal(grouped.archivalOriginalPreserved, false);
 });
 
 test("createImportedGroupedFitpicFromFiles supports a one-file grouped import", async () => {
@@ -336,7 +362,13 @@ test("createImportedGroupedFitpicFromFiles supports a one-file grouped import", 
         naturalWidth: 800,
         naturalHeight: 1000
       }),
-      compressImageSource: async () => "data:image/webp;base64,solo"
+      buildImportedImageAssetSet: async () => ({
+        originalPreserved: true,
+        archivalOriginalPreserved: false,
+        original: { src: "data:image/png;base64,solo-original" },
+        display: { src: "data:image/webp;base64,solo" },
+        thumbnail: { src: "data:image/webp;base64,solo-thumb" }
+      })
     }
   );
 
@@ -387,7 +419,13 @@ test("replaceFitpicImageFromFile replaces the primary nested image while preserv
         naturalWidth: 1800,
         naturalHeight: 1200
       }),
-      compressImageSource: async () => "data:image/webp;base64,new"
+      buildImportedImageAssetSet: async () => ({
+        originalPreserved: false,
+        archivalOriginalPreserved: true,
+        original: { src: "data:image/webp;base64,new-original" },
+        display: { src: "data:image/webp;base64,new" },
+        thumbnail: { src: "data:image/webp;base64,new-thumb" }
+      })
     }
   );
 
@@ -399,6 +437,7 @@ test("replaceFitpicImageFromFile replaces the primary nested image while preserv
   assert.equal(updated.updatedAt, "2024-06-01T10:00:00.000Z");
   assert.equal(updated.fitDate, "2024-01-15T00:00:00.000Z");
   assert.equal(updated.imageData, "data:image/webp;base64,new");
+  assert.equal(updated.images.original, "data:image/webp;base64,new-original");
   assert.equal(updated.fitpicImages.length, 2);
   assert.equal(updated.fitpicImages[0].fitpicImageUuid, "primary-image-uuid");
   assert.equal(updated.fitpicImages[0].imageData, "data:image/webp;base64,new");

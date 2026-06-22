@@ -106,7 +106,11 @@ export function escapeCsvCell(value) {
 }
 
 export function sanitizeImageReference(value) {
-  const normalizedValue = normalizeString(value);
+  const normalizedValue = normalizeString(
+    value && typeof value === "object" && !Array.isArray(value)
+      ? value.src
+      : value
+  );
 
   if (!normalizedValue || /^data:/i.test(normalizedValue)) {
     return "";
@@ -242,6 +246,7 @@ function getFitpicImageCandidates(entity = {}) {
     entity?.imageUrl,
     ...(Array.isArray(entity?.imageUrls) ? entity.imageUrls : []),
     entity?.images?.original,
+    entity?.images?.display,
     entity?.images?.preview,
     entity?.images?.thumbnail,
     entity?.sourceRelativePath,
@@ -291,6 +296,7 @@ function getFitpicImageRecordCount(fitpic = {}, fitpicImages = []) {
     fitpic?.sourceRelativePath,
     fitpic?.sourceOriginalFilename,
     fitpic?.images?.original,
+    fitpic?.images?.display,
     fitpic?.images?.preview,
     fitpic?.images?.thumbnail,
     fitpic?.imageData

@@ -74,6 +74,18 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getImageCandidateSrc(value) {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (value && typeof value === "object" && typeof value.src === "string") {
+    return value.src.trim();
+  }
+
+  return "";
+}
+
 function normalizeFitpicImageOrder(fitpicImage, fallbackOrder = 0) {
   const numericOrder = Number(fitpicImage?.order);
   return Number.isFinite(numericOrder) ? numericOrder : fallbackOrder;
@@ -85,11 +97,12 @@ function getFitpicRenderableImageSrc(candidate = {}) {
     candidate?.imageUrl,
     ...(Array.isArray(candidate?.imageUrls) ? candidate.imageUrls : []),
     candidate?.images?.original,
+    candidate?.images?.display,
     candidate?.images?.preview,
     candidate?.images?.thumbnail,
     candidate?.imageData
   ]
-    .map(normalizeString)
+    .map(getImageCandidateSrc)
     .find(Boolean) || "";
 }
 

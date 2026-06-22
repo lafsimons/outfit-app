@@ -111,6 +111,11 @@ import {
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
+  buildImportedImageAssetSet,
+  IMPORT_DISPLAY_MAX_LONG_EDGE,
+  IMPORT_DISPLAY_WEBP_QUALITY
+} from "./lib/imageAssetPipeline";
+import {
   backfillOutfitItemUuids,
   createOutfitUuid,
   normalizeHydratedAppState,
@@ -1667,8 +1672,16 @@ function isLocalDataImage(imageUrl) {
 }
 
 async function compressImageSource(source, maxDimension = 1400, quality = 0.86) {
-  if (!source.type.startsWith("image/")) {
-    throw new Error("Selected file is not an image.");
+  const imageAssets = await buildImportedImageAssetSet(source, {
+    readFileAsDataUrl,
+    loadImage
+  });
+
+  if (
+    maxDimension === IMPORT_DISPLAY_MAX_LONG_EDGE
+    && quality === IMPORT_DISPLAY_WEBP_QUALITY
+  ) {
+    return imageAssets.display.src;
   }
 
   const dataUrl = await readFileAsDataUrl(source);
@@ -6721,15 +6734,21 @@ export default function App() {
             readFileAsDataUrl,
             loadImage
           });
-          const imageUrl = await compressImageSource(file);
+          const imageAssets = await buildImportedImageAssetSet(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
 
           return {
-            imageUrl,
+            imageUrl: imageAssets.display.src,
             images: {
-              preview: { src: imageUrl },
-              thumbnail: { src: imageUrl }
+              original: imageAssets.original,
+              display: imageAssets.display,
+              thumbnail: imageAssets.thumbnail
             },
-            importMetadata
+            importMetadata,
+            originalPreserved: imageAssets.originalPreserved,
+            archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
           };
         })
       );
@@ -6742,7 +6761,9 @@ export default function App() {
             order: currentImageCount + index,
             imageUrl: entry.imageUrl,
             images: entry.images,
-            importMetadata: entry.importMetadata
+            importMetadata: entry.importMetadata,
+            originalPreserved: entry.originalPreserved,
+            archivalOriginalPreserved: entry.archivalOriginalPreserved
           })
         );
         const nextDraft = addWardrobeItemImagesToDraft(draftWithItemUuid, importedImages);
@@ -6889,14 +6910,20 @@ export default function App() {
           quality: 0.9
         }
       });
-      const compressedImageUrl = await compressImageSource(transparentBlob);
+      const imageAssets = await buildImportedImageAssetSet(transparentBlob, {
+        readFileAsDataUrl,
+        loadImage
+      });
       setDraft((current) => ({
         ...replaceActiveWardrobeItemImageAssetInDraft(current, {
-          imageUrl: compressedImageUrl,
+          imageUrl: imageAssets.display.src,
           images: {
-            preview: { src: compressedImageUrl },
-            thumbnail: { src: compressedImageUrl }
-          }
+            original: imageAssets.original,
+            display: imageAssets.display,
+            thumbnail: imageAssets.thumbnail
+          },
+          originalPreserved: imageAssets.originalPreserved,
+          archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
         }),
         imageFrameScale: 100,
         imageScale: 100,
@@ -9318,7 +9345,7 @@ export default function App() {
             createId: createFitpicId,
             readFileAsDataUrl,
             loadImage,
-            compressImageSource
+            buildImportedImageAssetSet
           })
         )
       );
@@ -9364,7 +9391,7 @@ export default function App() {
         createId: createFitpicId,
         readFileAsDataUrl,
         loadImage,
-        compressImageSource
+        buildImportedImageAssetSet
       });
 
       setFitpics((current) => [nextFitpic, ...current]);
@@ -9440,7 +9467,11 @@ export default function App() {
         readFileAsDataUrl,
         loadImage
       });
-      const imageData = await compressImageSource(file);
+      const imageAssets = await buildImportedImageAssetSet(file, {
+        readFileAsDataUrl,
+        loadImage
+      });
+      const imageData = imageAssets.display.src;
 
       setFitpicDraft((current) => {
         const currentImages = Array.isArray(current.fitpicImages) ? current.fitpicImages : [];
@@ -9456,8 +9487,12 @@ export default function App() {
                     imageData,
                     images: {
                       ...(fitpicImage.images ?? {}),
-                      preview: imageData
+                      original: imageAssets.original.src,
+                      display: imageAssets.display.src,
+                      thumbnail: imageAssets.thumbnail.src
                     },
+                    originalPreserved: imageAssets.originalPreserved,
+                    archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
                     ...importMetadata
                   },
                   {
@@ -9500,7 +9535,11 @@ export default function App() {
             readFileAsDataUrl,
             loadImage
           });
-          const imageData = await compressImageSource(file);
+          const imageAssets = await buildImportedImageAssetSet(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
+          const imageData = imageAssets.display.src;
 
           return normalizeFitpicImage(
             {
@@ -9509,8 +9548,12 @@ export default function App() {
               order: editingFitpicImages.length + index,
               imageData,
               images: {
-                preview: imageData
+                original: imageAssets.original.src,
+                display: imageAssets.display.src,
+                thumbnail: imageAssets.thumbnail.src
               },
+              originalPreserved: imageAssets.originalPreserved,
+              archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
               ...importMetadata
             },
             {
