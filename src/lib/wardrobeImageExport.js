@@ -147,6 +147,42 @@ function drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWid
   context.restore();
 }
 
+function drawMissingImagePlaceholder(context, frameX, frameY, frameWidth, frameHeight, {
+  backgroundColor = "#ece7df",
+  borderColor = "rgba(17, 17, 17, 0.18)",
+  textColor = "rgba(17, 17, 17, 0.72)",
+  fontFamily = "monospace"
+} = {}) {
+  context.save();
+  context.fillStyle = backgroundColor;
+  context.fillRect(frameX, frameY, frameWidth, frameHeight);
+  context.strokeStyle = borderColor;
+  context.lineWidth = 1;
+  context.strokeRect(frameX + 0.5, frameY + 0.5, frameWidth - 1, frameHeight - 1);
+  context.fillStyle = textColor;
+  context.font = `600 12px ${fontFamily}`;
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillText("Missing image", frameX + frameWidth / 2, frameY + frameHeight / 2, Math.max(0, frameWidth - 16));
+  context.restore();
+}
+
+function createMissingImageWarning(item = {}, { fileName = "", sourceType = "missing", detail = "" } = {}) {
+  return {
+    type: "missing_export_image",
+    reason: "missing export image",
+    detail,
+    fileName,
+    sourceType,
+    itemId: item?.id ?? "",
+    itemUuid: item?.itemUuid ?? "",
+    brand: item?.brand ?? "",
+    name: item?.name ?? "",
+    status: item?.status ?? item?.list ?? "",
+    collections: Array.isArray(item?.collections) ? item.collections : []
+  };
+}
+
 function getDocumentStyles() {
   if (typeof document === "undefined") {
     return null;
@@ -312,22 +348,56 @@ export async function renderWardrobeImageExport({
     ? Math.max(...itemLabelLines.map((lines) => lines.length))
     : getWardrobeSpreadExportLabelRowCount(normalizedOptions);
   const sourceTypeCounts = {};
+  const missingImageWarnings = [];
   const preparedItems = await Promise.all(
     exportItems.map(async (item) => {
       const source = getWardrobeSpreadExportImageSource(item);
       const exportImageUrl = resolveAssetUrl(source.src);
 
-      if (!exportImageUrl) {
-        throw new Error("Missing export image.");
-      }
-
       sourceTypeCounts[source.sourceType] = (sourceTypeCounts[source.sourceType] ?? 0) + 1;
 
-      return {
-        item,
-        image: await loadImage(exportImageUrl),
-        sourceType: source.sourceType
-      };
+      if (!exportImageUrl) {
+        const warning = createMissingImageWarning(item, {
+          fileName,
+          sourceType: source.sourceType,
+          detail: "No exportable image source was available for this item."
+        });
+        warnings.push(`${warning.itemId || warning.itemUuid || warning.name || "item"}: missing export image`);
+        missingImageWarnings.push(warning);
+
+        return {
+          item,
+          image: null,
+          sourceType: source.sourceType,
+          missingImage: true
+        };
+      }
+
+      try {
+        const image = await loadImage(exportImageUrl);
+
+        return {
+          item,
+          image,
+          sourceType: source.sourceType,
+          missingImage: false
+        };
+      } catch (error) {
+        const warning = createMissingImageWarning(item, {
+          fileName,
+          sourceType: source.sourceType,
+          detail: error?.message ?? "Image could not be loaded."
+        });
+        warnings.push(`${warning.itemId || warning.itemUuid || warning.name || "item"}: missing export image`);
+        missingImageWarnings.push(warning);
+
+        return {
+          item,
+          image: null,
+          sourceType: source.sourceType,
+          missingImage: true
+        };
+      }
     })
   );
 
@@ -368,23 +438,36 @@ export async function renderWardrobeImageExport({
     context.fillStyle = exportBackgroundColor;
     context.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    preparedItems.forEach(({ item, image }, index) => {
+    preparedItems.forEach(({ item, image, missingImage }, index) => {
       const column = index % columns;
       const row = Math.floor(index / columns);
       const cellLeft = padding + column * cellSize;
       const cellTop = padding + row * cellHeight;
       const maxImageSize = cellSize * 0.82;
-      const sourceRect = getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight);
-      const baseScale = Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1);
-      const frameWidth = sourceRect.width * baseScale;
-      const frameHeight = sourceRect.height * baseScale;
+      const fallbackFrameWidth = cellSize * 0.68;
+      const fallbackFrameHeight = cellSize * 0.68;
+      const sourceRect = image ? getManagedImageSourceRect(item, image.naturalWidth, image.naturalHeight) : null;
+      const baseScale = sourceRect
+        ? Math.min(maxImageSize / sourceRect.width, maxImageSize / sourceRect.height, 1)
+        : 1;
+      const frameWidth = sourceRect ? sourceRect.width * baseScale : fallbackFrameWidth;
+      const frameHeight = sourceRect ? sourceRect.height * baseScale : fallbackFrameHeight;
       const jitterX = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
       const jitterY = normalizedOptions.shuffleItems ? (random() - 0.5) * cellSize * 0.22 : 0;
       const frameX = cellLeft + (cellSize - frameWidth) / 2 + jitterX;
       const frameY = cellTop + (cellSize - frameHeight) / 2 + jitterY;
       const labelLines = itemLabelLines[index] ?? [];
 
-      drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
+      if (missingImage || !image) {
+        drawMissingImagePlaceholder(context, frameX, frameY, frameWidth, frameHeight, {
+          backgroundColor: exportBackgroundColor,
+          borderColor: exportMutedTextColor,
+          textColor: exportMutedTextColor,
+          fontFamily: exportFontFamily
+        });
+      } else {
+        drawManagedImageToCanvas(context, item, image, frameX, frameY, frameWidth, frameHeight);
+      }
 
       if (!labelLines.length) {
         return;
@@ -460,6 +543,8 @@ export async function renderWardrobeImageExport({
     pixelWidth: selectedRenderConfig.pixelWidth,
     pixelHeight: selectedRenderConfig.pixelHeight,
     warningCount: warnings.length,
+    missingImageCount: missingImageWarnings.length,
+    warnings: missingImageWarnings,
     fallbackUsed: finalEncoding.fallbackUsed,
     sourceType: Object.keys(sortedSourceTypeCounts)[0] ?? "missing",
     sourceTypeCounts: sortedSourceTypeCounts

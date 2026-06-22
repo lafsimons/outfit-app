@@ -271,10 +271,11 @@ import {
   serializeSavedOutfitsCsv,
   serializeSavedOutfitsJson
 } from "./lib/metadataExport";
-import { buildBackupPackageZip } from "./lib/backupPackageV2.js";
+import { buildBackupPackageZip, importBackupPackage } from "./lib/backupPackageV2.js";
 import {
   buildOaAiExportBundle,
   createDefaultOaAiExportOptions,
+  formatOaAiExportStepLabel,
   getOaAiStatusOptions
 } from "./lib/oaAiExport.js";
 import {
@@ -5191,20 +5192,6 @@ export default function App() {
       return;
     }
 
-    let backup;
-
-    try {
-      backup = JSON.parse(await readFileAsText(file));
-    } catch {
-      window.alert("This backup file could not be read.");
-      return;
-    }
-
-    if (!validateBackup(backup)) {
-      window.alert("This is not a valid outfit app backup.");
-      return;
-    }
-
     const confirmed = await requestConfirmation({
       title: "Import backup?",
       message: "This will replace all wardrobe data in this browser.",
@@ -5215,29 +5202,58 @@ export default function App() {
       return;
     }
 
-    const preparedBackup = await prepareBackupImport(backup, {
-      normalizeStoredItem,
-      createFallbackItemTimestamp,
-      restoreLegacyBakedImageScale,
-      bakeItemImagePresentation,
-      applyMappedStyleWeightDefaults,
-      normalizeHydratedAppState,
-      buildNextOutfit,
-      normalizeOutfitAffinity,
-      normalizeRecentOutfits,
-      normalizeWeatherSettings,
-      defaultGenerationLists,
-      emptyOutfitFilters,
-      defaultGenerationMode,
-      migrationVersions: {
-        itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
-        imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION
-      }
-    });
+    try {
+      const lowerName = file.name?.toLowerCase?.() ?? "";
+      let backup;
+      let importWarnings = [];
 
-    await replaceWithBackup(preparedBackup.backup);
-    applyLoadedData(preparedBackup.items, preparedBackup.appState);
-    window.alert("Backup imported.");
+      if (lowerName.endsWith(".zip") || file.type === "application/zip") {
+        const importedPackage = await importBackupPackage({ file });
+        backup = importedPackage.backup;
+        importWarnings = importedPackage.warnings;
+      } else {
+        backup = JSON.parse(await readFileAsText(file));
+
+        if (!validateBackup(backup)) {
+          window.alert("This is not a valid outfit app backup.");
+          return;
+        }
+      }
+
+      const preparedBackup = await prepareBackupImport(backup, {
+        normalizeStoredItem,
+        createFallbackItemTimestamp,
+        restoreLegacyBakedImageScale,
+        bakeItemImagePresentation,
+        applyMappedStyleWeightDefaults,
+        normalizeHydratedAppState,
+        buildNextOutfit,
+        normalizeOutfitAffinity,
+        normalizeRecentOutfits,
+        normalizeWeatherSettings,
+        defaultGenerationLists,
+        emptyOutfitFilters,
+        defaultGenerationMode,
+        migrationVersions: {
+          itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
+          imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION
+        }
+      });
+
+      await replaceWithBackup(preparedBackup.backup);
+      applyLoadedData(preparedBackup.items, preparedBackup.appState);
+
+      if (importWarnings.length > 0) {
+        window.alert(
+          `Backup imported with ${importWarnings.length} warning${importWarnings.length === 1 ? "" : "s"}. Missing media was skipped where necessary.`
+        );
+        return;
+      }
+
+      window.alert("Backup imported.");
+    } catch {
+      window.alert("This backup file could not be read.");
+    }
   }
 
   async function handleExportOutfitImage() {
@@ -5387,10 +5403,19 @@ export default function App() {
     const nextOptions = oaAiExportOptions
       ? { ...oaAiExportOptions }
       : createDefaultOaAiExportOptions(collectionOptions, oaAiStatusOptions);
+    let exportStep = "bundle:start";
 
     setOaAiExporting(true);
 
     try {
+      console.info("[OA_AI_EXPORT_DEBUG] handleConfirmOaAiExport:start", {
+        options: nextOptions,
+        itemCount: items.length,
+        savedOutfitCount: savedOutfits.length,
+        fitpicCount: fitpics.length
+      });
+
+      exportStep = "bundle:build";
       const bundle = await buildOaAiExportBundle({
         items,
         savedOutfits,
@@ -5401,14 +5426,43 @@ export default function App() {
         renderFitpicPng: renderFitpicImageExport
       });
 
-      downloadExportFile(await bundle.blob.arrayBuffer(), {
+      exportStep = "download:arrayBuffer";
+      const bundleBytes = await bundle.blob.arrayBuffer();
+
+      exportStep = "download:save-trigger";
+      downloadExportFile(bundleBytes, {
         filename: bundle.fileName,
         mimeType: "application/zip"
       });
 
+      console.info("[OA_AI_EXPORT_DEBUG] handleConfirmOaAiExport:complete", {
+        fileName: bundle.fileName,
+        byteLength: bundleBytes.byteLength,
+        includedFiles: bundle.includedFiles,
+        skippedDatasets: bundle.skippedDatasets
+      });
+
       setOaAiExportOptions(null);
-    } catch {
-      window.alert("The OA AI export could not be generated.");
+    } catch (error) {
+      const errorName = error?.name ?? "Error";
+      const errorMessage = error?.message ?? String(error);
+      const failingStep = formatOaAiExportStepLabel(
+        error?.oaAiExportStep ?? exportStep,
+        error?.oaAiExportContext ?? {}
+      );
+
+      console.error("[OA_AI_EXPORT_DEBUG] handleConfirmOaAiExport:error", {
+        step: exportStep,
+        options: nextOptions,
+        error,
+        message: error?.message ?? String(error),
+        stack: error?.stack ?? "",
+        oaAiExportStep: error?.oaAiExportStep ?? "",
+        oaAiExportContext: error?.oaAiExportContext ?? null,
+        alertStep: failingStep,
+        alertErrorName: errorName
+      });
+      window.alert(`OA AI export failed at ${failingStep}: ${errorName}: ${errorMessage}`);
     } finally {
       setOaAiExporting(false);
     }
@@ -11612,7 +11666,7 @@ export default function App() {
             <input
               ref={importBackupRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               className="backup-file-input"
               onChange={handleImportBackup}
             />

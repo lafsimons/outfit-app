@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import {
+  LEGACY_PACKAGE_ASSET_POLICY,
   PACKAGE_APP_STATE_FILE,
   PACKAGE_ASSET_POLICY,
   PACKAGE_FITPICS_FILE,
@@ -18,6 +19,7 @@ import {
   buildBackupPackageManifest,
   buildBackupPackageZip,
   findEmbeddedDataImagePaths,
+  importBackupPackage,
   validateBackupPackageManifest
 } from "./backupPackageV2.js";
 
@@ -233,6 +235,68 @@ test("buildBackupPackage strips nested legacy wardrobe item-image payload mirror
   assert.equal(
     wardrobeRecord.itemImages[0].derivedAssets[0].images.preview.packagePath,
     `${PACKAGE_WARDROBE_PREVIEWS_DIR}/asset-bag-2.webp`
+  );
+});
+
+test("buildBackupPackage exports legacy wardrobe asset mirrors without warning when preview fields are missing", async () => {
+  const result = await buildBackupPackage({
+    items: [
+      {
+        id: "legacy-item",
+        itemUuid: "legacy-item-uuid",
+        imageUrl: "",
+        images: {
+          original: { src: "", mimeType: "image/png" },
+          preview: { src: "", mimeType: "image/png" },
+          thumbnail: { src: "", mimeType: "image/png" }
+        },
+        activeItemImageUuid: "legacy-item-image",
+        itemImages: [
+          {
+            itemImageUuid: "legacy-item-image",
+            parentItemUuid: "legacy-item-uuid",
+            order: 0,
+            canonicalAsset: {
+              assetUuid: "legacy-asset",
+              kind: "canonical",
+              parentItemImageUuid: "legacy-item-image",
+              order: 0,
+              imageUrl: "",
+              src: "data:image/png;base64,bGVnYWN5LXNyYw==",
+              dataUrl: "data:image/png;base64,bGVnYWN5LWRhdGE=",
+              imageData: "data:image/png;base64,bGVnYWN5LWltYWdl",
+              images: {
+                original: { src: "", mimeType: "image/png" },
+                preview: { src: "", mimeType: "image/png" },
+                thumbnail: { src: "", mimeType: "image/png" }
+              }
+            },
+            derivedAssets: [],
+            activeImageAssetUuid: "legacy-asset"
+          }
+        ]
+      }
+    ],
+    appState: {
+      savedOutfits: [],
+      fitpics: []
+    }
+  });
+
+  const [wardrobeRecord] = strFromU8(result.files.get(PACKAGE_WARDROBE_ITEMS_FILE))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  assert.equal(result.warningCount, 0);
+  assert.equal(result.files.has(`${PACKAGE_WARDROBE_PREVIEWS_DIR}/legacy-asset.png`), true);
+  assert.equal(
+    wardrobeRecord.itemImages[0].canonicalAsset.images.preview.packagePath,
+    `${PACKAGE_WARDROBE_PREVIEWS_DIR}/legacy-asset.png`
+  );
+  assert.equal(
+    wardrobeRecord.itemImages[0].canonicalAsset.images.display.packagePath,
+    `${PACKAGE_WARDROBE_PREVIEWS_DIR}/legacy-asset.png`
   );
 });
 
@@ -453,4 +517,224 @@ test("buildBackupPackageZip wraps the unchanged package structure into a zip", a
 
   const zipManifest = JSON.parse(strFromU8(zipEntries[PACKAGE_MANIFEST_FILE]));
   assert.equal(zipManifest.wardrobeItemCount, 1);
+});
+
+test("importBackupPackage restores wardrobe originals display thumbnails and fitpics from a backup zip", async () => {
+  const wardrobeOriginal = "data:image/webp;base64,b3JpZ2luYWw=";
+  const wardrobeDisplay = "data:image/webp;base64,ZGlzcGxheQ==";
+  const wardrobeThumb = "data:image/webp;base64,dGh1bWI=";
+  const fitpicOriginal = "data:image/webp;base64,Zml0cGljLW9yaWdpbmFs";
+  const fitpicDisplay = "data:image/webp;base64,Zml0cGljLWRpc3BsYXk=";
+  const fitpicThumb = "data:image/webp;base64,Zml0cGljLXRodW1i";
+  const zipResult = await buildBackupPackageZip({
+    items: [
+      {
+        id: "item-1",
+        itemUuid: "item-uuid-1",
+        imageUrl: wardrobeDisplay,
+        images: {
+          original: { src: wardrobeOriginal, mimeType: "image/webp" },
+          display: { src: wardrobeDisplay, mimeType: "image/webp" },
+          preview: { src: wardrobeDisplay, mimeType: "image/webp" },
+          thumbnail: { src: wardrobeThumb, mimeType: "image/webp" }
+        },
+        originalPreserved: false,
+        archivalOriginalPreserved: true,
+        activeItemImageUuid: "item-image-1",
+        itemImages: [
+          {
+            itemImageUuid: "item-image-1",
+            parentItemUuid: "item-uuid-1",
+            order: 0,
+            canonicalAsset: {
+              assetUuid: "asset-1",
+              kind: "canonical",
+              parentItemImageUuid: "item-image-1",
+              order: 0,
+              imageUrl: wardrobeDisplay,
+              images: {
+                original: { src: wardrobeOriginal, mimeType: "image/webp" },
+                display: { src: wardrobeDisplay, mimeType: "image/webp" },
+                preview: { src: wardrobeDisplay, mimeType: "image/webp" },
+                thumbnail: { src: wardrobeThumb, mimeType: "image/webp" }
+              },
+              originalPreserved: false,
+              archivalOriginalPreserved: true
+            },
+            derivedAssets: [],
+            activeImageAssetUuid: "asset-1"
+          }
+        ]
+      }
+    ],
+    appState: {
+      savedOutfits: [
+        {
+          id: "saved-1",
+          outfitUuid: "outfit-uuid-1",
+          name: "Saved outfit",
+          outfit: { TopInner: "item-1" },
+          outfitItemUuids: { TopInner: "item-uuid-1" },
+          layering: false
+        }
+      ],
+      fitpics: [
+        {
+          id: "fitpic-1",
+          fitpicUuid: "fitpic-uuid-1",
+          name: "Fitpic",
+          imageData: fitpicDisplay,
+          images: {
+            original: fitpicOriginal,
+            display: fitpicDisplay,
+            preview: fitpicDisplay,
+            thumbnail: fitpicThumb
+          },
+          primaryImageUuid: "fitpic-image-1",
+          fitpicImages: [
+            {
+              fitpicImageUuid: "fitpic-image-1",
+              parentFitpicUuid: "fitpic-uuid-1",
+              order: 0,
+              imageData: fitpicDisplay,
+              images: {
+                original: fitpicOriginal,
+                display: fitpicDisplay,
+                preview: fitpicDisplay,
+                thumbnail: fitpicThumb
+              }
+            }
+          ]
+        }
+      ]
+    }
+  });
+
+  const imported = await importBackupPackage({
+    file: zipResult.blob
+  });
+
+  assert.equal(imported.backup.items[0].images.original.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].images.display.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].images.thumbnail.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].itemImages[0].canonicalAsset.images.original.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.appState.fitpics[0].images.original.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.appState.fitpics[0].images.display.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.appState.savedOutfits[0].outfitUuid, "outfit-uuid-1");
+  assert.equal(imported.warnings.length, 0);
+});
+
+test("importBackupPackage rebuilds visible wardrobe aliases from original when display and preview are absent", async () => {
+  const manifest = buildBackupPackageManifest({
+    exportedAt: "2026-06-22T12:30:00.000Z",
+    wardrobeItemCount: 1,
+    fitpicCount: 0,
+    savedOutfitCount: 0,
+    wardrobePreviewFileCount: 1,
+    fitpicPreviewFileCount: 0
+  });
+  const originalPath = `${PACKAGE_WARDROBE_PREVIEWS_DIR}/original-only-original.webp`;
+  const zipBytes = zipSync({
+    [PACKAGE_MANIFEST_FILE]: strToU8(JSON.stringify(manifest)),
+    [PACKAGE_APP_STATE_FILE]: strToU8(JSON.stringify({ wardrobeSort: "newest" })),
+    [PACKAGE_WARDROBE_ITEMS_FILE]: strToU8(`${JSON.stringify({
+      id: "item-original-only",
+      itemUuid: "item-original-only-uuid",
+      imageUrl: "",
+      images: {
+        original: { src: "", mimeType: "image/webp", packagePath: originalPath },
+        display: { src: "" },
+        preview: { src: "" },
+        thumbnail: { src: "" }
+      },
+      activeItemImageUuid: "item-image-original-only",
+      itemImages: [
+        {
+          itemImageUuid: "item-image-original-only",
+          parentItemUuid: "item-original-only-uuid",
+          order: 0,
+          canonicalAsset: {
+            assetUuid: "asset-original-only",
+            kind: "canonical",
+            parentItemImageUuid: "item-image-original-only",
+            order: 0,
+            imageUrl: "",
+            images: {
+              original: { src: "", mimeType: "image/webp", packagePath: originalPath },
+              display: { src: "" },
+              preview: { src: "" },
+              thumbnail: { src: "" }
+            }
+          },
+          derivedAssets: [],
+          activeImageAssetUuid: "asset-original-only"
+        }
+      ]
+    })}\n`),
+    [PACKAGE_FITPICS_FILE]: strToU8(""),
+    [PACKAGE_SAVED_OUTFITS_FILE]: strToU8(""),
+    [originalPath]: strToU8("original-only")
+  });
+
+  const imported = await importBackupPackage({
+    file: new Blob([zipBytes], { type: "application/zip" })
+  });
+
+  assert.equal(imported.backup.items[0].images.original.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].images.display.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].images.preview.src.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.items[0].imageUrl.startsWith("data:image/webp;base64,"), true);
+  assert.equal(
+    imported.backup.items[0].itemImages[0].canonicalAsset.imageUrl.startsWith("data:image/webp;base64,"),
+    true
+  );
+});
+
+test("importBackupPackage accepts legacy preview-only packages and warns on missing media without crashing", async () => {
+  const legacyManifest = {
+    source: PACKAGE_SOURCE,
+    version: PACKAGE_VERSION,
+    exportedAt: "2026-06-22T12:00:00.000Z",
+    format: PACKAGE_FORMAT,
+    assetPolicy: LEGACY_PACKAGE_ASSET_POLICY,
+    wardrobeItemCount: 1,
+    fitpicCount: 0,
+    savedOutfitCount: 0,
+    wardrobePreviewFileCount: 1,
+    fitpicPreviewFileCount: 0,
+    files: {
+      appState: PACKAGE_APP_STATE_FILE,
+      wardrobeItems: PACKAGE_WARDROBE_ITEMS_FILE,
+      fitpics: PACKAGE_FITPICS_FILE,
+      savedOutfits: PACKAGE_SAVED_OUTFITS_FILE,
+      wardrobePreviewsDir: PACKAGE_WARDROBE_PREVIEWS_DIR,
+      fitpicPreviewsDir: PACKAGE_FITPIC_PREVIEWS_DIR
+    }
+  };
+  const legacyZip = zipSync({
+    [PACKAGE_MANIFEST_FILE]: strToU8(JSON.stringify(legacyManifest)),
+    [PACKAGE_APP_STATE_FILE]: strToU8(JSON.stringify({ wardrobeSort: "newest" })),
+    [PACKAGE_WARDROBE_ITEMS_FILE]: strToU8(`${JSON.stringify({
+      id: "item-1",
+      itemUuid: "item-uuid-1",
+      imageUrl: "",
+      images: {
+        original: { src: "" },
+        preview: { src: "", packagePath: `${PACKAGE_WARDROBE_PREVIEWS_DIR}/missing-preview.webp` },
+        thumbnail: { src: "" }
+      },
+      activeItemImageUuid: null,
+      itemImages: []
+    })}\n`),
+    [PACKAGE_FITPICS_FILE]: strToU8(""),
+    [PACKAGE_SAVED_OUTFITS_FILE]: strToU8("")
+  });
+
+  const imported = await importBackupPackage({
+    file: new Blob([legacyZip], { type: "application/zip" })
+  });
+
+  assert.equal(imported.backup.items[0].images.display.src, "");
+  assert.equal(imported.backup.items[0].images.preview.src, "");
+  assert.equal(imported.warnings.length, 1);
 });
