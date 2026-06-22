@@ -2,6 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FITPIC_DETAILS_ONLY_CARD_WIDTH,
+  FITPIC_DETAILS_ONLY_DETAIL_GAP,
+  FITPIC_DETAILS_ONLY_DETAIL_ROW_HEIGHT,
+  FITPIC_SPREAD_DEFAULT_MAX_DETAIL_IMAGES,
   FITPIC_SPREAD_DETAIL_GAP,
   FITPIC_SPREAD_DETAIL_ROW_HEIGHT,
   FITPIC_SPREAD_HIGH_QUALITY_SCALE,
@@ -13,6 +17,7 @@ import {
   getFitpicSpreadExportDetailColumns,
   getFitpicSpreadExportDetailImages,
   getFitpicSpreadExportDetailLayout,
+  getFitpicSpreadExportLayoutMetrics,
   getFitpicSpreadExportDetailRowCount,
   getFitpicSpreadExportDetailTiles,
   getFitpicSpreadExportOrderedFitpics,
@@ -32,7 +37,9 @@ test("fitpic spread export presets keep reference as the default export mode", (
     showTitle: true,
     showDetailGrid: false,
     showTags: false,
-    showFitDate: false
+    showFitDate: false,
+    imageMode: "default",
+    showDescription: false
   });
 
   assert.deepEqual(createFitpicSpreadExportOptions("reference"), {
@@ -42,7 +49,23 @@ test("fitpic spread export presets keep reference as the default export mode", (
     showTitle: true,
     showDetailGrid: true,
     showTags: false,
-    showFitDate: false
+    showFitDate: false,
+    imageMode: "default",
+    showDescription: false
+  });
+});
+
+test("fitpic spread export includes a details-only preset", () => {
+  assert.deepEqual(createFitpicSpreadExportOptions("detailsOnly"), {
+    scope: "current",
+    shuffleFitpics: false,
+    useCurrentSortOrder: true,
+    showTitle: true,
+    showDetailGrid: true,
+    showTags: false,
+    showFitDate: false,
+    imageMode: "detailsOnly",
+    showDescription: false
   });
 });
 
@@ -123,6 +146,51 @@ test("fitpic spread export detail tiles limit to eight images plus overflow tile
   assert.equal(getFitpicSpreadExportDetailRowCount(fitpic), 3);
 });
 
+test("fitpic spread export detail tiles can be capped below the default", () => {
+  const fitpic = {
+    primaryImageUuid: "image-1",
+    fitpicImages: Array.from({ length: 7 }, (_, index) => ({
+      fitpicImageUuid: `image-${index + 1}`,
+      order: index,
+      images: { original: `/images/${index + 1}.jpg` }
+    }))
+  };
+
+  const tiles = getFitpicSpreadExportDetailTiles(fitpic, 4);
+
+  assert.equal(tiles.length, 4);
+  assert.deepEqual(tiles[3], {
+    kind: "overflow",
+    overflowCount: 3
+  });
+});
+
+test("details-only detail tiles always include all secondary images without overflow markers", () => {
+  const fitpic = {
+    primaryImageUuid: "image-1",
+    fitpicImages: Array.from({ length: 7 }, (_, index) => ({
+      fitpicImageUuid: `image-${index + 1}`,
+      order: index,
+      images: { original: `/images/${index + 1}.jpg` }
+    }))
+  };
+
+  const tiles = getFitpicSpreadExportDetailTiles(fitpic, 4, { imageMode: "detailsOnly" });
+
+  assert.equal(tiles.length, 6);
+  assert.equal(tiles.every((tile) => tile.kind === "image"), true);
+  assert.deepEqual(tiles[0], {
+    kind: "image",
+    fitpicImageUuid: "image-2",
+    src: "/images/2.jpg"
+  });
+  assert.deepEqual(tiles[5], {
+    kind: "image",
+    fitpicImageUuid: "image-7",
+    src: "/images/7.jpg"
+  });
+});
+
 test("fitpic spread export detail layout adapts for one, two, and three images", () => {
   assert.equal(getFitpicSpreadExportDetailColumns(1), 1);
   assert.equal(getFitpicSpreadExportDetailColumns(2), 2);
@@ -159,6 +227,22 @@ test("fitpic spread export detail layout adapts for one, two, and three images",
   assert.equal(threeImageLayout.frames.length, 3);
   assert.equal(threeImageLayout.frames[1].x, threeImageLayout.frames[0].width + FITPIC_SPREAD_DETAIL_GAP);
   assert.equal(threeImageLayout.frames[2].y, FITPIC_SPREAD_DETAIL_ROW_HEIGHT + FITPIC_SPREAD_DETAIL_GAP);
+});
+
+test("details-only layout uses wider cards and larger two-column detail tiles", () => {
+  const metrics = getFitpicSpreadExportLayoutMetrics({ imageMode: "detailsOnly" });
+  const detailLayout = getFitpicSpreadExportDetailLayout(4, FITPIC_DETAILS_ONLY_CARD_WIDTH - metrics.contentInset * 2, {
+    gap: metrics.detailGap,
+    rowHeight: metrics.detailRowHeight,
+    options: { imageMode: "detailsOnly" }
+  });
+
+  assert.equal(metrics.cardWidth, FITPIC_DETAILS_ONLY_CARD_WIDTH);
+  assert.equal(metrics.detailRowHeight, FITPIC_DETAILS_ONLY_DETAIL_ROW_HEIGHT);
+  assert.equal(detailLayout.columns, 2);
+  assert.equal(detailLayout.rowCount, 2);
+  assert.equal(detailLayout.frames[0].height, FITPIC_DETAILS_ONLY_DETAIL_ROW_HEIGHT);
+  assert.equal(detailLayout.frames[1].x, detailLayout.frames[0].width + FITPIC_DETAILS_ONLY_DETAIL_GAP);
 });
 
 test("fitpic spread export card height is content-driven per fitpic", () => {
@@ -329,7 +413,24 @@ test("fitpic spread export option normalization keeps sort and shuffle mutually 
       ...createFitpicSpreadExportOptions("reference"),
       scope: "all",
       useCurrentSortOrder: true,
-      shuffleFitpics: false
+      shuffleFitpics: false,
+      maxDetailImages: FITPIC_SPREAD_DEFAULT_MAX_DETAIL_IMAGES
+    }
+  );
+});
+
+test("fitpic spread export option normalization supports custom max detail image caps", () => {
+  assert.deepEqual(
+    normalizeFitpicSpreadExportOptions({
+      maxDetailImages: 4,
+      imageMode: "detailsOnly",
+      showDescription: true
+    }),
+    {
+      ...createFitpicSpreadExportOptions("reference"),
+      maxDetailImages: 4,
+      imageMode: "detailsOnly",
+      showDescription: true
     }
   );
 });

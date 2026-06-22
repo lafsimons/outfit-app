@@ -14,6 +14,10 @@ const presetLabels = {
     title: "Reference",
     description: "Primary image, title, and detail grid."
   },
+  detailsOnly: {
+    title: "Details Only",
+    description: "Detail images only, with metadata."
+  },
   detailed: {
     title: "Detailed",
     description: "Reference layout with tags and fit date."

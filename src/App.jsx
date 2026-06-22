@@ -269,7 +269,8 @@ import {
 import { buildBackupPackageZip } from "./lib/backupPackageV2.js";
 import {
   buildOaAiExportBundle,
-  createDefaultOaAiExportOptions
+  createDefaultOaAiExportOptions,
+  getOaAiStatusOptions
 } from "./lib/oaAiExport.js";
 import {
   getWardrobePreviewDirectionForKey,
@@ -1962,8 +1963,6 @@ export default function App() {
   ];
   const editorRef = useRef(null);
   const importBackupRef = useRef(null);
-  const fitpicUploadInputRef = useRef(null);
-  const fitpicGroupedUploadInputRef = useRef(null);
   const fitpicReplaceInputRef = useRef(null);
   const fitpicAddImagesInputRef = useRef(null);
   const outfitStageRef = useRef(null);
@@ -2017,6 +2016,8 @@ export default function App() {
   const [savedOutfitSort, setSavedOutfitSort] = useState("updatedNewest");
   const [savedOutfitFavoritesOnly, setSavedOutfitFavoritesOnly] = useState(false);
   const [savedOutfitTagFilter, setSavedOutfitTagFilter] = useState("");
+  const [savedOutfitFiltersOpen, setSavedOutfitFiltersOpen] = useState(false);
+  const [savedOutfitManageOpen, setSavedOutfitManageOpen] = useState(false);
   const [activeAccessorySlot, setActiveAccessorySlot] = useState(null);
   const [activeOutfitSlot, setActiveOutfitSlot] = useState(null);
   const [activeSlotActionsSlot, setActiveSlotActionsSlot] = useState(null);
@@ -2052,11 +2053,16 @@ export default function App() {
   const [fitpicFilterSearch, setFitpicFilterSearch] = useState("");
   const [fitpicFilterSectionsOpen, setFitpicFilterSectionsOpen] = useState(defaultFitpicFilterSectionsOpen);
   const [fitpicFilters, setFitpicFilters] = useState(emptyFitpicFilters);
+  const [fitpicManageOpen, setFitpicManageOpen] = useState(false);
+  const [fitpicAddOpen, setFitpicAddOpen] = useState(false);
   const [selectedFitpicIds, setSelectedFitpicIds] = useState([]);
   const [fitpicSelectionAnchorId, setFitpicSelectionAnchorId] = useState(null);
+  const [mobileFitpicSelectionMode, setMobileFitpicSelectionMode] = useState(false);
+  const [mobileSavedOutfitSelectionMode, setMobileSavedOutfitSelectionMode] = useState(false);
   const [wardrobePreviewItemId, setWardrobePreviewItemId] = useState(null);
   const [wardrobePreviewItemImageUuid, setWardrobePreviewItemImageUuid] = useState(null);
   const [wardrobePreviewReturnFitpicPreview, setWardrobePreviewReturnFitpicPreview] = useState(null);
+  const [mobileWardrobePreviewActionsOpen, setMobileWardrobePreviewActionsOpen] = useState(false);
   const [wardrobeFiltersOpen, setWardrobeFiltersOpen] = useState(false);
   const [dashboardFiltersOpen, setDashboardFiltersOpen] = useState(false);
   const [wardrobeManageOpen, setWardrobeManageOpen] = useState(false);
@@ -2095,6 +2101,7 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
+  const [mobileWardrobeSelectionMode, setMobileWardrobeSelectionMode] = useState(false);
   const [weatherOpen, setWeatherOpen] = useState(false);
   const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
   const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
@@ -2112,6 +2119,7 @@ export default function App() {
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
   const wardrobePendingSelectionRef = useRef(null);
+  const mobileWardrobePreviewActionsRef = useRef(null);
   const savedOutfitSelectClickTimeoutRef = useRef(null);
   const savedOutfitPendingSelectionRef = useRef(null);
   const fitpicSelectClickTimeoutRef = useRef(null);
@@ -2308,6 +2316,7 @@ export default function App() {
   );
   const selectedFitpicCount = selectedFitpicIds.length;
   const hasFitpicSelection = selectedFitpicCount > 0;
+  const showMobileFitpicSelectionToolbar = isMobileViewport && mobileFitpicSelectionMode;
   const isSingleFitpicSelected = selectedFitpicCount === 1;
   const areAllSelectedFitpicsFavorite = useMemo(
     () => selectedFitpics.length > 0 && selectedFitpics.every((fitpic) => Boolean(fitpic.favorite)),
@@ -2417,7 +2426,9 @@ export default function App() {
       return;
     }
 
-    if (event.key === "Tab" || event.key === "Enter" || event.key === " " || event.key.startsWith("Arrow")) {
+    const key = typeof event.key === "string" ? event.key : "";
+
+    if (key === "Tab" || key === "Enter" || key === " " || key.startsWith("Arrow")) {
       lastInteractionWasPointerRef.current = false;
       pointerActivatedControlRef.current = null;
     }
@@ -2475,6 +2486,7 @@ export default function App() {
     pointerActivatedControlRef.current = null;
   }
   const isDockExpanded = isMobileViewport ? dockExpanded : true;
+  const isContentActivePanel = activePanel === "wardrobe" || activePanel === "outfits" || activePanel === "dashboard";
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -3178,6 +3190,7 @@ export default function App() {
       [...new Set(items.flatMap((item) => normalizeCollections(item.collections)))].sort((left, right) => left.localeCompare(right)),
     [items]
   );
+  const oaAiStatusOptions = useMemo(() => getOaAiStatusOptions(items), [items]);
   const wardrobeSearchTextById = useMemo(
     () => Object.fromEntries(items.map((item) => [item.id, getWardrobeSearchText(item)])),
     [items]
@@ -3540,6 +3553,7 @@ export default function App() {
   function clearWardrobeSelection() {
     setSelectedWardrobeItemIds([]);
     setWardrobeSelectionAnchorId(null);
+    setMobileWardrobeSelectionMode(false);
     setBulkCollectionDraft("");
     setBulkMetadataEditorOpen(false);
     setBulkMetadataDraft(createEmptyBulkMetadataDraft());
@@ -3934,6 +3948,7 @@ export default function App() {
   );
   const selectedWardrobeItemCount = selectedWardrobeItemIds.length;
   const hasWardrobeSelection = selectedWardrobeItemCount > 0;
+  const showMobileWardrobeSelectionToolbar = isMobileViewport && mobileWardrobeSelectionMode;
   const favoriteWardrobeItemCount = useMemo(
     () => items.reduce((count, item) => count + (item.favorite ? 1 : 0), 0),
     [items]
@@ -3956,6 +3971,7 @@ export default function App() {
   );
   const selectedSavedOutfitCount = selectedSavedOutfitIds.length;
   const hasSavedOutfitSelection = selectedSavedOutfitCount > 0;
+  const showMobileSavedOutfitSelectionToolbar = isMobileViewport && mobileSavedOutfitSelectionMode;
   const isSingleSavedOutfitSelected = selectedSavedOutfitCount === 1;
   const areAllSelectedSavedOutfitsFavorite = useMemo(
     () => selectedSavedOutfits.length > 0 && selectedSavedOutfits.every((savedOutfit) => Boolean(savedOutfit.favorite)),
@@ -4005,14 +4021,31 @@ export default function App() {
   }, [wardrobePreviewNavigation.currentIndex, wardrobePreviewNavigation.totalCount]);
 
   useEffect(() => {
-    if (!wardrobePreviewItemId) {
-      return;
+    setMobileWardrobePreviewActionsOpen(false);
+  }, [wardrobePreviewItemId]);
+  useEffect(() => {
+    if (!mobileWardrobePreviewActionsOpen) {
+      return undefined;
     }
 
-    if (!visibleWardrobeItemIds.includes(wardrobePreviewItemId)) {
-      closeWardrobePreview();
+    function handlePointerDown(event) {
+      if (mobileWardrobePreviewActionsRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setMobileWardrobePreviewActionsOpen(false);
     }
-  }, [visibleWardrobeItemIds, wardrobePreviewItemId]);
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [mobileWardrobePreviewActionsOpen]);
+  useEffect(() => {
+    if (!isMobileViewport) {
+      setMobileWardrobeSelectionMode(false);
+      setMobileSavedOutfitSelectionMode(false);
+      setMobileFitpicSelectionMode(false);
+    }
+  }, [isMobileViewport]);
   const wardrobePreviewMeta = useMemo(() => {
     if (!wardrobePreviewItem) {
       return null;
@@ -4387,11 +4420,15 @@ export default function App() {
 
   useEffect(() => {
     if (activeOutfitsTab === "saved") {
+      setSelectedFitpicIds([]);
+      setFitpicSelectionAnchorId(null);
+      setMobileFitpicSelectionMode(false);
       return;
     }
 
     setSelectedSavedOutfitIds([]);
     setSavedOutfitSelectionAnchorId(null);
+    setMobileSavedOutfitSelectionMode(false);
   }, [activeOutfitsTab]);
 
   useEffect(() => {
@@ -5273,7 +5310,7 @@ export default function App() {
   }
 
   function openOaAiExportDialog() {
-    setOaAiExportOptions(createDefaultOaAiExportOptions(collectionOptions));
+    setOaAiExportOptions(createDefaultOaAiExportOptions(collectionOptions, oaAiStatusOptions));
   }
 
   async function handleExportWardrobeImage(options = createWardrobeSpreadExportOptions("compact")) {
@@ -5336,7 +5373,7 @@ export default function App() {
   async function handleConfirmOaAiExport() {
     const nextOptions = oaAiExportOptions
       ? { ...oaAiExportOptions }
-      : createDefaultOaAiExportOptions(collectionOptions);
+      : createDefaultOaAiExportOptions(collectionOptions, oaAiStatusOptions);
 
     setOaAiExporting(true);
 
@@ -5484,6 +5521,19 @@ export default function App() {
 
   function handleWardrobePreviewClick(item, event) {
     registerPointerActivatedControl(event);
+
+    if (isMobileViewport && !mobileWardrobeSelectionMode) {
+      blurPointerActivatedControl(event);
+      openWardrobePreview(item.id);
+      return;
+    }
+
+    if (isMobileViewport && mobileWardrobeSelectionMode) {
+      blurPointerActivatedControl(event);
+      handleWardrobeSelection(item, false, true);
+      return;
+    }
+
     const shiftKey = event.shiftKey;
     const toggleKey = event.metaKey || event.ctrlKey;
     const pendingSelection = wardrobePendingSelectionRef.current;
@@ -5565,6 +5615,7 @@ export default function App() {
     const returnFitpicPreview = wardrobePreviewReturnFitpicPreview;
     setWardrobePreviewItemId(null);
     setWardrobePreviewItemImageUuid(null);
+    setMobileWardrobePreviewActionsOpen(false);
 
     if (restoreFitpicPreview && returnFitpicPreview) {
       setFitpicPreview(returnFitpicPreview);
@@ -5598,6 +5649,12 @@ export default function App() {
   }
 
   function handleWardrobePreviewDoubleClick(item, event) {
+    if (isMobileViewport && !mobileWardrobeSelectionMode) {
+      event.currentTarget.blur();
+      openWardrobePreview(item.id);
+      return;
+    }
+
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
@@ -5621,11 +5678,72 @@ export default function App() {
     }
 
     wardrobePendingSelectionRef.current = null;
+
+    if (isMobileViewport && mobileWardrobeSelectionMode) {
+      handleWardrobeSelection(item, false, true);
+      return;
+    }
+
     openWardrobePreview(item.id);
+  }
+
+  function toggleMobileWardrobeSelectionMode(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    if (mobileWardrobeSelectionMode) {
+      clearWardrobeSelection();
+      return;
+    }
+
+    closeUtilityWindows();
+    setMobileWardrobeSelectionMode(true);
+  }
+
+  function toggleMobileSavedOutfitSelectionMode(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    if (mobileSavedOutfitSelectionMode) {
+      clearSavedOutfitSelection();
+      return;
+    }
+
+    closeUtilityWindows();
+    setMobileSavedOutfitSelectionMode(true);
+  }
+
+  function toggleMobileFitpicSelectionMode(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    if (mobileFitpicSelectionMode) {
+      clearFitpicSelection();
+      return;
+    }
+
+    closeUtilityWindows();
+    setMobileFitpicSelectionMode(true);
   }
 
   function handleFitpicCardClick(fitpic, event) {
     registerPointerActivatedControl(event);
+
+    if (isMobileViewport && !mobileFitpicSelectionMode) {
+      blurPointerActivatedControl(event);
+      openFitpicPreview(fitpic);
+      return;
+    }
+
+    if (isMobileViewport && mobileFitpicSelectionMode) {
+      blurPointerActivatedControl(event);
+      handleFitpicSelection(fitpic, false, true);
+      return;
+    }
+
     const shiftKey = event.shiftKey;
     const toggleKey = event.metaKey || event.ctrlKey;
     const pendingSelection = fitpicPendingSelectionRef.current;
@@ -5682,6 +5800,12 @@ export default function App() {
   }
 
   function handleFitpicCardDoubleClick(fitpic, event) {
+    if (isMobileViewport && !mobileFitpicSelectionMode) {
+      event.currentTarget.blur();
+      openFitpicPreview(fitpic);
+      return;
+    }
+
     if (fitpicSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(fitpicSelectClickTimeoutRef.current);
       fitpicSelectClickTimeoutRef.current = null;
@@ -5705,6 +5829,12 @@ export default function App() {
     }
 
     fitpicPendingSelectionRef.current = null;
+
+    if (isMobileViewport && mobileFitpicSelectionMode) {
+      handleFitpicSelection(fitpic, false, true);
+      return;
+    }
+
     openFitpicPreview(fitpic);
   }
 
@@ -5832,7 +5962,7 @@ export default function App() {
 
     pendingOutfitItemPreviewRef.current = null;
     clearSelectedOutfitItem();
-    event.currentTarget.blur();
+    event.currentTarget?.blur?.();
     openWardrobePreview(item.id);
   }
 
@@ -7109,6 +7239,7 @@ export default function App() {
     setWardrobeFiltersOpen(false);
     setDashboardFiltersOpen(false);
     setWardrobeManageOpen(false);
+    setMobileWardrobeSelectionMode(false);
     closeWardrobePreview({ restoreFitpicPreview: false });
     setFitpicPreview(null);
     cancelEditFitpic();
@@ -7188,6 +7319,10 @@ export default function App() {
     setFitpicFilterSearch("");
   }
 
+  function dismissSavedOutfitFilters() {
+    setSavedOutfitFiltersOpen(false);
+  }
+
   function dismissDashboardFilters() {
     setDashboardFiltersOpen(false);
     setDashboardFilterSearch("");
@@ -7258,6 +7393,8 @@ export default function App() {
     }
 
     closeUtilityWindows();
+    setFitpicManageOpen(false);
+    setFitpicAddOpen(false);
     setFitpicFiltersOpen((current) => {
       const nextOpen = !current;
 
@@ -7302,6 +7439,56 @@ export default function App() {
     dismissFitpicFilters();
   }
 
+  function toggleSavedOutfitFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    setSavedOutfitManageOpen(false);
+    setSavedOutfitFiltersOpen((current) => !current);
+  }
+
+  function closeSavedOutfitFilters(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    dismissSavedOutfitFilters();
+  }
+
+  function toggleSavedOutfitManage(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissSavedOutfitFilters();
+    setSavedOutfitManageOpen((current) => !current);
+  }
+
+  function toggleFitpicManage(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissFitpicFilters();
+    setFitpicAddOpen(false);
+    setFitpicManageOpen((current) => !current);
+  }
+
+  function toggleFitpicAdd(event) {
+    if (event) {
+      blurPointerActivatedControl(event);
+    }
+
+    closeUtilityWindows();
+    dismissFitpicFilters();
+    setFitpicManageOpen(false);
+    setFitpicAddOpen((current) => !current);
+  }
+
   function toggleWardrobeManage(event) {
     if (event) {
       blurPointerActivatedControl(event);
@@ -7323,6 +7510,19 @@ export default function App() {
 
   function handleSavedOutfitClick(savedOutfit, event) {
     registerPointerActivatedControl(event);
+
+    if (isMobileViewport && !mobileSavedOutfitSelectionMode) {
+      blurPointerActivatedControl(event);
+      loadAndCloseSavedOutfit(savedOutfit);
+      return;
+    }
+
+    if (isMobileViewport && mobileSavedOutfitSelectionMode) {
+      blurPointerActivatedControl(event);
+      handleSavedOutfitSelection(savedOutfit, false, true);
+      return;
+    }
+
     const shiftKey = event.shiftKey;
     const toggleKey = event.metaKey || event.ctrlKey;
     const pendingSelection = savedOutfitPendingSelectionRef.current;
@@ -7349,6 +7549,12 @@ export default function App() {
   }
 
   function handleSavedOutfitDoubleClick(savedOutfit, event) {
+    if (isMobileViewport && !mobileSavedOutfitSelectionMode) {
+      event.currentTarget.blur();
+      loadAndCloseSavedOutfit(savedOutfit);
+      return;
+    }
+
     if (event) {
       event.preventDefault();
     }
@@ -7408,6 +7614,12 @@ export default function App() {
     }
 
     savedOutfitPendingSelectionRef.current = null;
+
+    if (isMobileViewport && mobileSavedOutfitSelectionMode) {
+      handleSavedOutfitSelection(savedOutfit, false, true);
+      return;
+    }
+
     loadAndCloseSavedOutfit(savedOutfit);
   }
 
@@ -7633,121 +7845,174 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className="saved-outfit-controls" aria-label="Saved outfit controls">
-              <div className="saved-outfit-controls-header">
-                <p className="saved-outfit-controls-count">
-                  {visibleSavedOutfits.length} of {savedOutfits.length} saved outfits
-                </p>
-                <div className="wardrobe-toolbar-context-actions">
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportSavedOutfitsCsv}
-                  >
-                    Export CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportSavedOutfitsJson}
-                  >
-                    Export JSON
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={resetSavedOutfitControls}
-                    disabled={!hasActiveSavedOutfitControls}
-                  >
-                    Clear filters
-                  </button>
-                </div>
-              </div>
-              <label>
-                Search
-                <input
-                  type="search"
-                  value={savedOutfitSearch}
-                  onChange={(event) => setSavedOutfitSearch(event.target.value)}
-                  placeholder="Search saved outfits"
-                />
-              </label>
-              <label>
-                Sort
-                <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)}>
-                  <option value="updatedNewest">Updated newest</option>
-                  <option value="createdNewest">Created newest</option>
-                  <option value="titleAz">Title A-Z</option>
-                </select>
-              </label>
-              <label>
-                Tag
-                <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)}>
-                  <option value="">All tags</option>
-                  {savedOutfitTagFilterOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="saved-outfit-controls-toggle">
-                <input
-                  type="checkbox"
-                  checked={savedOutfitFavoritesOnly}
-                  onChange={(event) => setSavedOutfitFavoritesOnly(event.target.checked)}
-                />
-                <span>Favorites only</span>
-              </label>
-            </div>
-            {hasSavedOutfitSelection ? (
-              <div className="wardrobe-toolbar saved-outfit-toolbar" aria-label="Saved outfit library actions">
-                <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
-                  <span className="wardrobe-results-count">
-                    {visibleSavedOutfits.length} saved outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div className="wardrobe-toolbar-context">
-                  <div className="wardrobe-selection-summary fitpic-selection-summary">
-                    <div className="wardrobe-selection-count wardrobe-selection-chip">
-                      <span>{selectedSavedOutfitCount} selected</span>
-                      <button
-                        type="button"
-                        className="wardrobe-selection-clear wardrobe-selection-chip-clear"
-                        onMouseDown={preventMouseButtonFocus}
-                        onClick={clearSavedOutfitSelection}
-                        aria-label="Clear saved outfit selection"
-                      >
-                        ×
-                      </button>
+            {showMobileSavedOutfitSelectionToolbar ? (
+              <WardrobeSelectionBar
+                inline
+                selectedCount={selectedSavedOutfitCount}
+                clearButtonLabel="Done"
+                separateClearButton
+                onEdit={editSelectedSavedOutfit}
+                onClear={clearSavedOutfitSelection}
+                onCloseEdit={cancelEditSavedOutfit}
+                customMenuItems={[
+                  {
+                    label: savedOutfitFavoriteActionLabel,
+                    onClick: toggleSelectedSavedOutfitFavorites,
+                    isActive: areAllSelectedSavedOutfitsFavorite
+                  }
+                ]}
+                customDangerMenuItems={[
+                  {
+                    label: "Delete",
+                    onClick: deleteSelectedSavedOutfits
+                  }
+                ]}
+              />
+            ) : (
+              <div className="wardrobe-toolbar saved-outfit-toolbar-base" aria-label="Saved outfit controls">
+                <div className="wardrobe-toolbar-leading saved-outfit-toolbar-leading">
+                  <div className="wardrobe-search-field">
+                    <input
+                      type="search"
+                      value={savedOutfitSearch}
+                      onChange={(event) => setSavedOutfitSearch(event.target.value)}
+                      placeholder={isMobileViewport ? "Search" : "Search saved outfits"}
+                      aria-label="Search saved outfits"
+                    />
+                  </div>
+                  <div className={`wardrobe-filter-anchor ${savedOutfitFiltersOpen ? "is-open" : ""}`}>
+                    <button
+                      type="button"
+                      className={`secondary-button filter-button ${savedOutfitFiltersOpen || savedOutfitFavoritesOnly || Boolean(savedOutfitTagFilter) ? "is-active" : ""}`}
+                      onClick={toggleSavedOutfitFilters}
+                      aria-pressed={savedOutfitFiltersOpen}
+                      aria-expanded={savedOutfitFiltersOpen}
+                    >
+                      {savedOutfitFavoritesOnly || savedOutfitTagFilter ? "Filter" : "Filter"}
+                    </button>
+                    <div className={`wardrobe-controls ${savedOutfitFiltersOpen ? "is-open" : ""}`} aria-label="Saved outfit filters">
+                      <div className="wardrobe-controls-body saved-outfit-filter-body">
+                        <section className="saved-outfit-filter-group">
+                          <label>
+                            <span>Tag</span>
+                            <select value={savedOutfitTagFilter} onChange={(event) => setSavedOutfitTagFilter(event.target.value)} aria-label="Filter saved outfits by tag">
+                              <option value="">All tags</option>
+                              {savedOutfitTagFilterOptions.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </section>
+                        <section className="saved-outfit-filter-group">
+                          <button
+                            type="button"
+                            className={`secondary-button filter-button saved-outfit-favorites-toggle ${savedOutfitFavoritesOnly ? "is-active" : ""}`}
+                            onClick={() => setSavedOutfitFavoritesOnly((current) => !current)}
+                            aria-pressed={savedOutfitFavoritesOnly}
+                          >
+                            Favorites
+                          </button>
+                        </section>
+                      </div>
+                      <div className="wardrobe-controls-footer">
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={() => {
+                            setSavedOutfitFavoritesOnly(false);
+                            setSavedOutfitTagFilter("");
+                          }}
+                          disabled={!savedOutfitFavoritesOnly && !savedOutfitTagFilter}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div className="wardrobe-toolbar-context-actions">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={editSelectedSavedOutfit}
-                      disabled={!isSingleSavedOutfitSelected}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      className={`ghost-button ${areAllSelectedSavedOutfitsFavorite ? "is-active" : ""}`}
-                      onClick={toggleSelectedSavedOutfitFavorites}
-                    >
-                      {savedOutfitFavoriteActionLabel}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button danger"
-                      onClick={deleteSelectedSavedOutfits}
-                    >
-                      Delete
-                    </button>
+                  <div className="wardrobe-sort-field">
+                    <select value={savedOutfitSort} onChange={(event) => setSavedOutfitSort(event.target.value)} aria-label="Sort saved outfits">
+                      <option value="updatedNewest">Updated newest</option>
+                      <option value="createdNewest">Created newest</option>
+                      <option value="titleAz">Title A-Z</option>
+                    </select>
                   </div>
+                  {isMobileViewport ? (
+                    <button
+                      type="button"
+                      className={`secondary-button ${mobileSavedOutfitSelectionMode ? "is-active" : ""}`}
+                      onClick={toggleMobileSavedOutfitSelectionMode}
+                      aria-pressed={mobileSavedOutfitSelectionMode}
+                      aria-label={mobileSavedOutfitSelectionMode ? "Exit saved outfit multi-select mode" : "Select saved outfits"}
+                    >
+                      Select
+                    </button>
+                  ) : null}
+                </div>
+                <div className="wardrobe-toolbar-context">
+                  <span className="wardrobe-results-count">
+                    {visibleSavedOutfits.length} outfit{visibleSavedOutfits.length === 1 ? "" : "s"}
+                  </span>
+                  <div className="wardrobe-manage-anchor">
+                    <button
+                      type="button"
+                      className={`secondary-button ${savedOutfitManageOpen ? "is-active" : ""}`}
+                      onClick={toggleSavedOutfitManage}
+                      aria-expanded={savedOutfitManageOpen}
+                      aria-label="Manage saved outfits"
+                    >
+                      Manage
+                    </button>
+                    <div
+                      className={`wardrobe-manage-window saved-outfit-manage-window ${savedOutfitManageOpen ? "is-open" : ""}`}
+                      aria-label="Saved outfit management"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="wardrobe-manage-actions">
+                        <button type="button" className="ghost-button" onClick={handleExportSavedOutfitsCsv}>
+                          Export CSV
+                        </button>
+                        <button type="button" className="ghost-button" onClick={handleExportSavedOutfitsJson}>
+                          Export JSON
+                        </button>
+                        <button type="button" className="ghost-button" onClick={resetSavedOutfitControls} disabled={!hasActiveSavedOutfitControls}>
+                          Clear filters
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {!isMobileViewport && hasSavedOutfitSelection ? (
+                    <WardrobeSelectionBar
+                      inline
+                      selectedCount={selectedSavedOutfitCount}
+                      onEdit={editSelectedSavedOutfit}
+                      onClear={clearSavedOutfitSelection}
+                      onCloseEdit={cancelEditSavedOutfit}
+                      customMenuItems={[
+                        {
+                          label: savedOutfitFavoriteActionLabel,
+                          onClick: toggleSelectedSavedOutfitFavorites,
+                          isActive: areAllSelectedSavedOutfitsFavorite
+                        }
+                      ]}
+                      customDangerMenuItems={[
+                        {
+                          label: "Delete",
+                          onClick: deleteSelectedSavedOutfits
+                        }
+                      ]}
+                    />
+                  ) : null}
                 </div>
               </div>
+            )}
+            {savedOutfitFiltersOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeSavedOutfitFilters} />
+            ) : null}
+            {savedOutfitManageOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setSavedOutfitManageOpen(false)} />
             ) : null}
             {hasActiveSavedOutfitControls ? (
               <div className="active-filter-summary saved-outfit-controls-summary" aria-label="Active saved outfit controls">
@@ -7869,7 +8134,11 @@ export default function App() {
                         onDoubleClick={(event) => handleSavedOutfitDoubleClick(savedOutfit, event)}
                         onKeyDown={(event) => handleSavedOutfitKeyDown(savedOutfit, event)}
                         aria-pressed={isSelected}
-                        aria-label={`Select ${savedOutfit.name}. Double-click or press Enter to load.`}
+                        aria-label={
+                          isMobileViewport
+                            ? `Load ${savedOutfit.name}.`
+                            : `Select ${savedOutfit.name}. Double-click or press Enter to load.`
+                        }
                       >
                         {renderSavedOutfitPreview(savedOutfit)}
                         <strong>{savedOutfit.name}</strong>
@@ -7900,64 +8169,91 @@ export default function App() {
     );
   }
 
+  function openFilePicker(inputRef) {
+    const input = inputRef?.current;
+
+    if (!input) {
+      return;
+    }
+
+    input.value = "";
+
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
+  }
+
   function renderFitpicsContent() {
     return (
       <section className="fitpics-content" aria-label="Fitpics">
-        <div
-          className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
-          onDragEnter={handleFitpicDragEnter}
-          onDragOver={handleFitpicDragOver}
-          onDragLeave={handleFitpicDragLeave}
-          onDrop={handleFitpicDrop}
-        >
-          <div className="fitpic-dropzone-copy">
-            <p className="eyebrow">Import fitpics</p>
-            {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : null}
-          </div>
-          <div className="fitpic-dropzone-actions">
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => fitpicUploadInputRef.current?.click()}
-              disabled={fitpicImporting}
-            >
-              {fitpicImporting ? "Importing…" : "Choose images"}
-            </button>
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => fitpicGroupedUploadInputRef.current?.click()}
-              disabled={fitpicImporting}
-            >
-              {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
-            </button>
-          </div>
-          <input
-            ref={fitpicUploadInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="fitpic-file-input"
-            onChange={handleFitpicUpload}
-          />
-          <input
-            ref={fitpicGroupedUploadInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="fitpic-file-input"
-            onChange={handleGroupedFitpicUpload}
-          />
-        </div>
-
         {!fitpics.length ? (
-          <div className="editor-placeholder fitpics-empty-state">
-            <p>No fitpics yet.</p>
-            <p>Import outfit photos here to build an editable visual archive.</p>
+          <div
+            className={`fitpic-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
+            onDragEnter={handleFitpicDragEnter}
+            onDragOver={handleFitpicDragOver}
+            onDragLeave={handleFitpicDragLeave}
+            onDrop={handleFitpicDrop}
+          >
+            <div className="fitpic-dropzone-copy">
+              <p className="eyebrow">Import fitpics</p>
+              <p>No fitpics yet.</p>
+              {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Import outfit photos here to build an editable visual archive.</p>}
+            </div>
+            <div className="fitpic-dropzone-actions">
+              <label className="primary-button file-input-button" aria-disabled={fitpicImporting}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={fitpicImporting}
+                  className="file-input-button-control"
+                  onChange={handleFitpicUpload}
+                />
+                {fitpicImporting ? "Importing…" : "Choose images"}
+              </label>
+              <label className="ghost-button file-input-button" aria-disabled={fitpicImporting}>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={fitpicImporting}
+                  className="file-input-button-control"
+                  onChange={handleGroupedFitpicUpload}
+                />
+                {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
+              </label>
+            </div>
           </div>
         ) : (
           <>
-            <div className="wardrobe-toolbar fitpic-toolbar" aria-label="Fitpic library actions">
+            {showMobileFitpicSelectionToolbar ? (
+              <WardrobeSelectionBar
+                inline
+                selectedCount={selectedFitpicCount}
+                clearButtonLabel="Done"
+                separateClearButton
+                onEdit={editSelectedFitpic}
+                onClear={clearFitpicSelection}
+                onCloseEdit={cancelEditFitpic}
+                customMenuItems={[
+                  {
+                    label: fitpicFavoriteActionLabel,
+                    onClick: toggleSelectedFitpicFavorites,
+                    isActive: areAllSelectedFitpicsFavorite
+                  }
+                ]}
+                customDangerMenuItems={[
+                  {
+                    label: "Delete",
+                    onClick: deleteSelectedFitpics
+                  }
+                ]}
+              />
+            ) : (
+            <div className={`wardrobe-toolbar fitpic-toolbar ${hasFitpicSelection ? "wardrobe-toolbar-selection" : ""}`.trim()} aria-label="Fitpic library actions">
               <div className="wardrobe-toolbar-leading fitpic-toolbar-leading">
                 <div className="wardrobe-search-field">
                   <input
@@ -8196,80 +8492,137 @@ export default function App() {
                     <option value="titleAz">Title A-Z</option>
                   </select>
                 </div>
-              </div>
-                <span className="wardrobe-results-count">
-                  {visibleFitpics.length} of {fitpics.length} fitpics
-                </span>
-              <div className="wardrobe-toolbar-context">
-                <div className="wardrobe-toolbar-context-actions">
+                <div className="wardrobe-manage-anchor">
                   <button
                     type="button"
-                    className="ghost-button"
-                    onClick={openFitpicExportDialog}
+                    className={`secondary-button ${fitpicManageOpen ? "is-active" : ""}`}
+                    onClick={toggleFitpicManage}
+                    aria-expanded={fitpicManageOpen}
+                    aria-label="Manage fitpics"
                   >
-                    Export PNG
+                    Manage
                   </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportFitpicsCsv}
+                  <div
+                    className={`wardrobe-manage-window fitpic-manage-window ${fitpicManageOpen ? "is-open" : ""}`}
+                    aria-label="Fitpic management"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
                   >
-                    Export CSV
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={handleExportFitpicsJson}
-                  >
-                    Export JSON
-                  </button>
+                    <div className="wardrobe-manage-actions">
+                      <button type="button" className="ghost-button" onClick={openFitpicExportDialog}>
+                        Export PNG
+                      </button>
+                      <button type="button" className="ghost-button" onClick={handleExportFitpicsCsv}>
+                        Export CSV
+                      </button>
+                      <button type="button" className="ghost-button" onClick={handleExportFitpicsJson}>
+                        Export JSON
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                {hasFitpicSelection ? (
-                  <>
-                    <div className="wardrobe-selection-summary fitpic-selection-summary">
-                      <div className="wardrobe-selection-count wardrobe-selection-chip">
-                        <span>{selectedFitpicCount} selected</span>
-                        <button
-                          type="button"
-                          className="wardrobe-selection-clear wardrobe-selection-chip-clear"
-                          onMouseDown={preventMouseButtonFocus}
-                          onClick={clearFitpicSelection}
-                          aria-label="Clear fitpic selection"
-                        >
-                          ×
-                        </button>
+                <div className="wardrobe-manage-anchor">
+                  <button
+                    type="button"
+                    className={`secondary-button ${fitpicAddOpen ? "is-active" : ""}`}
+                    onClick={toggleFitpicAdd}
+                    aria-expanded={fitpicAddOpen}
+                    aria-label="Add fitpics"
+                  >
+                    Add
+                  </button>
+                  <div
+                    className={`wardrobe-manage-window fitpic-add-window ${fitpicAddOpen ? "is-open" : ""}`}
+                    aria-label="Add fitpics"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <div
+                      className={`fitpic-dropzone fitpic-add-dropzone ${fitpicDropActive ? "is-drag-active" : ""} ${fitpicImporting ? "is-processing" : ""}`}
+                      onDragEnter={handleFitpicDragEnter}
+                      onDragOver={handleFitpicDragOver}
+                      onDragLeave={handleFitpicDragLeave}
+                      onDrop={handleFitpicDrop}
+                    >
+                      <div className="fitpic-dropzone-copy">
+                        {fitpicImportError ? <p className="fitpic-import-error">{fitpicImportError}</p> : <p>Drag and drop fitpics here</p>}
+                      </div>
+                      <div className="fitpic-dropzone-actions">
+                        <label className="primary-button file-input-button" aria-disabled={fitpicImporting}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={fitpicImporting}
+                            className="file-input-button-control"
+                            onChange={handleFitpicUpload}
+                          />
+                          {fitpicImporting ? "Importing…" : "Choose images"}
+                        </label>
+                        <label className="ghost-button file-input-button" aria-disabled={fitpicImporting}>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={fitpicImporting}
+                            className="file-input-button-control"
+                            onChange={handleGroupedFitpicUpload}
+                          />
+                          {fitpicImporting ? "Importing…" : "Import grouped Fitpic"}
+                        </label>
                       </div>
                     </div>
-                    <div className="wardrobe-toolbar-context-actions">
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        onClick={editSelectedFitpic}
-                        disabled={!isSingleFitpicSelected}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className={`ghost-button ${areAllSelectedFitpicsFavorite ? "is-active" : ""}`}
-                        onClick={toggleSelectedFitpicFavorites}
-                      >
-                        {fitpicFavoriteActionLabel}
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost-button danger"
-                        onClick={deleteSelectedFitpics}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </>
+                  </div>
+                </div>
+                {isMobileViewport ? (
+                  <button
+                    type="button"
+                    className={`secondary-button ${mobileFitpicSelectionMode ? "is-active" : ""}`}
+                    onClick={toggleMobileFitpicSelectionMode}
+                    aria-pressed={mobileFitpicSelectionMode}
+                    aria-label={mobileFitpicSelectionMode ? "Exit fitpic multi-select mode" : "Select fitpics"}
+                  >
+                    Select
+                  </button>
+                ) : null}
+              </div>
+                <span className="wardrobe-results-count">
+                  {visibleFitpics.length} fitpics
+                </span>
+              <div className="wardrobe-toolbar-context">
+                {!isMobileViewport && hasFitpicSelection ? (
+                  <WardrobeSelectionBar
+                    inline
+                    selectedCount={selectedFitpicCount}
+                    onEdit={editSelectedFitpic}
+                    onClear={clearFitpicSelection}
+                    onCloseEdit={cancelEditFitpic}
+                    customMenuItems={[
+                      {
+                        label: fitpicFavoriteActionLabel,
+                        onClick: toggleSelectedFitpicFavorites,
+                        isActive: areAllSelectedFitpicsFavorite
+                      }
+                    ]}
+                    customDangerMenuItems={[
+                      {
+                        label: "Delete",
+                        onClick: deleteSelectedFitpics
+                      }
+                    ]}
+                  />
                 ) : null}
               </div>
             </div>
+            )}
             {fitpicFiltersOpen ? (
               <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={closeFitpicFilters} />
+            ) : null}
+            {fitpicManageOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setFitpicManageOpen(false)} />
+            ) : null}
+            {fitpicAddOpen ? (
+              <DismissibleBackdrop className="floating-backdrop filter-backdrop" onDismiss={() => setFitpicAddOpen(false)} />
             ) : null}
             {hasActiveFitpicFilters ? (
               <div className="active-filter-summary fitpic-controls-summary" aria-label="Active fitpic filters">
@@ -8318,9 +8671,13 @@ export default function App() {
                   const isSelected = selectedFitpicIds.includes(fitpic.id);
                   const fitpicCardDateLabel = formatFitpicDate(fitpic.fitDate || fitpic.createdAt);
                   const fitpicCardAccessibleLabel = [
-                    `Select ${fitpic.name}.`,
+                    isMobileViewport && !mobileFitpicSelectionMode
+                      ? `Preview ${fitpic.name}.`
+                      : `Select ${fitpic.name}.`,
                     fitpicCardDateLabel ? `${fitpicCardDateLabel}.` : "",
-                    "Double-click or press Enter to preview."
+                    isMobileViewport && !mobileFitpicSelectionMode
+                      ? "Press Enter to preview."
+                      : "Double-click or press Enter to preview."
                   ]
                     .filter(Boolean)
                     .join(" ");
@@ -8652,6 +9009,10 @@ export default function App() {
         {visibleWardrobeItems.map((item) => {
           const isEquipped = Object.values(outfit).includes(item.id);
           const isSelected = selectedWardrobeItemIds.includes(item.id);
+          const useTapPreview = isMobileViewport && !mobileWardrobeSelectionMode;
+          const cardLabel = useTapPreview
+            ? `Preview ${buildDisplayName(item)}.`
+            : `Select ${buildDisplayName(item)}${isMobileViewport ? "." : ". Double-click or press Enter to preview."}`;
 
           return (
             <article
@@ -8664,8 +9025,8 @@ export default function App() {
                 onClick={(event) => handleWardrobePreviewClick(item, event)}
                 onDoubleClick={(event) => handleWardrobePreviewDoubleClick(item, event)}
                 onKeyDown={(event) => handleWardrobePreviewKeyDown(item, event)}
-                aria-pressed={isSelected}
-                aria-label={`Select ${buildDisplayName(item)}. Double-click or press Enter to preview.`}
+                aria-pressed={useTapPreview ? undefined : isSelected}
+                aria-label={cardLabel}
               >
                 <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} />
                 {item.favorite ? (
@@ -8734,6 +9095,7 @@ export default function App() {
   function clearSavedOutfitSelection() {
     setSelectedSavedOutfitIds([]);
     setSavedOutfitSelectionAnchorId(null);
+    setMobileSavedOutfitSelectionMode(false);
   }
 
   function resetSavedOutfitControls() {
@@ -9210,6 +9572,7 @@ export default function App() {
   function clearFitpicSelection() {
     setSelectedFitpicIds([]);
     setFitpicSelectionAnchorId(null);
+    setMobileFitpicSelectionMode(false);
   }
 
   function editSelectedFitpic() {
@@ -10438,8 +10801,9 @@ export default function App() {
 
         {controlsOpen && !activePanel ? (
           <div className="controls-window" aria-label="Outfit controls">
-            <div className="controls-group controls-group-top">
-              <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
+            <div className="controls-window-scroll">
+              <div className="controls-group controls-group-top">
+                <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
                 <button
                   type="button"
                   className={`controls-generation-settings-toggle ${generationSettingsOpen ? "is-active" : ""}`}
@@ -10506,11 +10870,11 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
+                </div>
               </div>
-            </div>
 
-            <div className="controls-group">
-              <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
+              <div className="controls-group">
+                <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
                 <button
                   type="button"
                   className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
@@ -10638,9 +11002,9 @@ export default function App() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
+                </div>
 
-              <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
+                <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
                 <button
                   type="button"
                   className={`controls-weather-toggle ${weatherOpen ? "is-active" : ""}`}
@@ -10703,9 +11067,9 @@ export default function App() {
                     </button>
                   </div>
                 ) : null}
-              </div>
+                </div>
 
-              <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
+                <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
                 <button
                   type="button"
                   className={`controls-advanced-toggle ${controlsAdvancedOpen ? "is-active" : ""}`}
@@ -10751,6 +11115,7 @@ export default function App() {
                     </div>
                   </div>
                 ) : null}
+                </div>
               </div>
             </div>
           </div>
@@ -10759,13 +11124,41 @@ export default function App() {
         {activePanel ? (
           <DismissibleBackdrop className="floating-backdrop active-panel-backdrop" onDismiss={closeWorkspacePanel}>
             <div
-              className={`active-panel-overlay ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
+              className={`active-panel-overlay ${isContentActivePanel ? "is-content-panel" : ""} ${activePanel === "wardrobe" ? "is-wardrobe-panel" : ""}`}
               onClick={(event) => event.stopPropagation()}
             >
               {activePanel === "wardrobe" ? (
                 <div className="wardrobe-workspace">
                   <div className="panel wardrobe-panel">
                     <div className="panel-header">
+                      {showMobileWardrobeSelectionToolbar ? (
+                        <div className="wardrobe-toolbar wardrobe-toolbar-selection" aria-label="Wardrobe selection actions">
+                          <WardrobeSelectionBar
+                            inline
+                            selectedCount={selectedWardrobeItemCount}
+                            clearButtonLabel="Done"
+                            separateClearButton
+                            bulkCollectionDraft={bulkCollectionDraft}
+                            bulkListDraft={bulkListDraft}
+                            collectionOptions={collectionOptions}
+                            itemListOptions={itemListOptions}
+                            setBulkCollectionDraft={setBulkCollectionDraft}
+                            setBulkListDraft={setBulkListDraft}
+                            favoriteActionLabel={bulkFavoriteActionLabel}
+                            excludeActionLabel={bulkExcludeActionLabel}
+                            onEdit={editSelectedWardrobeItems}
+                            onClear={clearWardrobeSelection}
+                            onMoveToList={moveSelectedItemsToList}
+                            onAddCollection={addCollectionToSelectedItems}
+                            onRemoveCollection={removeCollectionFromSelectedItems}
+                            onClearCollections={clearSelectedItemCollections}
+                            onFavoriteToggle={() => setSelectedItemsFavoriteState(!areAllSelectedWardrobeItemsFavorite)}
+                            onExcludeToggle={() => setSelectedItemsExcludedState(!areAllSelectedWardrobeItemsExcluded)}
+                            onDelete={handleBulkDeleteSelected}
+                            onCloseEdit={cancelEdit}
+                          />
+                        </div>
+                      ) : (
                       <div className="wardrobe-toolbar">
                         <div className="wardrobe-toolbar-leading">
                           <div className="wardrobe-search-field">
@@ -10783,7 +11176,7 @@ export default function App() {
                                 }
                               }}
                               onChange={(event) => setWardrobeSearch(event.target.value)}
-                              placeholder="Search wardrobe"
+                              placeholder={isMobileViewport ? "Search" : "Search wardrobe"}
                             />
                           </div>
                   <div className={`wardrobe-filter-anchor ${wardrobeFiltersOpen ? "is-open" : ""}`}>
@@ -11052,13 +11445,25 @@ export default function App() {
                       <option value="oldest">Oldest</option>
                     </select>
                   </div>
-                  <div className="wardrobe-primary-actions">
-                    <div className="wardrobe-manage-anchor">
-                      <button
-                        type="button"
+                    <div className={`wardrobe-primary-actions ${isMobileViewport ? "has-mobile-select-toggle" : ""}`}>
+                      {isMobileViewport ? (
+                        <button
+                          type="button"
+                          className={`secondary-button ${mobileWardrobeSelectionMode ? "is-active" : ""}`}
+                          onClick={toggleMobileWardrobeSelectionMode}
+                          aria-pressed={mobileWardrobeSelectionMode}
+                          aria-label={mobileWardrobeSelectionMode ? "Exit multi-select mode" : "Select multiple items"}
+                        >
+                          Select
+                        </button>
+                      ) : null}
+                      <div className="wardrobe-manage-anchor">
+                        <button
+                          type="button"
                         className={`secondary-button ${wardrobeManageOpen ? "is-active" : ""}`}
                         onClick={toggleWardrobeManage}
                         aria-expanded={wardrobeManageOpen}
+                        aria-label="Manage wardrobe"
                       >
                         Manage
                       </button>
@@ -11106,14 +11511,20 @@ export default function App() {
                       className={`primary-button ${editingId === "new" && editorReturnTarget !== "outfit" ? "is-active" : ""}`}
                       onClick={(event) => startCreate(event)}
                       aria-pressed={editingId === "new" && editorReturnTarget !== "outfit"}
+                      aria-label="Add item"
+                      title="Add item"
                     >
-                      Add Item
+                      {isMobileViewport ? "+" : "Add Item"}
                     </button>
                   </div>
                 </div>
                 <div className="wardrobe-toolbar-context">
-                  <span className="wardrobe-results-count">
-                    {visibleWardrobeItems.length} item{visibleWardrobeItems.length === 1 ? "" : "s"}
+                  <span
+                    className="wardrobe-results-count"
+                    aria-label={`${visibleWardrobeItems.length} item${visibleWardrobeItems.length === 1 ? "" : "s"}`}
+                  >
+                    {visibleWardrobeItems.length}
+                    {isMobileViewport ? "" : ` item${visibleWardrobeItems.length === 1 ? "" : "s"}`}
                   </span>
                   {hasWardrobeSelection ? (
                     <WardrobeSelectionBar
@@ -11141,6 +11552,7 @@ export default function App() {
                   ) : null}
                 </div>
               </div>
+              )}
             </div>
 
             {wardrobeFiltersOpen ? (
@@ -11266,8 +11678,9 @@ export default function App() {
 
         <OaAiExportDialog
           open={Boolean(oaAiExportOptions)}
-          options={oaAiExportOptions ?? createDefaultOaAiExportOptions(collectionOptions)}
+          options={oaAiExportOptions ?? createDefaultOaAiExportOptions(collectionOptions, oaAiStatusOptions)}
           collections={collectionOptions}
+          statuses={oaAiStatusOptions}
           exporting={oaAiExporting}
           onChange={setOaAiExportOptions}
           onCancel={() => {
@@ -11286,35 +11699,107 @@ export default function App() {
           title={wardrobePreviewItem ? buildDisplayName(wardrobePreviewItem) : ""}
           meta={wardrobePreviewMeta}
           onClose={closeWardrobePreview}
+          closeLabel={isMobileViewport ? "<" : "Close"}
+          closeAriaLabel={isMobileViewport ? "Back" : "Close"}
           actions={wardrobePreviewItem ? (
-            <>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={equipWardrobePreviewItem}
-                disabled={!resolveSlotForItem(wardrobePreviewItem)}
-              >
-                {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
-              </button>
-              <button
-                type="button"
-                className={`ghost-button preview-overlay-favorite-button ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
-                onClick={toggleWardrobePreviewFavorite}
-                aria-label={wardrobePreviewItem.favorite ? "Remove from favorites" : "Add to favorites"}
-                title={wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
-              >
-                <span aria-hidden="true">{wardrobePreviewItem.favorite ? "♥" : "♡"}</span>
-              </button>
-              <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
-                {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
-              </button>
-              <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
-                Edit
-              </button>
-              <button type="button" className="ghost-button danger" onClick={deleteWardrobePreviewItem}>
-                Delete
-              </button>
-            </>
+            isMobileViewport ? (
+              <div ref={mobileWardrobePreviewActionsRef} className="preview-overlay-actions-menu">
+                <button
+                  type="button"
+                  className={`ghost-button preview-overlay-actions-trigger ${mobileWardrobePreviewActionsOpen ? "is-active" : ""}`}
+                  onClick={() => setMobileWardrobePreviewActionsOpen((current) => !current)}
+                  aria-label="More wardrobe item actions"
+                  aria-expanded={mobileWardrobePreviewActionsOpen}
+                  aria-haspopup="menu"
+                >
+                  ...
+                </button>
+                {mobileWardrobePreviewActionsOpen ? (
+                  <div className="preview-overlay-actions-popover" role="menu" aria-label="Wardrobe item actions">
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        equipWardrobePreviewItem();
+                      }}
+                      disabled={!resolveSlotForItem(wardrobePreviewItem)}
+                    >
+                      {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
+                    </button>
+                    <button
+                      type="button"
+                      className={`preview-overlay-actions-popover-item ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        void toggleWardrobePreviewFavorite();
+                      }}
+                    >
+                      {wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        toggleWardrobePreviewExcluded();
+                      }}
+                    >
+                      {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        editWardrobePreviewItem();
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="preview-overlay-actions-popover-item is-danger"
+                      onClick={() => {
+                        setMobileWardrobePreviewActionsOpen(false);
+                        deleteWardrobePreviewItem();
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={equipWardrobePreviewItem}
+                  disabled={!resolveSlotForItem(wardrobePreviewItem)}
+                >
+                  {isWardrobePreviewItemEquipped ? "Unequip" : "Equip"}
+                </button>
+                <button
+                  type="button"
+                  className={`ghost-button preview-overlay-favorite-button ${wardrobePreviewItem.favorite ? "is-active" : ""}`}
+                  onClick={toggleWardrobePreviewFavorite}
+                  aria-label={wardrobePreviewItem.favorite ? "Remove from favorites" : "Add to favorites"}
+                  title={wardrobePreviewItem.favorite ? "Unfavorite" : "Favorite"}
+                >
+                  <span aria-hidden="true">{wardrobePreviewItem.favorite ? "♥" : "♡"}</span>
+                </button>
+                <button type="button" className="ghost-button" onClick={toggleWardrobePreviewExcluded}>
+                  {excluded[wardrobePreviewItem.id] ? "Include" : "Exclude"}
+                </button>
+                <button type="button" className="ghost-button" onClick={editWardrobePreviewItem}>
+                  Edit
+                </button>
+                <button type="button" className="ghost-button danger" onClick={deleteWardrobePreviewItem}>
+                  Delete
+                </button>
+              </>
+            )
           ) : null}
         >
           {wardrobePreviewItem ? (
@@ -11524,14 +12009,14 @@ export default function App() {
                   <button
                     type="button"
                     className="ghost-button"
-                    onClick={() => fitpicReplaceInputRef.current?.click()}
+                    onClick={() => openFilePicker(fitpicReplaceInputRef)}
                   >
                     Replace image
                   </button>
                   <button
                     type="button"
                     className="ghost-button"
-                    onClick={() => fitpicAddImagesInputRef.current?.click()}
+                    onClick={() => openFilePicker(fitpicAddImagesInputRef)}
                   >
                     Add image
                   </button>

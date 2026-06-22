@@ -1920,6 +1920,15 @@ export function isNonStackableTopType(item) {
   return (item.garmentType === "Top" || item.garmentType === "Outerwear") && nonStackableTopTypes.has(normalizeType(item.type));
 }
 
+function isShirtLayeringType(item) {
+  if (!item || (item.garmentType !== "Top" && item.garmentType !== "Outerwear")) {
+    return false;
+  }
+
+  const typeMatches = getTypeMatchKeys(item.type);
+  return ["shirt", "casual shirt", "wool shirt", "overshirt"].some((type) => typeMatches.has(type));
+}
+
 export function getOtherTopSlot(slot) {
   if (slot === "TopInner") return "TopOuter";
   if (slot === "TopOuter") return "TopInner";
@@ -1932,10 +1941,19 @@ export function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
   const otherTopSlot = getOtherTopSlot(slot);
   const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
 
-  if (!otherItem || !isNonStackableTopType(otherItem)) return pool;
+  if (!otherItem) return pool;
 
-  const blockedType = normalizeType(otherItem.type);
-  return pool.filter((item) => normalizeType(item.type) !== blockedType);
+  return pool.filter((item) => {
+    if (isNonStackableTopType(otherItem) && normalizeType(item.type) === normalizeType(otherItem.type)) {
+      return false;
+    }
+
+    if (isShirtLayeringType(otherItem) && isShirtLayeringType(item)) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function isHeavyOuterwear(item) {

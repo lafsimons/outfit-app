@@ -76,16 +76,18 @@ const fitpics = [
   }
 ];
 
-test("buildFitpicSearchText is limited to the fitpic title", () => {
+test("buildFitpicSearchText includes fitpic title and linked wardrobe item metadata", () => {
   const text = buildFitpicSearchText(fitpics[0], items);
 
   assert.equal(text.includes("morning look"), true);
   assert.equal(text.includes("soft tailoring"), false);
-  assert.equal(text.includes("shirt renamed"), false);
+  assert.equal(text.includes("shirt renamed"), true);
+  assert.equal(text.includes("3sixteen"), true);
+  assert.equal(text.includes("core"), true);
   assert.equal(text.includes("spring"), false);
 });
 
-test("fitpic local search matches title only and ignores description or linked metadata", () => {
+test("fitpic local search matches fitpic title and linked wardrobe metadata but ignores fitpic-only description", () => {
   const filtered = filterAndSortFitpics(
     fitpics,
     {
@@ -96,7 +98,8 @@ test("fitpic local search matches title only and ignores description or linked m
 
   assert.deepEqual(filtered.map((fitpic) => fitpic.id), ["fitpic_1"]);
   assert.deepEqual(filterAndSortFitpics(fitpics, { search: "soft tailoring" }, items), []);
-  assert.deepEqual(filterAndSortFitpics(fitpics, { search: "shirt renamed" }, items), []);
+  assert.deepEqual(filterAndSortFitpics(fitpics, { search: "shirt renamed" }, items).map((fitpic) => fitpic.id), ["fitpic_1"]);
+  assert.deepEqual(filterAndSortFitpics(fitpics, { search: "3sixteen core" }, items).map((fitpic) => fitpic.id), ["fitpic_1"]);
 });
 
 test("fitpic tag filters and linked metadata filters use the fitpic filter architecture", () => {

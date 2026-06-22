@@ -7,8 +7,17 @@ export const FITPIC_SPREAD_PRIMARY_HEIGHT = 228;
 export const FITPIC_SPREAD_DETAIL_ROW_HEIGHT = 82;
 export const FITPIC_SPREAD_DETAIL_GAP = 3;
 export const FITPIC_SPREAD_MAX_DETAIL_TILES = 9;
+export const FITPIC_SPREAD_DEFAULT_MAX_DETAIL_IMAGES = FITPIC_SPREAD_MAX_DETAIL_TILES;
 export const FITPIC_SPREAD_TITLE_LINE_HEIGHT = 18;
 export const FITPIC_SPREAD_TITLE_MAX_LINES = 2;
+export const FITPIC_DETAILS_ONLY_CARD_WIDTH = 412;
+export const FITPIC_DETAILS_ONLY_CARD_PADDING = 24;
+export const FITPIC_DETAILS_ONLY_CARD_GAP = 18;
+export const FITPIC_DETAILS_ONLY_CONTENT_INSET = 10;
+export const FITPIC_DETAILS_ONLY_DETAIL_ROW_HEIGHT = 148;
+export const FITPIC_DETAILS_ONLY_DETAIL_GAP = 6;
+export const FITPIC_DETAILS_ONLY_TITLE_LINE_HEIGHT = 16;
+export const FITPIC_DETAILS_ONLY_TITLE_MAX_LINES = 1;
 export const FITPIC_SPREAD_STANDARD_SCALE = 2;
 export const FITPIC_SPREAD_HIGH_QUALITY_SCALE = 3;
 export const FITPIC_SPREAD_MAX_CANVAS_DIMENSION = 16384;
@@ -22,7 +31,9 @@ export const fitpicSpreadExportPresets = {
     showTitle: true,
     showDetailGrid: false,
     showTags: false,
-    showFitDate: false
+    showFitDate: false,
+    imageMode: "default",
+    showDescription: false
   },
   reference: {
     scope: "current",
@@ -31,7 +42,20 @@ export const fitpicSpreadExportPresets = {
     showTitle: true,
     showDetailGrid: true,
     showTags: false,
-    showFitDate: false
+    showFitDate: false,
+    imageMode: "default",
+    showDescription: false
+  },
+  detailsOnly: {
+    scope: "current",
+    shuffleFitpics: false,
+    useCurrentSortOrder: true,
+    showTitle: true,
+    showDetailGrid: true,
+    showTags: false,
+    showFitDate: false,
+    imageMode: "detailsOnly",
+    showDescription: false
   },
   detailed: {
     scope: "current",
@@ -40,7 +64,9 @@ export const fitpicSpreadExportPresets = {
     showTitle: true,
     showDetailGrid: true,
     showTags: true,
-    showFitDate: true
+    showFitDate: true,
+    imageMode: "default",
+    showDescription: false
   }
 };
 
@@ -148,8 +174,29 @@ export function getFitpicSpreadExportDetailImages(fitpic = {}) {
   });
 }
 
-export function getFitpicSpreadExportDetailTiles(fitpic = {}, maxTiles = FITPIC_SPREAD_MAX_DETAIL_TILES) {
-  const detailImages = getFitpicSpreadExportDetailImages(fitpic);
+export function getFitpicSpreadExportCardImages(fitpic = {}, options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+  if (normalizedOptions.imageMode === "detailsOnly") {
+    return getFitpicSpreadExportDetailImages(fitpic);
+  }
+
+  const primaryImage = getFitpicSpreadExportPrimaryImage(fitpic);
+  return primaryImage ? [primaryImage] : [];
+}
+
+export function getFitpicSpreadExportDetailTiles(fitpic = {}, maxTiles = FITPIC_SPREAD_MAX_DETAIL_TILES, options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+  const detailImages = normalizedOptions.imageMode === "detailsOnly"
+    ? getFitpicSpreadExportDetailImages(fitpic)
+    : getFitpicSpreadExportDetailImages(fitpic);
+
+  if (normalizedOptions.imageMode === "detailsOnly") {
+    return detailImages.map((fitpicImage) => ({
+      kind: "image",
+      src: fitpicImage.src,
+      fitpicImageUuid: fitpicImage.fitpicImageUuid
+    }));
+  }
 
   if (detailImages.length <= maxTiles) {
     return detailImages.map((fitpicImage) => ({
@@ -190,12 +237,20 @@ export function normalizeFitpicSpreadExportOptions(options = {}) {
   normalizedOptions.showDetailGrid = Boolean(normalizedOptions.showDetailGrid);
   normalizedOptions.showTags = Boolean(normalizedOptions.showTags);
   normalizedOptions.showFitDate = Boolean(normalizedOptions.showFitDate);
+  normalizedOptions.showDescription = Boolean(normalizedOptions.showDescription);
+  normalizedOptions.imageMode = normalizedOptions.imageMode === "detailsOnly" ? "detailsOnly" : "default";
 
   if (normalizedOptions.useCurrentSortOrder) {
     normalizedOptions.shuffleFitpics = false;
   } else {
     normalizedOptions.useCurrentSortOrder = false;
     normalizedOptions.shuffleFitpics = Boolean(normalizedOptions.shuffleFitpics);
+  }
+
+  if (normalizedOptions.maxDetailImages === undefined || normalizedOptions.maxDetailImages === null) {
+    normalizedOptions.maxDetailImages = FITPIC_SPREAD_DEFAULT_MAX_DETAIL_IMAGES;
+  } else {
+    normalizedOptions.maxDetailImages = Math.max(0, Math.floor(Number(normalizedOptions.maxDetailImages) || 0));
   }
 
   return normalizedOptions;
@@ -214,6 +269,16 @@ export function getFitpicSpreadExportScopedFitpics({
   }
 
   return [...visibleFitpics];
+}
+
+export function fitpicHasSpreadExportImages(fitpic = {}, options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+
+  if (normalizedOptions.imageMode === "detailsOnly") {
+    return getFitpicSpreadExportDetailImages(fitpic).length > 0;
+  }
+
+  return getFitpicRenderableImages(fitpic).length > 0;
 }
 
 export function getFitpicSpreadExportOrderedFitpics(fitpics = [], options = {}, random = Math.random) {
@@ -245,9 +310,44 @@ export function getFitpicSpreadExportDetailRowCount(fitpic = {}, maxTiles = FITP
   return Math.ceil(tileCount / 3);
 }
 
-export function getFitpicSpreadExportDetailColumns(tileCount = 0) {
+export function getFitpicSpreadExportLayoutMetrics(options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
+
+  if (normalizedOptions.imageMode === "detailsOnly") {
+    return {
+      cardWidth: FITPIC_DETAILS_ONLY_CARD_WIDTH,
+      cardPadding: FITPIC_DETAILS_ONLY_CARD_PADDING,
+      cardGap: FITPIC_DETAILS_ONLY_CARD_GAP,
+      contentInset: FITPIC_DETAILS_ONLY_CONTENT_INSET,
+      detailGap: FITPIC_DETAILS_ONLY_DETAIL_GAP,
+      detailRowHeight: FITPIC_DETAILS_ONLY_DETAIL_ROW_HEIGHT,
+      titleLineHeight: FITPIC_DETAILS_ONLY_TITLE_LINE_HEIGHT,
+      titleMaxLines: FITPIC_DETAILS_ONLY_TITLE_MAX_LINES,
+      titleBlockHeight: FITPIC_DETAILS_ONLY_TITLE_LINE_HEIGHT + 4
+    };
+  }
+
+  return {
+    cardWidth: FITPIC_SPREAD_CARD_WIDTH,
+    cardPadding: FITPIC_SPREAD_CARD_PADDING,
+    cardGap: FITPIC_SPREAD_CARD_GAP,
+    contentInset: 14,
+    detailGap: FITPIC_SPREAD_DETAIL_GAP,
+    detailRowHeight: FITPIC_SPREAD_DETAIL_ROW_HEIGHT,
+    titleLineHeight: FITPIC_SPREAD_TITLE_LINE_HEIGHT,
+    titleMaxLines: FITPIC_SPREAD_TITLE_MAX_LINES,
+    titleBlockHeight: FITPIC_SPREAD_TITLE_LINE_HEIGHT * FITPIC_SPREAD_TITLE_MAX_LINES + 2
+  };
+}
+
+export function getFitpicSpreadExportDetailColumns(tileCount = 0, options = {}) {
+  const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
   if (tileCount <= 1) {
     return 1;
+  }
+
+  if (normalizedOptions.imageMode === "detailsOnly") {
+    return 2;
   }
 
   if (tileCount <= 4) {
@@ -259,7 +359,8 @@ export function getFitpicSpreadExportDetailColumns(tileCount = 0) {
 
 export function getFitpicSpreadExportDetailLayout(tileCount = 0, availableWidth = 0, {
   gap = FITPIC_SPREAD_DETAIL_GAP,
-  rowHeight = FITPIC_SPREAD_DETAIL_ROW_HEIGHT
+  rowHeight = FITPIC_SPREAD_DETAIL_ROW_HEIGHT,
+  options = {}
 } = {}) {
   const normalizedTileCount = Math.max(0, Math.floor(Number(tileCount) || 0));
   const normalizedWidth = Math.max(0, Number(availableWidth) || 0);
@@ -273,7 +374,7 @@ export function getFitpicSpreadExportDetailLayout(tileCount = 0, availableWidth 
     };
   }
 
-  const columns = getFitpicSpreadExportDetailColumns(normalizedTileCount);
+  const columns = getFitpicSpreadExportDetailColumns(normalizedTileCount, options);
   const rowCount = columns <= 0 ? 0 : Math.ceil(normalizedTileCount / columns);
   const cellWidth = columns === 1
     ? normalizedWidth
@@ -300,14 +401,24 @@ export function getFitpicSpreadExportDetailLayout(tileCount = 0, availableWidth 
 
 export function getFitpicSpreadExportCardHeight(options = {}) {
   const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
-  let height = 14 + FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+  const metrics = getFitpicSpreadExportLayoutMetrics(normalizedOptions);
+  let height = metrics.contentInset;
+
+  if (normalizedOptions.imageMode !== "detailsOnly") {
+    height += FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+  }
 
   if (normalizedOptions.showTitle) {
-    height += FITPIC_SPREAD_TITLE_LINE_HEIGHT * FITPIC_SPREAD_TITLE_MAX_LINES + 2;
+    height += metrics.titleBlockHeight;
   }
 
   if (normalizedOptions.showDetailGrid) {
-    height += FITPIC_SPREAD_DETAIL_ROW_HEIGHT * 3 + FITPIC_SPREAD_DETAIL_GAP * 2 + 10;
+    const detailRows = normalizedOptions.imageMode === "detailsOnly" ? 2 : 3;
+    height += metrics.detailRowHeight * detailRows + metrics.detailGap * Math.max(0, detailRows - 1) + 10;
+  }
+
+  if (normalizedOptions.showDescription) {
+    height += 36;
   }
 
   if (normalizedOptions.showTags) {
@@ -318,23 +429,42 @@ export function getFitpicSpreadExportCardHeight(options = {}) {
     height += 18;
   }
 
-  return height + 14;
+  return height + metrics.contentInset;
 }
 
 export function getFitpicSpreadExportCardHeightForFitpic(fitpic = {}, options = {}) {
   const normalizedOptions = normalizeFitpicSpreadExportOptions(options);
-  const detailTiles = normalizedOptions.showDetailGrid ? getFitpicSpreadExportDetailTiles(fitpic) : [];
-  const detailLayout = getFitpicSpreadExportDetailLayout(detailTiles.length, FITPIC_SPREAD_CARD_WIDTH - 28);
-  let height = 14 + FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+  const metrics = getFitpicSpreadExportLayoutMetrics(normalizedOptions);
+  const detailTiles = normalizedOptions.showDetailGrid
+    ? getFitpicSpreadExportDetailTiles(fitpic, normalizedOptions.maxDetailImages, normalizedOptions)
+    : [];
+  const detailLayout = getFitpicSpreadExportDetailLayout(
+    detailTiles.length,
+    metrics.cardWidth - metrics.contentInset * 2,
+    {
+      gap: metrics.detailGap,
+      rowHeight: metrics.detailRowHeight,
+      options: normalizedOptions
+    }
+  );
+  let height = metrics.contentInset;
+
+  if (normalizedOptions.imageMode !== "detailsOnly") {
+    height += FITPIC_SPREAD_PRIMARY_HEIGHT + 10;
+  }
 
   if (normalizedOptions.showTitle) {
-    height += FITPIC_SPREAD_TITLE_LINE_HEIGHT * FITPIC_SPREAD_TITLE_MAX_LINES + 2;
+    height += metrics.titleBlockHeight;
   }
 
   if (normalizedOptions.showDetailGrid && detailLayout.totalHeight > 0) {
     height += detailLayout.totalHeight + 10;
   }
 
+  if (normalizedOptions.showDescription) {
+    height += 36;
+  }
+
   if (normalizedOptions.showTags) {
     height += 24;
   }
@@ -343,7 +473,7 @@ export function getFitpicSpreadExportCardHeightForFitpic(fitpic = {}, options = 
     height += 18;
   }
 
-  return height + 14;
+  return height + metrics.contentInset;
 }
 
 export function getFitpicSpreadExportColumnCount(fitpicCount) {
@@ -352,12 +482,16 @@ export function getFitpicSpreadExportColumnCount(fitpicCount) {
 }
 
 export function getFitpicSpreadExportPlacements(fitpics = [], options = {}, {
-  cardWidth = FITPIC_SPREAD_CARD_WIDTH,
-  cardGap = FITPIC_SPREAD_CARD_GAP,
-  padding = FITPIC_SPREAD_CARD_PADDING
+  cardWidth,
+  cardGap,
+  padding
 } = {}) {
+  const metrics = getFitpicSpreadExportLayoutMetrics(options);
+  const resolvedCardWidth = cardWidth ?? metrics.cardWidth;
+  const resolvedCardGap = cardGap ?? metrics.cardGap;
+  const resolvedPadding = padding ?? metrics.cardPadding;
   const columns = getFitpicSpreadExportColumnCount(fitpics.length);
-  const columnHeights = Array.from({ length: columns }, () => padding);
+  const columnHeights = Array.from({ length: columns }, () => resolvedPadding);
 
   return (Array.isArray(fitpics) ? fitpics : []).map((fitpic, index) => {
     const cardHeight = getFitpicSpreadExportCardHeightForFitpic(fitpic, options);
@@ -372,13 +506,13 @@ export function getFitpicSpreadExportPlacements(fitpics = [], options = {}, {
     const placement = {
       index,
       column,
-      x: padding + column * (cardWidth + cardGap),
+      x: resolvedPadding + column * (resolvedCardWidth + resolvedCardGap),
       y: columnHeights[column],
-      width: cardWidth,
+      width: resolvedCardWidth,
       height: cardHeight
     };
 
-    columnHeights[column] += cardHeight + cardGap;
+    columnHeights[column] += cardHeight + resolvedCardGap;
     return placement;
   });
 }
@@ -435,20 +569,28 @@ export function getFitpicSpreadExportRenderConfig(fitpicCount, {
 }
 
 export function getFitpicSpreadExportPackedRenderConfig(fitpics = [], options = {}, {
-  cardWidth = FITPIC_SPREAD_CARD_WIDTH,
-  cardGap = FITPIC_SPREAD_CARD_GAP,
-  padding = FITPIC_SPREAD_CARD_PADDING,
+  cardWidth,
+  cardGap,
+  padding,
   qualityScale = FITPIC_SPREAD_HIGH_QUALITY_SCALE,
   maxCanvasDimension = FITPIC_SPREAD_MAX_CANVAS_DIMENSION,
   maxCanvasPixels = FITPIC_SPREAD_MAX_CANVAS_PIXELS
 } = {}) {
-  const placements = getFitpicSpreadExportPlacements(fitpics, options, { cardWidth, cardGap, padding });
+  const metrics = getFitpicSpreadExportLayoutMetrics(options);
+  const resolvedCardWidth = cardWidth ?? metrics.cardWidth;
+  const resolvedCardGap = cardGap ?? metrics.cardGap;
+  const resolvedPadding = padding ?? metrics.cardPadding;
+  const placements = getFitpicSpreadExportPlacements(fitpics, options, {
+    cardWidth: resolvedCardWidth,
+    cardGap: resolvedCardGap,
+    padding: resolvedPadding
+  });
   const columns = getFitpicSpreadExportColumnCount(fitpics.length);
-  const canvasWidth = columns * cardWidth + Math.max(0, columns - 1) * cardGap + padding * 2;
+  const canvasWidth = columns * resolvedCardWidth + Math.max(0, columns - 1) * resolvedCardGap + resolvedPadding * 2;
   const contentBottom = placements.length
     ? Math.max(...placements.map((placement) => placement.y + placement.height))
-    : padding;
-  const canvasHeight = contentBottom + padding;
+    : resolvedPadding;
+  const canvasHeight = contentBottom + resolvedPadding;
   const dimensionLimitedScale = Math.min(
     qualityScale,
     maxCanvasDimension / canvasWidth,
@@ -460,9 +602,9 @@ export function getFitpicSpreadExportPackedRenderConfig(fitpics = [], options = 
   return {
     placements,
     columns,
-    cardWidth,
-    cardGap,
-    padding,
+    cardWidth: resolvedCardWidth,
+    cardGap: resolvedCardGap,
+    padding: resolvedPadding,
     canvasWidth,
     canvasHeight,
     qualityScale,

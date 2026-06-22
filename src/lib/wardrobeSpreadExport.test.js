@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   WARDROBE_SPREAD_HIGH_QUALITY_SCALE,
   createWardrobeSpreadExportOptions,
+  getWardrobeSpreadExportImageSource,
   getWardrobeSpreadExportImageUrl,
   getWardrobeSpreadExportLabelRowCount,
   getWardrobeSpreadExportLabelRows,
@@ -11,28 +12,66 @@ import {
   getWardrobeSpreadExportRenderConfig
 } from "./wardrobeSpreadExport.js";
 
-test("wardrobe spread export prefers display then preview and ignores thumbnail", () => {
+test("wardrobe spread export prefers the active asset original before lower-quality fallbacks", () => {
+  assert.deepEqual(
+    getWardrobeSpreadExportImageSource({
+      activeItemImageUuid: "image-1",
+      itemImages: [
+        {
+          itemImageUuid: "image-1",
+          canonicalAsset: {
+            imageUrl: "data:image/png;base64,preview",
+            images: {
+              original: { src: "data:image/png;base64,original" },
+              preview: { src: "data:image/png;base64,preview" },
+              thumbnail: { src: "data:image/png;base64,thumb" }
+            }
+          }
+        }
+      ]
+    }),
+    {
+      src: "data:image/png;base64,original",
+      sourceType: "active-asset:original"
+    }
+  );
+});
+
+test("wardrobe spread export falls back through active preview and item-level sources", () => {
   assert.equal(
     getWardrobeSpreadExportImageUrl({
-      imageUrl: "data:image/png;base64,image-url",
+      activeItemImageUuid: "image-1",
+      itemImages: [
+        {
+          itemImageUuid: "image-1",
+          canonicalAsset: {
+            imageUrl: "data:image/png;base64,asset-preview",
+            images: {
+              preview: { src: "data:image/png;base64,asset-preview" },
+              thumbnail: { src: "data:image/png;base64,asset-thumb" }
+            }
+          }
+        }
+      ],
+      imageUrl: "data:image/png;base64,item-image-url",
       images: {
-        display: { src: "data:image/png;base64,display" },
-        preview: { src: "data:image/png;base64,preview" },
-        thumbnail: { src: "data:image/png;base64,thumb" }
+        preview: { src: "data:image/png;base64,item-preview" },
+        thumbnail: { src: "data:image/png;base64,item-thumb" }
       }
     }),
-    "data:image/png;base64,display"
+    "data:image/png;base64,asset-preview"
   );
 
   assert.equal(
     getWardrobeSpreadExportImageUrl({
       imageUrl: "data:image/png;base64,image-url",
       images: {
+        original: { src: "data:image/png;base64,original" },
         preview: { src: "data:image/png;base64,preview" },
         thumbnail: { src: "data:image/png;base64,thumb" }
       }
     }),
-    "data:image/png;base64,preview"
+    "data:image/png;base64,original"
   );
 });
 
