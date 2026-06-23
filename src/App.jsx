@@ -113,6 +113,7 @@ import {
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
   buildImportedImageAssetSet,
+  buildThumbnailVariantFromSource,
   IMPORT_DISPLAY_MAX_LONG_EDGE,
   IMPORT_DISPLAY_WEBP_QUALITY
 } from "./lib/imageAssetPipeline";
@@ -215,6 +216,10 @@ import {
   wardrobeExcludedMultiValueFilterKeys,
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
+import {
+  migrateFitpicThumbnailDerivatives,
+  migrateWardrobeItemThumbnailDerivatives
+} from "./lib/thumbnailDerivativeMigration";
 import {
   WARDROBE_SPREAD_LABEL_FONT_SIZE,
   WARDROBE_SPREAD_LABEL_GAP,
@@ -937,6 +942,7 @@ function cancelScheduledIdleWork(handle) {
 
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
+const THUMBNAIL_DERIVATIVE_MIGRATION_VERSION = 1;
 const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
 const defaultWindowState = {
   outfitEditor: { width: 396 },
@@ -1967,6 +1973,17 @@ function readFileAsText(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+async function mapSequential(values, mapper) {
+  const list = Array.isArray(values) ? values : [];
+  const results = [];
+
+  for (const [index, value] of list.entries()) {
+    results.push(await mapper(value, index));
+  }
+
+  return results;
 }
 
 function validateBackup(backup) {
@@ -4438,29 +4455,60 @@ export default function App() {
         (storedAppState?.itemDefaultsMigrationVersion ?? 0) < ITEM_DEFAULTS_MIGRATION_VERSION;
       const shouldApplyImagePresentationMigration =
         (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION;
+      const shouldApplyThumbnailDerivativeMigration =
+        (storedAppState?.thumbnailDerivativeMigrationVersion ?? 0) < THUMBNAIL_DERIVATIVE_MIGRATION_VERSION;
       skipNextHydrationAppStateSaveRef.current = !(
         !storedAppState
         || shouldApplyStyleWeightMigration
         || shouldApplyImagePresentationMigration
+        || shouldApplyThumbnailDerivativeMigration
       );
+      const renderThumbnailVariantFromSource = (source) =>
+        buildThumbnailVariantFromSource(source, {
+          loadImage,
+          dataUrlToBlob
+        });
       const styleWeightedItems = shouldApplyStyleWeightMigration
         ? normalizedItems.map(applyMappedStyleWeightDefaults)
         : normalizedItems;
-      const effectiveItems = shouldApplyImagePresentationMigration
-        ? await Promise.all(styleWeightedItems.map((item) => bakeItemImagePresentation(item)))
+      const thumbnailMigratedItems = shouldApplyThumbnailDerivativeMigration
+        ? await mapSequential(
+            styleWeightedItems,
+            (item) =>
+              migrateWardrobeItemThumbnailDerivatives(item, {
+                buildThumbnailVariantFromSource: renderThumbnailVariantFromSource
+              })
+          )
         : styleWeightedItems;
+      const effectiveStoredAppState = shouldApplyThumbnailDerivativeMigration
+        ? {
+            ...(storedAppState ?? {}),
+            fitpics: await mapSequential(
+              storedAppState?.fitpics ?? [],
+              (fitpic) =>
+                migrateFitpicThumbnailDerivatives(fitpic, {
+                  buildThumbnailVariantFromSource: renderThumbnailVariantFromSource
+                })
+            )
+          }
+        : storedAppState;
+      const effectiveItems = shouldApplyImagePresentationMigration
+        ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
+        : thumbnailMigratedItems;
       logStartupDiagnosticBlocks(
         "migration-complete",
         collectStartupDiagnostics({
           items: effectiveItems,
-          appState: storedAppState
+          appState: effectiveStoredAppState
         }),
         {
           migratedItemCount: effectiveItems.length,
           shouldApplyStyleWeightMigration,
           shouldApplyImagePresentationMigration,
+          shouldApplyThumbnailDerivativeMigration,
           codePaths: [
             "bootstrap:normalizeStoredItem map",
+            "bootstrap:thumbnail derivative migration rewrites inline thumbnails from existing display/original media",
             "bootstrap:Object.fromEntries(itemsById)",
             "bootstrap:bakeItemImagePresentation may decode item display assets",
             "itemModel:mirrorActiveWardrobeImageAssetToLegacyAliases duplicates active asset aliases"
@@ -4500,8 +4548,8 @@ export default function App() {
       }
 
       let hydratedAppState;
-      if (storedAppState) {
-        hydratedAppState = normalizeHydratedAppState(storedAppState, {
+      if (effectiveStoredAppState) {
+        hydratedAppState = normalizeHydratedAppState(effectiveStoredAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
@@ -4520,7 +4568,7 @@ export default function App() {
         "state-hydration-complete",
         collectStartupDiagnostics({
           items: effectiveItems,
-          appState: storedAppState,
+          appState: effectiveStoredAppState,
           hydratedAppState
         }),
         {
@@ -4646,6 +4694,7 @@ export default function App() {
           appState: {
             itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
             imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+            thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
             layering,
             accessoriesEnabled,
             locked,
@@ -4684,6 +4733,7 @@ export default function App() {
     saveAppState({
       itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
       imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+      thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
       layering,
       accessoriesEnabled,
       locked,
@@ -5481,6 +5531,7 @@ export default function App() {
       appState: {
         itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
         imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+        thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
         layering,
         accessoriesEnabled,
         locked,
@@ -5625,9 +5676,26 @@ export default function App() {
         defaultGenerationLists,
         emptyOutfitFilters,
         defaultGenerationMode,
+        migrateWardrobeItemThumbnailDerivatives: (item) =>
+          migrateWardrobeItemThumbnailDerivatives(item, {
+            buildThumbnailVariantFromSource: (source) =>
+              buildThumbnailVariantFromSource(source, {
+                loadImage,
+                dataUrlToBlob
+              })
+          }),
+        migrateFitpicThumbnailDerivatives: (fitpic) =>
+          migrateFitpicThumbnailDerivatives(fitpic, {
+            buildThumbnailVariantFromSource: (source) =>
+              buildThumbnailVariantFromSource(source, {
+                loadImage,
+                dataUrlToBlob
+              })
+          }),
         migrationVersions: {
           itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
-          imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION
+          imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION,
+          thumbnailDerivative: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION
         }
       });
 

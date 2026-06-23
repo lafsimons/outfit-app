@@ -1,3 +1,14 @@
+async function mapSequential(values, mapper) {
+  const list = Array.isArray(values) ? values : [];
+  const results = [];
+
+  for (const [index, value] of list.entries()) {
+    results.push(await mapper(value, index));
+  }
+
+  return results;
+}
+
 export async function prepareBackupImport(
   backup,
   {
@@ -14,7 +25,9 @@ export async function prepareBackupImport(
     defaultGenerationLists,
     emptyOutfitFilters,
     defaultGenerationMode,
-    migrationVersions
+    migrationVersions,
+    migrateWardrobeItemThumbnailDerivatives = async (item) => item,
+    migrateFitpicThumbnailDerivatives = async (fitpic) => fitpic
   }
 ) {
   const nextItems = Array.isArray(backup?.items) ? backup.items : [];
@@ -24,6 +37,8 @@ export async function prepareBackupImport(
     (nextAppState?.itemDefaultsMigrationVersion ?? 0) < migrationVersions.itemDefaults;
   const shouldApplyImagePresentationMigration =
     (nextAppState?.imagePresentationMigrationVersion ?? 0) < migrationVersions.imagePresentation;
+  const shouldApplyThumbnailDerivativeMigration =
+    (nextAppState?.thumbnailDerivativeMigrationVersion ?? 0) < migrationVersions.thumbnailDerivative;
 
   const normalizedItems = nextItems
     .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
@@ -36,12 +51,21 @@ export async function prepareBackupImport(
   const styleWeightedItems = shouldApplyStyleWeightMigration
     ? normalizedItems.map(applyMappedStyleWeightDefaults)
     : normalizedItems;
+  const thumbnailMigratedItems = shouldApplyThumbnailDerivativeMigration
+    ? await mapSequential(styleWeightedItems, (item) => migrateWardrobeItemThumbnailDerivatives(item))
+    : styleWeightedItems;
+  const effectiveImportAppState = shouldApplyThumbnailDerivativeMigration
+    ? {
+        ...nextAppState,
+        fitpics: await mapSequential(nextAppState?.fitpics ?? [], (fitpic) => migrateFitpicThumbnailDerivatives(fitpic))
+      }
+    : nextAppState;
 
   const effectiveItems = shouldApplyImagePresentationMigration
-    ? await Promise.all(styleWeightedItems.map((item) => bakeItemImagePresentation(item)))
-    : styleWeightedItems;
+    ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
+    : thumbnailMigratedItems;
 
-  const fallbackOutfit = nextAppState?.outfit ?? buildNextOutfit(
+  const fallbackOutfit = effectiveImportAppState?.outfit ?? buildNextOutfit(
     effectiveItems,
     {},
     {},
@@ -51,11 +75,11 @@ export async function prepareBackupImport(
     emptyOutfitFilters,
     null,
     defaultGenerationMode,
-    normalizeOutfitAffinity(nextAppState?.outfitAffinity),
-    normalizeRecentOutfits(nextAppState?.recentOutfits)
+    normalizeOutfitAffinity(effectiveImportAppState?.outfitAffinity),
+    normalizeRecentOutfits(effectiveImportAppState?.recentOutfits)
   );
 
-  const hydratedAppState = normalizeHydratedAppState(nextAppState, {
+  const hydratedAppState = normalizeHydratedAppState(effectiveImportAppState, {
     fallbackOutfit,
     normalizeWeatherSettings,
     itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
@@ -73,6 +97,7 @@ export async function prepareBackupImport(
       appState: {
         itemDefaultsMigrationVersion: migrationVersions.itemDefaults,
         imagePresentationMigrationVersion: migrationVersions.imagePresentation,
+        thumbnailDerivativeMigrationVersion: migrationVersions.thumbnailDerivative,
         layering: loadedAppState.layering,
         accessoriesEnabled: loadedAppState.accessoriesEnabled,
         locked: loadedAppState.locked,

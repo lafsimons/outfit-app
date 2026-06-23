@@ -4,8 +4,8 @@ export const IMPORT_ARCHIVAL_MAX_LONG_EDGE = 4000;
 export const IMPORT_ARCHIVAL_WEBP_QUALITY = 0.95;
 export const IMPORT_DISPLAY_MAX_LONG_EDGE = 1600;
 export const IMPORT_DISPLAY_WEBP_QUALITY = 0.9;
-export const IMPORT_THUMBNAIL_MAX_LONG_EDGE = 480;
-export const IMPORT_THUMBNAIL_WEBP_QUALITY = 0.82;
+export const IMPORT_THUMBNAIL_MAX_LONG_EDGE = 320;
+export const IMPORT_THUMBNAIL_WEBP_QUALITY = 0.72;
 
 function normalizePositiveNumber(value) {
   const numericValue = Number(value);
@@ -81,6 +81,52 @@ async function renderImageVariant(
     width,
     height
   };
+}
+
+export async function buildImageVariantFromSource(
+  source,
+  {
+    maxLongEdge,
+    quality,
+    loadImage,
+    createCanvas = createCanvasElement,
+    dataUrlToBlob = defaultDataUrlToBlob
+  } = {}
+) {
+  if (typeof loadImage !== "function") {
+    throw new Error("Image loading helper is required.");
+  }
+
+  const sourceValue = typeof source === "string" ? source.trim() : "";
+
+  if (!sourceValue) {
+    throw new Error("A source image is required.");
+  }
+
+  const image = await loadImage(sourceValue);
+  return renderImageVariant(image, {
+    maxLongEdge,
+    quality,
+    createCanvas,
+    dataUrlToBlob
+  });
+}
+
+export async function buildThumbnailVariantFromSource(
+  source,
+  {
+    loadImage,
+    createCanvas = createCanvasElement,
+    dataUrlToBlob = defaultDataUrlToBlob
+  } = {}
+) {
+  return buildImageVariantFromSource(source, {
+    maxLongEdge: IMPORT_THUMBNAIL_MAX_LONG_EDGE,
+    quality: IMPORT_THUMBNAIL_WEBP_QUALITY,
+    loadImage,
+    createCanvas,
+    dataUrlToBlob
+  });
 }
 
 export function shouldPreserveLiteralImportedOriginal({
