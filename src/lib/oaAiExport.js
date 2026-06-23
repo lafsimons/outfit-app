@@ -15,6 +15,12 @@ import { renderWardrobeImageExport } from "./wardrobeImageExport.js";
 const DEFAULT_EXCLUDED_COLLECTIONS = ["Beater Wardrobe", "Sportswear"];
 const DEFAULT_COLLECTION_EXPORTS = ["Core Wardrobe", "Sportswear"];
 const DEFAULT_STATUS_EXPORTS = ["Interested", "Wishlist", "Incoming", "Selling", "Archived"];
+const OA_AI_EXPORT_DEBUG_PREFIX = "[OA_AI_EXPORT_DEBUG]";
+const OA_AI_EXPORT_DEBUG_FLAG = "__OA_AI_EXPORT_DEBUG__";
+
+function isOaAiExportDebugEnabled() {
+  return Boolean(globalThis?.[OA_AI_EXPORT_DEBUG_FLAG]);
+}
 
 function createOaAiWardrobeImageExportOptions() {
   return createWardrobeSpreadExportOptions("detailed");
@@ -22,6 +28,147 @@ function createOaAiWardrobeImageExportOptions() {
 
 function createOaAiWardrobeImageExportProfile() {
   return "ai";
+}
+
+function logOaAiExportDebug(event, payload = {}) {
+  if (!isOaAiExportDebugEnabled()) {
+    return;
+  }
+
+  console.info(OA_AI_EXPORT_DEBUG_PREFIX, event, payload);
+}
+
+function logOaAiExportError(event, error, payload = {}) {
+  if (!isOaAiExportDebugEnabled()) {
+    return;
+  }
+
+  console.error(OA_AI_EXPORT_DEBUG_PREFIX, event, {
+    ...payload,
+    error,
+    message: error?.message ?? String(error),
+    stack: error?.stack ?? ""
+  });
+}
+
+export function formatOaAiExportStepLabel(step = "", context = {}) {
+  if (step === "oa-ai-export:wardrobe-image-render") {
+    return `${context.basePath || context.label || "wardrobe"} image render`;
+  }
+
+  if (step === "oa-ai-export:wardrobe-csv-generation") {
+    return `${context.basePath || context.label || "wardrobe"} CSV generation`;
+  }
+
+  if (step === "oa-ai-export:wardrobe-image-bytes") {
+    return `${context.fileName || context.basePath || context.label || "wardrobe"} image bytes`;
+  }
+
+  if (step === "oa-ai-export:fitpics-csv-generation") {
+    return "fitpics CSV generation";
+  }
+
+  if (step === "oa-ai-export:fitpics-compact") {
+    return "fitpics compact render";
+  }
+
+  if (step === "oa-ai-export:fitpics-details") {
+    return "fitpics details render";
+  }
+
+  if (step === "oa-ai-export:fitpics-compact-bytes") {
+    return "fitpics compact bytes";
+  }
+
+  if (step === "oa-ai-export:fitpics-details-bytes") {
+    return "fitpics details bytes";
+  }
+
+  if (step === "oa-ai-export:saved-outfits") {
+    return "saved outfits export";
+  }
+
+  if (step === "oa-ai-export:readme-generation") {
+    return "README generation";
+  }
+
+  if (step === "oa-ai-export:zip-generation") {
+    return "ZIP generation";
+  }
+
+  if (step === "oa-ai-export:status-export") {
+    return `status export ${context.status || ""}`.trim();
+  }
+
+  if (step === "oa-ai-export:status-exports-combined") {
+    return "combined status export";
+  }
+
+  if (step === "oa-ai-export:collection-export") {
+    return `collection export ${context.collection || ""}`.trim();
+  }
+
+  if (step === "oa-ai-export:current-wardrobe") {
+    return "current wardrobe export";
+  }
+
+  if (step === "oa-ai-export:acquisition-pipeline") {
+    return "acquisition pipeline export";
+  }
+
+  return step || "unknown step";
+}
+
+function summarizeWardrobeItems(items = []) {
+  return (Array.isArray(items) ? items : []).slice(0, 10).map((item) => ({
+    id: item?.id ?? "",
+    itemUuid: item?.itemUuid ?? "",
+    name: item?.name ?? "",
+    imageUrl: item?.imageUrl ?? "",
+    sourceRelativePath: item?.sourceRelativePath ?? "",
+    activeItemImageUuid: item?.activeItemImageUuid ?? null
+  }));
+}
+
+function summarizeFitpics(fitpics = []) {
+  return (Array.isArray(fitpics) ? fitpics : []).slice(0, 10).map((fitpic) => ({
+    id: fitpic?.id ?? "",
+    fitpicUuid: fitpic?.fitpicUuid ?? "",
+    name: fitpic?.name ?? "",
+    imageData: fitpic?.imageData ? "[present]" : "",
+    primaryImageUuid: fitpic?.primaryImageUuid ?? "",
+    fitpicImageCount: Array.isArray(fitpic?.fitpicImages) ? fitpic.fitpicImages.length : 0
+  }));
+}
+
+function annotateOaAiExportError(error, context = {}) {
+  if (error && typeof error === "object") {
+    error.oaAiExportContext = {
+      ...(error.oaAiExportContext && typeof error.oaAiExportContext === "object"
+        ? error.oaAiExportContext
+        : {}),
+      ...context
+    };
+    if (context.step) {
+      error.oaAiExportStep = context.step;
+    }
+  }
+
+  return error;
+}
+
+async function runOaAiExportStep(step, context, operation) {
+  logOaAiExportDebug(`${step}:start`, context);
+
+  try {
+    const result = await operation();
+    logOaAiExportDebug(`${step}:complete`, context);
+    return result;
+  } catch (error) {
+    annotateOaAiExportError(error, { step, ...context });
+    logOaAiExportError(`${step}:error`, error, context);
+    throw error;
+  }
 }
 
 function normalizeUniqueStrings(values = []) {
@@ -275,26 +422,46 @@ async function addWardrobeDataset({
 }) {
   if (!items.length) {
     skippedDatasets.push(label);
+    logOaAiExportDebug("wardrobe-dataset:skipped-empty", {
+      label,
+      basePath
+    });
     return;
   }
 
-  const imageResult = await renderWardrobePng({
-    items,
-    options: wardrobeExportOptions,
-    exportProfile: wardrobeExportProfile,
-    resolveAssetUrl,
-    fileName: `${basePath}.${wardrobeExportProfile === "ai" ? "webp" : "png"}`
+  const datasetContext = {
+    label,
+    basePath,
+    itemCount: items.length,
+    sampleItems: summarizeWardrobeItems(items)
+  };
+
+  await runOaAiExportStep("oa-ai-export:wardrobe-csv-generation", datasetContext, async () => {
+    archive[`${basePath}.csv`] = strToU8(serializeLibraryCsv(items));
+    includedFiles.push(`${basePath}.csv`);
   });
 
-  archive[`${basePath}.csv`] = strToU8(serializeLibraryCsv(items));
-  includedFiles.push(`${basePath}.csv`);
+  const imageResult = await runOaAiExportStep("oa-ai-export:wardrobe-image-render", datasetContext, async () =>
+    renderWardrobePng({
+      items,
+      options: wardrobeExportOptions,
+      exportProfile: wardrobeExportProfile,
+      resolveAssetUrl,
+      fileName: `${basePath}.${wardrobeExportProfile === "ai" ? "webp" : "png"}`
+    })
+  );
 
   if (imageResult?.blob) {
-    archive[imageResult.fileName] = await blobToBytes(imageResult.blob);
-    includedFiles.push(imageResult.fileName);
-    if (imageResult.report) {
-      wardrobeImageReports.push(imageResult.report);
-    }
+    await runOaAiExportStep("oa-ai-export:wardrobe-image-bytes", {
+      ...datasetContext,
+      fileName: imageResult.fileName
+    }, async () => {
+      archive[imageResult.fileName] = await blobToBytes(imageResult.blob);
+      includedFiles.push(imageResult.fileName);
+      if (imageResult.report) {
+        wardrobeImageReports.push(imageResult.report);
+      }
+    });
   }
 }
 
@@ -316,149 +483,224 @@ export async function buildOaAiExportBundle({
   const wardrobeImageReports = [];
   const fitpicImageReports = [];
 
+  logOaAiExportDebug("oa-ai-export:bundle-start", {
+    itemCount: Array.isArray(items) ? items.length : 0,
+    savedOutfitCount: Array.isArray(savedOutfits) ? savedOutfits.length : 0,
+    fitpicCount: Array.isArray(fitpics) ? fitpics.length : 0,
+    options: normalizedOptions
+  });
+
   if (normalizedOptions.includeCurrentWardrobe) {
-    await addWardrobeDataset({
-      archive,
-      includedFiles,
-      skippedDatasets,
-      wardrobeImageReports,
-      label: "Current Wardrobe",
-      basePath: "wardrobe/current-wardrobe",
-      items: getCurrentWardrobeDatasetItems(items, normalizedOptions),
-      wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
-      wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
-      resolveAssetUrl,
-      renderWardrobePng
-    });
+    await runOaAiExportStep("oa-ai-export:current-wardrobe", {
+      itemCount: getCurrentWardrobeDatasetItems(items, normalizedOptions).length
+    }, async () =>
+      addWardrobeDataset({
+        archive,
+        includedFiles,
+        skippedDatasets,
+        wardrobeImageReports,
+        label: "Current Wardrobe",
+        basePath: "wardrobe/current-wardrobe",
+        items: getCurrentWardrobeDatasetItems(items, normalizedOptions),
+        wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
+        wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
+        resolveAssetUrl,
+        renderWardrobePng
+      })
+    );
   }
 
   if (normalizedOptions.includeAcquisitionPipeline) {
-    await addWardrobeDataset({
-      archive,
-      includedFiles,
-      skippedDatasets,
-      wardrobeImageReports,
-      label: "Acquisition Pipeline",
-      basePath: "wardrobe/acquisition-pipeline",
-      items: getAcquisitionPipelineDatasetItems(items),
-      wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
-      wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
-      resolveAssetUrl,
-      renderWardrobePng
-    });
+    await runOaAiExportStep("oa-ai-export:acquisition-pipeline", {
+      itemCount: getAcquisitionPipelineDatasetItems(items).length
+    }, async () =>
+      addWardrobeDataset({
+        archive,
+        includedFiles,
+        skippedDatasets,
+        wardrobeImageReports,
+        label: "Acquisition Pipeline",
+        basePath: "wardrobe/acquisition-pipeline",
+        items: getAcquisitionPipelineDatasetItems(items),
+        wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
+        wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
+        resolveAssetUrl,
+        renderWardrobePng
+      })
+    );
   }
 
   if (normalizedOptions.includeFitpics) {
-    archive["fitpics/fitpics.csv"] = strToU8(serializeFitpicsCsv(fitpics, items));
-    includedFiles.push("fitpics/fitpics.csv");
+    const fitpicContext = {
+      fitpicCount: Array.isArray(fitpics) ? fitpics.length : 0,
+      sampleFitpics: summarizeFitpics(fitpics)
+    };
 
-    const compactResult = await renderFitpicPng({
-      fitpics,
-      options: createFitpicSpreadExportOptions("compact"),
-      exportProfile: "ai",
-      exportProfileOverrides: {
-        maxDetailImages: 0
-      },
-      resolveAssetUrl,
-      fileName: "fitpics-compact.webp"
+    await runOaAiExportStep("oa-ai-export:fitpics-csv-generation", fitpicContext, async () => {
+      archive["fitpics/fitpics.csv"] = strToU8(serializeFitpicsCsv(fitpics, items));
+      includedFiles.push("fitpics/fitpics.csv");
     });
+
+    const compactResult = await runOaAiExportStep("oa-ai-export:fitpics-compact", fitpicContext, async () =>
+      renderFitpicPng({
+        fitpics,
+        options: createFitpicSpreadExportOptions("compact"),
+        exportProfile: "ai",
+        exportProfileOverrides: {
+          maxDetailImages: 0
+        },
+        resolveAssetUrl,
+        fileName: "fitpics-compact.webp"
+      })
+    );
 
     if (compactResult?.blob) {
-      archive[`fitpics/${compactResult.fileName}`] = await blobToBytes(compactResult.blob);
-      includedFiles.push(`fitpics/${compactResult.fileName}`);
-      if (compactResult.report) {
-        fitpicImageReports.push(compactResult.report);
-      }
+      await runOaAiExportStep("oa-ai-export:fitpics-compact-bytes", {
+        ...fitpicContext,
+        fileName: compactResult.fileName
+      }, async () => {
+        archive[`fitpics/${compactResult.fileName}`] = await blobToBytes(compactResult.blob);
+        includedFiles.push(`fitpics/${compactResult.fileName}`);
+        if (compactResult.report) {
+          fitpicImageReports.push(compactResult.report);
+        }
+      });
     }
 
-    const detailsResult = await renderFitpicPng({
-      fitpics,
-      options: createFitpicSpreadExportOptions("detailsOnly"),
-      exportProfile: "detailsAi",
-      resolveAssetUrl,
-      fileName: "fitpics-details.webp"
-    });
+    const detailsResult = await runOaAiExportStep("oa-ai-export:fitpics-details", fitpicContext, async () =>
+      renderFitpicPng({
+        fitpics,
+        options: createFitpicSpreadExportOptions("detailsOnly"),
+        exportProfile: "detailsAi",
+        resolveAssetUrl,
+        fileName: "fitpics-details.webp"
+      })
+    );
 
     if (detailsResult?.blob) {
-      archive[`fitpics/${detailsResult.fileName}`] = await blobToBytes(detailsResult.blob);
-      includedFiles.push(`fitpics/${detailsResult.fileName}`);
-      if (detailsResult.report) {
-        fitpicImageReports.push(detailsResult.report);
-      }
+      await runOaAiExportStep("oa-ai-export:fitpics-details-bytes", {
+        ...fitpicContext,
+        fileName: detailsResult.fileName
+      }, async () => {
+        archive[`fitpics/${detailsResult.fileName}`] = await blobToBytes(detailsResult.blob);
+        includedFiles.push(`fitpics/${detailsResult.fileName}`);
+        if (detailsResult.report) {
+          fitpicImageReports.push(detailsResult.report);
+        }
+      });
     }
   }
 
   if (normalizedOptions.includeSavedOutfits) {
-    archive["saved-outfits/saved-outfits.csv"] = strToU8(serializeSavedOutfitsCsv(savedOutfits, items));
-    archive["saved-outfits/saved-outfits.json"] = strToU8(serializeSavedOutfitsJson(savedOutfits, items));
-    includedFiles.push("saved-outfits/saved-outfits.csv");
-    includedFiles.push("saved-outfits/saved-outfits.json");
+    await runOaAiExportStep("oa-ai-export:saved-outfits", {
+      savedOutfitCount: Array.isArray(savedOutfits) ? savedOutfits.length : 0
+    }, async () => {
+      archive["saved-outfits/saved-outfits.csv"] = strToU8(serializeSavedOutfitsCsv(savedOutfits, items));
+      archive["saved-outfits/saved-outfits.json"] = strToU8(serializeSavedOutfitsJson(savedOutfits, items));
+      includedFiles.push("saved-outfits/saved-outfits.csv");
+      includedFiles.push("saved-outfits/saved-outfits.json");
+    });
   }
 
   for (const collection of normalizedOptions.collectionExports) {
     const fileStub = toZipPathSegment(collection, slugPart(collection) || "collection");
 
-    await addWardrobeDataset({
-      archive,
-      includedFiles,
-      skippedDatasets,
-      wardrobeImageReports,
-      label: `Collection: ${collection}`,
-      basePath: `collections/${fileStub}`,
-      items: getCollectionDatasetItems(items, collection),
-      wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
-      wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
-      resolveAssetUrl,
-      renderWardrobePng
-    });
+    await runOaAiExportStep("oa-ai-export:collection-export", {
+      collection,
+      itemCount: getCollectionDatasetItems(items, collection).length
+    }, async () =>
+      addWardrobeDataset({
+        archive,
+        includedFiles,
+        skippedDatasets,
+        wardrobeImageReports,
+        label: `Collection: ${collection}`,
+        basePath: `collections/${fileStub}`,
+        items: getCollectionDatasetItems(items, collection),
+        wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
+        wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
+        resolveAssetUrl,
+        renderWardrobePng
+      })
+    );
   }
 
   if (normalizedOptions.statusExports.length) {
     if (normalizedOptions.statusExportMode === "separate") {
       for (const status of normalizedOptions.statusExports) {
         const fileStub = toZipPathSegment(status, slugPart(status) || "status");
+        const basePath = `statuses/${fileStub}`;
+        const statusItems = getStatusDatasetItems(items, [status]);
 
-        await addWardrobeDataset({
+        await runOaAiExportStep("oa-ai-export:status-export", {
+          status,
+          mode: "separate",
+          itemCount: statusItems.length,
+          basePath
+        }, async () =>
+          addWardrobeDataset({
+            archive,
+            includedFiles,
+            skippedDatasets,
+            wardrobeImageReports,
+            label: `Status: ${status}`,
+            basePath,
+            items: statusItems,
+            wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
+            wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
+            resolveAssetUrl,
+            renderWardrobePng
+          })
+        );
+      }
+    } else {
+      const fileStub = toZipPathSegment(normalizedOptions.statusExports.join("-"), "status-selection");
+      const basePath = `statuses/${fileStub}`;
+      const statusItems = getStatusDatasetItems(items, normalizedOptions.statusExports);
+
+      await runOaAiExportStep("oa-ai-export:status-exports-combined", {
+        statuses: normalizedOptions.statusExports,
+        mode: "combined",
+        itemCount: statusItems.length,
+        basePath
+      }, async () =>
+        addWardrobeDataset({
           archive,
           includedFiles,
           skippedDatasets,
           wardrobeImageReports,
-          label: `Status: ${status}`,
-          basePath: `statuses/${fileStub}`,
-          items: getStatusDatasetItems(items, [status]),
+          label: `Statuses: ${normalizedOptions.statusExports.join(", ")}`,
+          basePath,
+          items: statusItems,
           wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
           wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
           resolveAssetUrl,
           renderWardrobePng
-        });
-      }
-    } else {
-      const fileStub = toZipPathSegment(normalizedOptions.statusExports.join("-"), "status-selection");
-
-      await addWardrobeDataset({
-        archive,
-        includedFiles,
-        skippedDatasets,
-        wardrobeImageReports,
-        label: `Statuses: ${normalizedOptions.statusExports.join(", ")}`,
-        basePath: `statuses/${fileStub}`,
-        items: getStatusDatasetItems(items, normalizedOptions.statusExports),
-        wardrobeExportOptions: createOaAiWardrobeImageExportOptions(),
-        wardrobeExportProfile: createOaAiWardrobeImageExportProfile(),
-        resolveAssetUrl,
-        renderWardrobePng
-      });
+        })
+      );
     }
   }
 
-  const readme = createReadme({ includedFiles, skippedDatasets });
-  archive["README.md"] = strToU8(readme);
-  includedFiles.unshift("README.md");
-
-  const zipBytes = zipSync(archive, {
-    level: 0
+  await runOaAiExportStep("oa-ai-export:readme-generation", {
+    includedFileCount: includedFiles.length,
+    skippedDatasetCount: skippedDatasets.length
+  }, async () => {
+    const readme = createReadme({ includedFiles, skippedDatasets });
+    archive["README.md"] = strToU8(readme);
+    includedFiles.unshift("README.md");
   });
+
+  const zipBytes = await runOaAiExportStep("oa-ai-export:zip-generation", {
+    archiveFileCount: Object.keys(archive).length
+  }, async () => zipSync(archive, {
+    level: 0
+  }));
   const today = new Date().toISOString().slice(0, 10);
+
+  logOaAiExportDebug("oa-ai-export:bundle-complete", {
+    includedFileCount: includedFiles.length,
+    skippedDatasetCount: skippedDatasets.length
+  });
 
   return {
     blob: new Blob([zipBytes], { type: "application/zip" }),

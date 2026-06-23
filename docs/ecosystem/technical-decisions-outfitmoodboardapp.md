@@ -92,6 +92,58 @@ Separating metadata from media:
 
 ---
 
+## OA 23.06.2026
+
+## **Decision: Move fitpic media out of `appState` first**
+
+### **Problem**
+
+OA startup had become unstable because fitpic image payloads were still stored inline inside `appState`.
+
+Measured pressure before the change:
+
+- `appState` JSON was about `199 MB`
+- first-render heap was about `2.5 GB`
+- save/hydration paths were cloning and stringifying fitpic-heavy state
+
+This was enough to make refresh stability fragile and pushed the browser close to OOM conditions.
+
+### **Decision**
+
+Move fitpic media payloads into a dedicated IndexedDB media store in Phase 1.
+
+Persist only lightweight fitpic media refs inside `appState`.
+
+Leave wardrobe media inline for now.
+
+### **Reasoning**
+
+Fitpics were the highest-leverage first target:
+
+- they contributed large payload bytes inside `appState`
+- they could be moved without immediately rewriting the full wardrobe image system
+- the change materially reduced startup and persistence pressure
+- the resulting architecture aligns OA more closely with MBA's metadata-first and out-of-line media direction
+
+Measured result after the fitpic move:
+
+- `appState` JSON dropped from about `199 MB` to about `0.3 MB`
+- first-render heap dropped from about `2.5 GB` to about `1.6 GB`
+
+Backup v2 export/import was updated so fitpic media now round-trips through the media store rather than requiring inline fitpic payloads.
+
+### **Consequences**
+
+- Fitpic media is now stored out-of-line in IndexedDB.
+- Persisted fitpic records keep metadata refs, not large inline payload strings.
+- Legacy inline fitpics remain backward-compatible and migratable.
+- Backup v2 ZIP export/import must resolve fitpic media from the media store first.
+- Wardrobe media remains inline until there is enough pressure to justify a second migration.
+- Phase 2 wardrobe media-store work is deferred, not rejected.
+- One known Backup v2 warning remains: a genuinely media-less wardrobe asset.
+
+---
+
 ## **Decision: Lazy media resolution**
 
 ### **Problem**

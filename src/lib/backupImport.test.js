@@ -22,7 +22,8 @@ import { emptyForm, applyMappedStyleWeightDefaults } from "./typeDefaults.js";
 
 const MIGRATION_VERSIONS = {
   itemDefaults: 3,
-  imagePresentation: 2
+  imagePresentation: 2,
+  thumbnailDerivative: 1
 };
 
 function getNormalizedImageCrop(item) {
@@ -85,6 +86,8 @@ async function prepare(backup, overrides = {}) {
     emptyOutfitFilters,
     defaultGenerationMode,
     migrationVersions: MIGRATION_VERSIONS,
+    migrateWardrobeItemThumbnailDerivatives: async (item) => item,
+    migrateFitpicThumbnailDerivatives: async (fitpic) => fitpic,
     ...overrides
   });
 }
@@ -312,6 +315,72 @@ test("prepareBackupImport persists current app-state migration versions after im
 
   assert.equal(prepared.backup.appState.itemDefaultsMigrationVersion, MIGRATION_VERSIONS.itemDefaults);
   assert.equal(prepared.backup.appState.imagePresentationMigrationVersion, MIGRATION_VERSIONS.imagePresentation);
+  assert.equal(prepared.backup.appState.thumbnailDerivativeMigrationVersion, MIGRATION_VERSIONS.thumbnailDerivative);
+});
+
+test("prepareBackupImport applies thumbnail derivative migration to wardrobe items and fitpics when outdated", async () => {
+  const prepared = await prepare(
+    {
+      source: "outfit-app",
+      version: 1,
+      items: [
+        {
+          id: "legacy_item",
+          imageUrl: "data:image/png;base64,legacy",
+          createdAt: "2024-01-02T03:04:05.000Z"
+        }
+      ],
+      appState: {
+        itemDefaultsMigrationVersion: MIGRATION_VERSIONS.itemDefaults,
+        imagePresentationMigrationVersion: MIGRATION_VERSIONS.imagePresentation,
+        thumbnailDerivativeMigrationVersion: 0,
+        fitpics: [
+          {
+            id: "fitpic-1",
+            fitpicUuid: "fitpic-uuid-1",
+            imageData: "data:image/png;base64,fitpic-display",
+            images: {
+              display: "data:image/png;base64,fitpic-display",
+              preview: "data:image/png;base64,fitpic-display",
+              thumbnail: "data:image/png;base64,fitpic-thumb"
+            }
+          }
+        ]
+      }
+    },
+    {
+      migrateWardrobeItemThumbnailDerivatives: async (item) => ({
+        ...item,
+        images: {
+          ...item.images,
+          thumbnail: { src: "data:image/webp;base64,thumb-small" }
+        }
+      }),
+      migrateFitpicThumbnailDerivatives: async (fitpic) => ({
+        ...fitpic,
+        images: {
+          ...fitpic.images,
+          thumbnail: "data:image/webp;base64,fitpic-thumb-small"
+        },
+        fitpicImages: [
+          {
+            fitpicImageUuid: "fitpic-image-1",
+            parentFitpicUuid: "fitpic-uuid-1",
+            order: 0,
+            imageData: "data:image/png;base64,fitpic-display",
+            images: {
+              display: "data:image/png;base64,fitpic-display",
+              preview: "data:image/png;base64,fitpic-display",
+              thumbnail: "data:image/webp;base64,fitpic-thumb-small"
+            }
+          }
+        ]
+      })
+    }
+  );
+
+  assert.equal(prepared.backup.items[0].images.thumbnail.src, "data:image/webp;base64,thumb-small");
+  assert.equal(prepared.backup.appState.fitpics[0].images.thumbnail, "data:image/webp;base64,fitpic-thumb-small");
 });
 
 test("prepareBackupImport preserves recentOutfits reset behavior", async () => {

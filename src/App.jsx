@@ -77,6 +77,7 @@ import {
 } from "./lib/generation";
 import {
   buildDisplayName,
+  getActiveWardrobeItemImageRenderSrc,
   getActiveWardrobeItemImageAsset,
   createItemUuid,
   createFallbackItemTimestamp,
@@ -111,6 +112,12 @@ import {
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
+  buildImportedImageAssetSet,
+  buildThumbnailVariantFromSource,
+  IMPORT_DISPLAY_MAX_LONG_EDGE,
+  IMPORT_DISPLAY_WEBP_QUALITY
+} from "./lib/imageAssetPipeline";
+import {
   backfillOutfitItemUuids,
   createOutfitUuid,
   normalizeHydratedAppState,
@@ -127,6 +134,14 @@ import {
   normalizeFitpic,
   normalizeFitpicImage
 } from "./lib/fitpics";
+import {
+  fitpicHasMediaRefs,
+  materializeFitpicForRuntime,
+  materializeFitpicsForRuntime,
+  migrateFitpicsToMediaStore,
+  saveFitpicMediaSet,
+  stripFitpicsRuntimeMediaAliasesForPersistence
+} from "./lib/fitpicMedia.js";
 import {
   addFitpicImagesToDraft,
   addFitpicTagsToDraft,
@@ -210,6 +225,10 @@ import {
   wardrobeMultiValueFilterKeys
 } from "./lib/wardrobeLibrary";
 import {
+  migrateFitpicThumbnailDerivatives,
+  migrateWardrobeItemThumbnailDerivatives
+} from "./lib/thumbnailDerivativeMigration";
+import {
   WARDROBE_SPREAD_LABEL_FONT_SIZE,
   WARDROBE_SPREAD_LABEL_GAP,
   WARDROBE_SPREAD_LABEL_LINE_HEIGHT,
@@ -266,10 +285,11 @@ import {
   serializeSavedOutfitsCsv,
   serializeSavedOutfitsJson
 } from "./lib/metadataExport";
-import { buildBackupPackageZip } from "./lib/backupPackageV2.js";
+import { buildBackupPackageZip, importBackupPackage } from "./lib/backupPackageV2.js";
 import {
   buildOaAiExportBundle,
   createDefaultOaAiExportOptions,
+  formatOaAiExportStepLabel,
   getOaAiStatusOptions
 } from "./lib/oaAiExport.js";
 import {
@@ -544,6 +564,19 @@ function getManagedImageMetricsCacheKey(item, resolvedImageUrl) {
   });
 }
 
+function getManagedItemRenderUrl(item, renderTier = "thumbnail", context = null) {
+  const preferredTier = renderTier === "display" ? "display" : "thumbnail";
+  const rawImageUrl = getActiveWardrobeItemImageRenderSrc(item, preferredTier)
+    || item?.imageUrl?.trim?.()
+    || item?.imageUrl
+    || "";
+
+  return resolveImageUrl(
+    rawImageUrl,
+    context ? { ...context, source: `${context.source || "managed-image"}:${preferredTier}` } : null
+  );
+}
+
 function getCachedImageMetrics(cacheKey, resolvedImageUrl) {
   if (cacheKey && imageMetricsCache.has(cacheKey)) {
     return imageMetricsCache.get(cacheKey);
@@ -692,6 +725,9 @@ function cancelScheduledIdleWork(handle) {
 
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
+const THUMBNAIL_DERIVATIVE_MIGRATION_VERSION = 1;
+const FITPIC_MEDIA_MIGRATION_VERSION = 1;
+const FITPIC_MEDIA_EAGER_MIGRATION_MAX_COUNT = 8;
 const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
 const defaultWindowState = {
   outfitEditor: { width: 396 },
@@ -727,6 +763,33 @@ const defaultOutfitFilterSectionsOpen = {
   collections: false,
   status: false
 };
+
+function getFitpicImageDisplaySrc(fitpicImage = {}) {
+  if (typeof fitpicImage?.imageData === "string" && fitpicImage.imageData.trim()) {
+    return fitpicImage.imageData.trim();
+  }
+
+  const images = fitpicImage?.images && typeof fitpicImage.images === "object" && !Array.isArray(fitpicImage.images)
+    ? fitpicImage.images
+    : {};
+  const thumbnailSrc = typeof images.thumbnail === "string"
+    ? images.thumbnail.trim()
+    : typeof images.thumbnail?.src === "string"
+      ? images.thumbnail.src.trim()
+      : "";
+  const previewSrc = typeof images.preview === "string"
+    ? images.preview.trim()
+    : typeof images.preview?.src === "string"
+      ? images.preview.src.trim()
+      : "";
+  const displaySrc = typeof images.display === "string"
+    ? images.display.trim()
+    : typeof images.display?.src === "string"
+      ? images.display.src.trim()
+      : "";
+
+  return thumbnailSrc || previewSrc || displaySrc || "";
+}
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -905,7 +968,7 @@ function areEditorValuesEqual(left, right) {
 }
 
 async function getAutoImageCrop(item) {
-  const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+  const imageUrl = getManagedItemRenderUrl(item, "display");
   if (!imageUrl) {
     return getNormalizedImageCrop(item);
   }
@@ -1124,7 +1187,7 @@ function getManagedImagePlaceholderAspect(perfSlot, item) {
   return 0.82;
 }
 
-const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null }) {
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
     ? {
@@ -1133,7 +1196,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
         source: "ManagedItemImage"
       }
     : null;
-  const targetImageUrl = resolveImageUrl(item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "", perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
+  const targetImageUrl = getManagedItemRenderUrl(item, renderTier, perfContext ? { ...perfContext, source: "ManagedItemImage:target" } : null);
   const targetMetricsCacheKey = getManagedImageMetricsCacheKey(item, targetImageUrl);
   const targetReadyKey = `${targetMetricsCacheKey}::${targetImageUrl}`;
   const renderIdentityKey = targetReadyKey || item?.id || dataItemId || perfSlot || "managed-image";
@@ -1272,6 +1335,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
   && previousProps.useCrop === nextProps.useCrop
   && previousProps.usePresentation === nextProps.usePresentation
   && previousProps.perfSlot === nextProps.perfSlot
+  && previousProps.renderTier === nextProps.renderTier
 ));
 
 function getAdvancedOverrideFields(item, defaults) {
@@ -1667,8 +1731,16 @@ function isLocalDataImage(imageUrl) {
 }
 
 async function compressImageSource(source, maxDimension = 1400, quality = 0.86) {
-  if (!source.type.startsWith("image/")) {
-    throw new Error("Selected file is not an image.");
+  const imageAssets = await buildImportedImageAssetSet(source, {
+    readFileAsDataUrl,
+    loadImage
+  });
+
+  if (
+    maxDimension === IMPORT_DISPLAY_MAX_LONG_EDGE
+    && quality === IMPORT_DISPLAY_WEBP_QUALITY
+  ) {
+    return imageAssets.display.src;
   }
 
   const dataUrl = await readFileAsDataUrl(source);
@@ -1713,6 +1785,17 @@ function readFileAsText(file) {
     reader.onerror = () => reject(reader.error);
     reader.readAsText(file);
   });
+}
+
+async function mapSequential(values, mapper) {
+  const list = Array.isArray(values) ? values : [];
+  const results = [];
+
+  for (const [index, value] of list.entries()) {
+    results.push(await mapper(value, index));
+  }
+
+  return results;
 }
 
 function validateBackup(backup) {
@@ -1997,6 +2080,7 @@ export default function App() {
   const [recentOutfits, setRecentOutfits] = useState([]);
   const [generateCount, setGenerateCount] = useState(0);
   const [fitpics, setFitpics] = useState([]);
+  const [fitpicMediaMigrationVersion, setFitpicMediaMigrationVersion] = useState(0);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
@@ -2133,6 +2217,8 @@ export default function App() {
   const pendingSlotActionFrameRef = useRef(null);
   const imageMetricsPrewarmHandleRef = useRef(null);
   const outfitPaletteUpdateHandleRef = useRef(null);
+  const skipNextHydrationAppStateSaveRef = useRef(true);
+  const fitpicMediaMigrationInFlightRef = useRef(false);
   appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
@@ -2892,7 +2978,7 @@ export default function App() {
         return;
       }
 
-      const imageUrl = item?.imageUrl?.trim?.() ?? item?.imageUrl ?? "";
+      const imageUrl = getManagedItemRenderUrl(item, "display");
       if (!imageUrl) {
         return;
       }
@@ -2934,7 +3020,7 @@ export default function App() {
     });
 
     const prewarmQueue = Array.from(prewarmCandidatesById.values()).filter((item) => {
-      const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+      const resolvedImageUrl = getManagedItemRenderUrl(item, "display", { source: "prewarm:resolve" });
       const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
       return !getCachedImageMetrics(cacheKey, resolvedImageUrl);
     });
@@ -2969,7 +3055,7 @@ export default function App() {
 
         const item = prewarmQueue[nextIndex];
         nextIndex += 1;
-        const resolvedImageUrl = resolveImageUrl(item.imageUrl, { source: "prewarm:resolve" });
+        const resolvedImageUrl = getManagedItemRenderUrl(item, "display", { source: "prewarm:resolve" });
         const cacheKey = getManagedImageMetricsCacheKey(item, resolvedImageUrl);
         inFlight = true;
 
@@ -4166,12 +4252,61 @@ export default function App() {
         (storedAppState?.itemDefaultsMigrationVersion ?? 0) < ITEM_DEFAULTS_MIGRATION_VERSION;
       const shouldApplyImagePresentationMigration =
         (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION;
+      const shouldApplyThumbnailDerivativeMigration =
+        (storedAppState?.thumbnailDerivativeMigrationVersion ?? 0) < THUMBNAIL_DERIVATIVE_MIGRATION_VERSION;
+      const shouldApplyFitpicMediaMigration =
+        (storedAppState?.fitpicMediaMigrationVersion ?? 0) < FITPIC_MEDIA_MIGRATION_VERSION;
+      skipNextHydrationAppStateSaveRef.current = !(
+        !storedAppState
+        || shouldApplyStyleWeightMigration
+        || shouldApplyImagePresentationMigration
+        || shouldApplyThumbnailDerivativeMigration
+      );
+      const renderThumbnailVariantFromSource = (source) =>
+        buildThumbnailVariantFromSource(source, {
+          loadImage,
+          dataUrlToBlob
+        });
       const styleWeightedItems = shouldApplyStyleWeightMigration
         ? normalizedItems.map(applyMappedStyleWeightDefaults)
         : normalizedItems;
-      const effectiveItems = shouldApplyImagePresentationMigration
-        ? await Promise.all(styleWeightedItems.map((item) => bakeItemImagePresentation(item)))
+      const thumbnailMigratedItems = shouldApplyThumbnailDerivativeMigration
+        ? await mapSequential(
+            styleWeightedItems,
+            (item) =>
+              migrateWardrobeItemThumbnailDerivatives(item, {
+                buildThumbnailVariantFromSource: renderThumbnailVariantFromSource
+              })
+          )
         : styleWeightedItems;
+      const effectiveStoredAppState = shouldApplyThumbnailDerivativeMigration
+        ? {
+            ...(storedAppState ?? {}),
+            fitpics: await mapSequential(
+              storedAppState?.fitpics ?? [],
+              (fitpic) =>
+                migrateFitpicThumbnailDerivatives(fitpic, {
+                  buildThumbnailVariantFromSource: renderThumbnailVariantFromSource
+                })
+            )
+          }
+        : storedAppState;
+      const shouldEagerMigrateFitpicMedia =
+        shouldApplyFitpicMediaMigration
+        && Array.isArray(effectiveStoredAppState?.fitpics)
+        && effectiveStoredAppState.fitpics.length <= FITPIC_MEDIA_EAGER_MIGRATION_MAX_COUNT;
+      const fitpicMediaPreparedAppState = shouldEagerMigrateFitpicMedia
+        ? {
+            ...(effectiveStoredAppState ?? {}),
+            fitpics: await migrateFitpicsToMediaStore(effectiveStoredAppState?.fitpics ?? [], {
+              sourceKind: "fitpicStartupMigration"
+            }),
+            fitpicMediaMigrationVersion: FITPIC_MEDIA_MIGRATION_VERSION
+          }
+        : effectiveStoredAppState;
+      const effectiveItems = shouldApplyImagePresentationMigration
+        ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
+        : thumbnailMigratedItems;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
@@ -4205,8 +4340,8 @@ export default function App() {
       }
 
       let hydratedAppState;
-      if (storedAppState) {
-        hydratedAppState = normalizeHydratedAppState(storedAppState, {
+      if (fitpicMediaPreparedAppState) {
+        hydratedAppState = normalizeHydratedAppState(fitpicMediaPreparedAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
@@ -4221,7 +4356,10 @@ export default function App() {
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
       }
-
+      hydratedAppState = {
+        ...hydratedAppState,
+        fitpics: await materializeFitpicsForRuntime(hydratedAppState.fitpics)
+      };
       setItems(effectiveItems);
       setLayering(hydratedAppState.layering);
       setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
@@ -4243,6 +4381,7 @@ export default function App() {
       setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
       setWeatherData(hydratedAppState.weatherData);
       setFitpics(hydratedAppState.fitpics);
+      setFitpicMediaMigrationVersion(fitpicMediaPreparedAppState?.fitpicMediaMigrationVersion ?? storedAppState?.fitpicMediaMigrationVersion ?? 0);
       setWardrobeFilters(hydratedAppState.wardrobeFilters);
       setWardrobeSort(hydratedAppState.wardrobeSort);
       setSavedWardrobeViews(hydratedAppState.savedWardrobeViews);
@@ -4273,12 +4412,53 @@ export default function App() {
 
   useEffect(() => {
     if (loading || !hasHydratedAppState) {
+      return undefined;
+    }
+
+    if (fitpicMediaMigrationVersion >= FITPIC_MEDIA_MIGRATION_VERSION || fitpicMediaMigrationInFlightRef.current) {
+      return undefined;
+    }
+
+    fitpicMediaMigrationInFlightRef.current = true;
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      try {
+        const migratedFitpics = await migrateFitpicsToMediaStore(fitpics, {
+          sourceKind: "fitpicDeferredMigration"
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setFitpics(migratedFitpics);
+        setFitpicMediaMigrationVersion(FITPIC_MEDIA_MIGRATION_VERSION);
+      } finally {
+        fitpicMediaMigrationInFlightRef.current = false;
+      }
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+      fitpicMediaMigrationInFlightRef.current = false;
+    };
+  }, [fitpicMediaMigrationVersion, fitpics, hasHydratedAppState, loading]);
+
+  useEffect(() => {
+    if (loading || !hasHydratedAppState) {
       return;
     }
 
+    if (skipNextHydrationAppStateSaveRef.current) {
+      skipNextHydrationAppStateSaveRef.current = false;
+      return;
+    }
     saveAppState({
       itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
       imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+      thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+      fitpicMediaMigrationVersion,
       layering,
       accessoriesEnabled,
       locked,
@@ -4296,7 +4476,7 @@ export default function App() {
       outfitFilters,
       weatherSettings,
       weatherData,
-      fitpics,
+      fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort,
       savedWardrobeViews,
@@ -4321,6 +4501,7 @@ export default function App() {
     weatherSettings,
     weatherData,
     fitpics,
+    fitpicMediaMigrationVersion,
     wardrobeFilters,
     wardrobeSort,
     savedWardrobeViews,
@@ -5014,7 +5195,9 @@ export default function App() {
     return nextOutfit;
   }
 
-  function applyLoadedData(nextItems, hydratedAppState) {
+  async function applyLoadedData(nextItems, hydratedAppState) {
+    const runtimeFitpics = await materializeFitpicsForRuntime(hydratedAppState.fitpics);
+
     setItems(nextItems);
     setLayering(hydratedAppState.layering);
     setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
@@ -5035,7 +5218,8 @@ export default function App() {
     setWeatherSettings(hydratedAppState.weatherSettings);
     setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
     setWeatherData(hydratedAppState.weatherData);
-    setFitpics(hydratedAppState.fitpics);
+    setFitpics(runtimeFitpics);
+    setFitpicMediaMigrationVersion(hydratedAppState.fitpicMediaMigrationVersion ?? 0);
     setWardrobeFilters(hydratedAppState.wardrobeFilters);
     setWardrobeSort(hydratedAppState.wardrobeSort);
     setWindowState(hydratedAppState.windowState);
@@ -5076,6 +5260,8 @@ export default function App() {
       appState: {
         itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
         imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+        thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+        fitpicMediaMigrationVersion,
         layering,
         accessoriesEnabled,
         locked,
@@ -5093,7 +5279,7 @@ export default function App() {
         outfitFilters,
         weatherSettings,
         weatherData,
-        fitpics,
+        fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
         wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
         wardrobeSort,
         windowState
@@ -5178,20 +5364,6 @@ export default function App() {
       return;
     }
 
-    let backup;
-
-    try {
-      backup = JSON.parse(await readFileAsText(file));
-    } catch {
-      window.alert("This backup file could not be read.");
-      return;
-    }
-
-    if (!validateBackup(backup)) {
-      window.alert("This is not a valid outfit app backup.");
-      return;
-    }
-
     const confirmed = await requestConfirmation({
       title: "Import backup?",
       message: "This will replace all wardrobe data in this browser.",
@@ -5202,29 +5374,76 @@ export default function App() {
       return;
     }
 
-    const preparedBackup = await prepareBackupImport(backup, {
-      normalizeStoredItem,
-      createFallbackItemTimestamp,
-      restoreLegacyBakedImageScale,
-      bakeItemImagePresentation,
-      applyMappedStyleWeightDefaults,
-      normalizeHydratedAppState,
-      buildNextOutfit,
-      normalizeOutfitAffinity,
-      normalizeRecentOutfits,
-      normalizeWeatherSettings,
-      defaultGenerationLists,
-      emptyOutfitFilters,
-      defaultGenerationMode,
-      migrationVersions: {
-        itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
-        imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION
-      }
-    });
+    try {
+      const lowerName = file.name?.toLowerCase?.() ?? "";
+      let backup;
+      let importWarnings = [];
 
-    await replaceWithBackup(preparedBackup.backup);
-    applyLoadedData(preparedBackup.items, preparedBackup.appState);
-    window.alert("Backup imported.");
+      if (lowerName.endsWith(".zip") || file.type === "application/zip") {
+        const importedPackage = await importBackupPackage({ file });
+        backup = importedPackage.backup;
+        importWarnings = importedPackage.warnings;
+      } else {
+        backup = JSON.parse(await readFileAsText(file));
+
+        if (!validateBackup(backup)) {
+          window.alert("This is not a valid outfit app backup.");
+          return;
+        }
+      }
+
+      const preparedBackup = await prepareBackupImport(backup, {
+        normalizeStoredItem,
+        createFallbackItemTimestamp,
+        restoreLegacyBakedImageScale,
+        bakeItemImagePresentation,
+        applyMappedStyleWeightDefaults,
+        normalizeHydratedAppState,
+        buildNextOutfit,
+        normalizeOutfitAffinity,
+        normalizeRecentOutfits,
+        normalizeWeatherSettings,
+        defaultGenerationLists,
+        emptyOutfitFilters,
+        defaultGenerationMode,
+        migrateWardrobeItemThumbnailDerivatives: (item) =>
+          migrateWardrobeItemThumbnailDerivatives(item, {
+            buildThumbnailVariantFromSource: (source) =>
+              buildThumbnailVariantFromSource(source, {
+                loadImage,
+                dataUrlToBlob
+              })
+          }),
+        migrateFitpicThumbnailDerivatives: (fitpic) =>
+          migrateFitpicThumbnailDerivatives(fitpic, {
+            buildThumbnailVariantFromSource: (source) =>
+              buildThumbnailVariantFromSource(source, {
+                loadImage,
+                dataUrlToBlob
+              })
+          }),
+        migrationVersions: {
+          itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
+          imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION,
+          thumbnailDerivative: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+          fitpicMedia: FITPIC_MEDIA_MIGRATION_VERSION
+        }
+      });
+
+      await replaceWithBackup(preparedBackup.backup);
+      await applyLoadedData(preparedBackup.items, preparedBackup.appState);
+
+      if (importWarnings.length > 0) {
+        window.alert(
+          `Backup imported with ${importWarnings.length} warning${importWarnings.length === 1 ? "" : "s"}. Missing media was skipped where necessary.`
+        );
+        return;
+      }
+
+      window.alert("Backup imported.");
+    } catch {
+      window.alert("This backup file could not be read.");
+    }
   }
 
   async function handleExportOutfitImage() {
@@ -5374,10 +5593,12 @@ export default function App() {
     const nextOptions = oaAiExportOptions
       ? { ...oaAiExportOptions }
       : createDefaultOaAiExportOptions(collectionOptions, oaAiStatusOptions);
+    let exportStep = "bundle:start";
 
     setOaAiExporting(true);
 
     try {
+      exportStep = "bundle:build";
       const bundle = await buildOaAiExportBundle({
         items,
         savedOutfits,
@@ -5388,14 +5609,24 @@ export default function App() {
         renderFitpicPng: renderFitpicImageExport
       });
 
-      downloadExportFile(await bundle.blob.arrayBuffer(), {
+      exportStep = "download:arrayBuffer";
+      const bundleBytes = await bundle.blob.arrayBuffer();
+
+      exportStep = "download:save-trigger";
+      downloadExportFile(bundleBytes, {
         filename: bundle.fileName,
         mimeType: "application/zip"
       });
 
       setOaAiExportOptions(null);
-    } catch {
-      window.alert("The OA AI export could not be generated.");
+    } catch (error) {
+      const errorName = error?.name ?? "Error";
+      const errorMessage = error?.message ?? String(error);
+      const failingStep = formatOaAiExportStepLabel(
+        error?.oaAiExportStep ?? exportStep,
+        error?.oaAiExportContext ?? {}
+      );
+      window.alert(`OA AI export failed at ${failingStep}: ${errorName}: ${errorMessage}`);
     } finally {
       setOaAiExporting(false);
     }
@@ -6721,15 +6952,21 @@ export default function App() {
             readFileAsDataUrl,
             loadImage
           });
-          const imageUrl = await compressImageSource(file);
+          const imageAssets = await buildImportedImageAssetSet(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
 
           return {
-            imageUrl,
+            imageUrl: imageAssets.display.src,
             images: {
-              preview: { src: imageUrl },
-              thumbnail: { src: imageUrl }
+              original: imageAssets.original,
+              display: imageAssets.display,
+              thumbnail: imageAssets.thumbnail
             },
-            importMetadata
+            importMetadata,
+            originalPreserved: imageAssets.originalPreserved,
+            archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
           };
         })
       );
@@ -6742,7 +6979,9 @@ export default function App() {
             order: currentImageCount + index,
             imageUrl: entry.imageUrl,
             images: entry.images,
-            importMetadata: entry.importMetadata
+            importMetadata: entry.importMetadata,
+            originalPreserved: entry.originalPreserved,
+            archivalOriginalPreserved: entry.archivalOriginalPreserved
           })
         );
         const nextDraft = addWardrobeItemImagesToDraft(draftWithItemUuid, importedImages);
@@ -6889,14 +7128,20 @@ export default function App() {
           quality: 0.9
         }
       });
-      const compressedImageUrl = await compressImageSource(transparentBlob);
+      const imageAssets = await buildImportedImageAssetSet(transparentBlob, {
+        readFileAsDataUrl,
+        loadImage
+      });
       setDraft((current) => ({
         ...replaceActiveWardrobeItemImageAssetInDraft(current, {
-          imageUrl: compressedImageUrl,
+          imageUrl: imageAssets.display.src,
           images: {
-            preview: { src: compressedImageUrl },
-            thumbnail: { src: compressedImageUrl }
-          }
+            original: imageAssets.original,
+            display: imageAssets.display,
+            thumbnail: imageAssets.thumbnail
+          },
+          originalPreserved: imageAssets.originalPreserved,
+          archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
         }),
         imageFrameScale: 100,
         imageScale: 100,
@@ -7088,7 +7333,7 @@ export default function App() {
       >
         {item ? (
           <span className="item-figure accessory-figure has-item">
-            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation />
+            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation renderTier="display" />
           </span>
         ) : null}
       </button>
@@ -8697,7 +8942,7 @@ export default function App() {
                       aria-label={fitpicCardAccessibleLabel}
                     >
                       <div className="fitpic-card-image-frame">
-                        <img src={fitpic.imageData} alt="" />
+                        <img src={fitpic.imageData || getFitpicImageDisplaySrc(getPrimaryFitpicImage(fitpic) ?? fitpic)} alt="" />
                       </div>
                       <div className="fitpic-card-copy">
                         <strong title={fitpic.name}>{fitpic.name}</strong>
@@ -9318,7 +9563,8 @@ export default function App() {
             createId: createFitpicId,
             readFileAsDataUrl,
             loadImage,
-            compressImageSource
+            buildImportedImageAssetSet,
+            saveFitpicMediaSet
           })
         )
       );
@@ -9364,7 +9610,8 @@ export default function App() {
         createId: createFitpicId,
         readFileAsDataUrl,
         loadImage,
-        compressImageSource
+        buildImportedImageAssetSet,
+        saveFitpicMediaSet
       });
 
       setFitpics((current) => [nextFitpic, ...current]);
@@ -9440,24 +9687,26 @@ export default function App() {
         readFileAsDataUrl,
         loadImage
       });
-      const imageData = await compressImageSource(file);
+      const imageAssets = await buildImportedImageAssetSet(file, {
+        readFileAsDataUrl,
+        loadImage
+      });
+      const currentImages = Array.isArray(fitpicDraft.fitpicImages) ? fitpicDraft.fitpicImages : [];
+      const primaryImageUuid = fitpicDraft.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
 
       setFitpicDraft((current) => {
-        const currentImages = Array.isArray(current.fitpicImages) ? current.fitpicImages : [];
-        const primaryImageUuid = current.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
-
-        return {
+        const nextDraft = {
           ...current,
           fitpicImages: currentImages.map((fitpicImage, index) =>
             fitpicImage.fitpicImageUuid === primaryImageUuid
               ? normalizeFitpicImage(
                   {
                     ...fitpicImage,
-                    imageData,
                     images: {
-                      ...(fitpicImage.images ?? {}),
-                      preview: imageData
+                      ...(fitpicImage.images ?? {})
                     },
+                    originalPreserved: imageAssets.originalPreserved,
+                    archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
                     ...importMetadata
                   },
                   {
@@ -9470,7 +9719,51 @@ export default function App() {
               : fitpicImage
           )
         };
+
+        return nextDraft;
       });
+      const targetFitpicImage = currentImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === primaryImageUuid);
+
+      if (!targetFitpicImage) {
+        return;
+      }
+
+      const mediaRefs = await saveFitpicMediaSet(
+        targetFitpicImage,
+        {
+          original: imageAssets.original,
+          display: imageAssets.display,
+          preview: imageAssets.display,
+          thumbnail: imageAssets.thumbnail
+        },
+        {
+          sourceKind: "fitpicReplace"
+        }
+      );
+
+      setFitpicDraft((current) => ({
+        ...current,
+        fitpicImages: (Array.isArray(current.fitpicImages) ? current.fitpicImages : []).map((fitpicImage, index) =>
+          fitpicImage.fitpicImageUuid === primaryImageUuid
+            ? normalizeFitpicImage(
+                {
+                  ...fitpicImage,
+                  imageData: imageAssets.display.src,
+                  images: mediaRefs,
+                  originalPreserved: imageAssets.originalPreserved,
+                  archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
+                  ...importMetadata
+                },
+                {
+                  createUuid: createFitpicImageUuid,
+                  fallbackTimestamp: importMetadata.importedAt,
+                  fallbackOrder: index,
+                  parentFitpicUuid: editingFitpic.fitpicUuid
+                }
+              )
+            : fitpicImage
+        )
+      }));
     } catch (error) {
       setFitpicImportError(error?.message || "This image could not be used.");
     } finally {
@@ -9500,17 +9793,38 @@ export default function App() {
             readFileAsDataUrl,
             loadImage
           });
-          const imageData = await compressImageSource(file);
+          const imageAssets = await buildImportedImageAssetSet(file, {
+            readFileAsDataUrl,
+            loadImage
+          });
+          const fitpicImageUuid = createFitpicImageUuid();
+          const mediaRefs = await saveFitpicMediaSet(
+            {
+              fitpicImageUuid,
+              parentFitpicUuid: editingFitpic.fitpicUuid,
+              order: editingFitpicImages.length + index,
+              importedAt: importMetadata.importedAt
+            },
+            {
+              original: imageAssets.original,
+              display: imageAssets.display,
+              preview: imageAssets.display,
+              thumbnail: imageAssets.thumbnail
+            },
+            {
+              sourceKind: "fitpicAddImage"
+            }
+          );
 
           return normalizeFitpicImage(
             {
-              fitpicImageUuid: createFitpicImageUuid(),
+              fitpicImageUuid,
               parentFitpicUuid: editingFitpic.fitpicUuid,
               order: editingFitpicImages.length + index,
-              imageData,
-              images: {
-                preview: imageData
-              },
+              imageData: imageAssets.display.src,
+              images: mediaRefs,
+              originalPreserved: imageAssets.originalPreserved,
+              archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
               ...importMetadata
             },
             {
@@ -10045,7 +10359,7 @@ export default function App() {
       >
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
-            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} />
+            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} renderTier="display" />
           ) : (
             <span>No image selected</span>
           )}
@@ -10572,7 +10886,7 @@ export default function App() {
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
             aria-label={`${getSlotLabel(slot)} options`}
           >
-            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} /> : <span aria-hidden="true" />}
+            {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} renderTier="display" /> : <span aria-hidden="true" />}
           </button>
           {item ? (
             <div className="slot-actions-anchor">
@@ -11569,7 +11883,7 @@ export default function App() {
             <input
               ref={importBackupRef}
               type="file"
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               className="backup-file-input"
               onChange={handleImportBackup}
             />
@@ -11819,6 +12133,7 @@ export default function App() {
                   alt={buildDisplayName(wardrobePreviewItem)}
                   className="wardrobe-item-preview-plain"
                   dataItemId={wardrobePreviewItem.id}
+                  renderTier="display"
                 />
                 <button
                   type="button"
@@ -11938,7 +12253,7 @@ export default function App() {
                 {activePreviewFitpicImage ? (
                   <img
                     className="preview-overlay-fitpic-image"
-                    src={activePreviewFitpicImage.imageData}
+                    src={getFitpicImageDisplaySrc(activePreviewFitpicImage)}
                     alt={fitpicPreview.name}
                   />
                 ) : (
@@ -12002,7 +12317,7 @@ export default function App() {
               <div className="fitpic-editor-media">
                 <img
                   className="fitpic-editor-image"
-                  src={editingFitpicPrimaryImage?.imageData || editingFitpic.imageData}
+                  src={getFitpicImageDisplaySrc(editingFitpicPrimaryImage) || editingFitpic.imageData}
                   alt={editingFitpic.name}
                 />
                 <div className="fitpic-editor-media-actions">
@@ -12051,7 +12366,7 @@ export default function App() {
                       >
                         <img
                           className="fitpic-editor-image-thumb"
-                          src={fitpicImage.images?.thumbnail || fitpicImage.images?.preview || fitpicImage.imageData}
+                          src={getFitpicImageDisplaySrc(fitpicImage)}
                           alt={imageFilename}
                         />
                         <div className="fitpic-editor-image-copy">

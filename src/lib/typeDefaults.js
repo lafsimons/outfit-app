@@ -29,12 +29,14 @@ export const emptyForm = {
   imageUrl: "",
   images: {
     original: { src: "" },
+    display: { src: "" },
     preview: { src: "" },
     thumbnail: { src: "" }
   },
   itemImages: [],
   activeItemImageUuid: null,
   originalPreserved: false,
+  archivalOriginalPreserved: false,
   imageScale: 100,
   imageFrameScale: 100,
   imageOffsetX: 0,

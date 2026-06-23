@@ -4,14 +4,16 @@ import { BACKUP_SOURCE, BACKUP_VERSION, INDEXED_DB_NAME } from "./appIdentity.js
 import { serializeLibraryCsv } from "./libraryExport.js";
 
 const DB_NAME = INDEXED_DB_NAME;
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const ITEM_STORE = "items";
 const APP_STORE = "appState";
+const MEDIA_STORE = "media";
 const SYNC_STATE_STORE = "syncState";
 const SYNC_METADATA_STORE = "syncMetadata";
 const SYNC_STATE_KEY = "state";
 let queuedAppStateSave = null;
 let appStateSaveInFlight = null;
+const mediaObjectUrlCache = new Map();
 
 function emitOaPerfStorageEvent(type, payload = {}) {
   if (typeof window === "undefined" || !window.__OA_GENERATION_PERF__) {
@@ -49,6 +51,71 @@ function createLocalUuid(prefix) {
   }
 
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildMediaRecordId(ownerType = "", ownerId = "", variant = "") {
+  return `${ownerType}:${ownerId}:${variant}`;
+}
+
+function normalizeMediaText(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeMediaNumber(value) {
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) && numericValue > 0 ? Math.round(numericValue) : 0;
+}
+
+function normalizeMediaVariant(value) {
+  return value === "original" || value === "display" || value === "preview" || value === "thumbnail"
+    ? value
+    : "display";
+}
+
+function canUseObjectUrls() {
+  return typeof URL !== "undefined" && typeof URL.createObjectURL === "function";
+}
+
+function revokeCachedMediaObjectUrl(mediaId = "") {
+  const normalizedMediaId = normalizeMediaText(mediaId);
+
+  if (!normalizedMediaId || !canUseObjectUrls()) {
+    mediaObjectUrlCache.delete(normalizedMediaId);
+    return;
+  }
+
+  const cachedUrl = mediaObjectUrlCache.get(normalizedMediaId);
+
+  if (cachedUrl) {
+    URL.revokeObjectURL(cachedUrl);
+    mediaObjectUrlCache.delete(normalizedMediaId);
+  }
+}
+
+function normalizeMediaRecord(record) {
+  const ownerType = normalizeMediaText(record?.ownerType);
+  const ownerId = normalizeMediaText(record?.ownerId);
+  const variant = normalizeMediaVariant(record?.variant);
+  const mediaId = normalizeMediaText(record?.mediaId) || buildMediaRecordId(ownerType, ownerId, variant);
+  const createdAt = normalizeSyncTimestamp(record?.createdAt) || getCurrentSyncTimestamp();
+  const updatedAt = normalizeSyncTimestamp(record?.updatedAt) || createdAt;
+
+  return {
+    mediaId,
+    ownerType,
+    ownerId,
+    ownerKey: `${ownerType}:${ownerId}`,
+    ownerVariantKey: `${ownerType}:${ownerId}:${variant}`,
+    variant,
+    blob: record?.blob instanceof Blob ? record.blob : new Blob([]),
+    mimeType: normalizeMediaText(record?.mimeType),
+    fileSize: normalizeMediaNumber(record?.fileSize),
+    width: normalizeMediaNumber(record?.width),
+    height: normalizeMediaNumber(record?.height),
+    createdAt,
+    updatedAt,
+    sourceKind: normalizeMediaText(record?.sourceKind)
+  };
 }
 
 function normalizeSyncText(value) {
@@ -344,6 +411,12 @@ function openDatabase() {
         db.createObjectStore(APP_STORE, { keyPath: "key" });
       }
 
+      if (!db.objectStoreNames.contains(MEDIA_STORE)) {
+        const mediaStore = db.createObjectStore(MEDIA_STORE, { keyPath: "mediaId" });
+        mediaStore.createIndex("ownerKey", "ownerKey", { unique: false });
+        mediaStore.createIndex("ownerVariantKey", "ownerVariantKey", { unique: false });
+      }
+
       if (!db.objectStoreNames.contains(SYNC_STATE_STORE)) {
         db.createObjectStore(SYNC_STATE_STORE, { keyPath: "key" });
       }
@@ -497,6 +570,101 @@ export async function deleteItem(id, { skipSyncMetadata = false } = {}) {
 export async function loadAppState() {
   const entry = await withStore(APP_STORE, "readonly", (store) => store.get("state"));
   return entry?.value ?? null;
+}
+
+export async function getMediaRecord(mediaId = "") {
+  const normalizedMediaId = normalizeMediaText(mediaId);
+
+  if (!normalizedMediaId) {
+    return null;
+  }
+
+  const rawRecord = await withStore(MEDIA_STORE, "readonly", (store) => store.get(normalizedMediaId));
+  return rawRecord ? normalizeMediaRecord(rawRecord) : null;
+}
+
+export async function saveMediaRecord(value) {
+  const normalizedRecord = normalizeMediaRecord(value);
+  const existingRecord = await getMediaRecord(normalizedRecord.mediaId);
+
+  if (existingRecord) {
+    revokeCachedMediaObjectUrl(normalizedRecord.mediaId);
+  }
+
+  await withStore(MEDIA_STORE, "readwrite", (store) => store.put(normalizedRecord));
+  return normalizedRecord;
+}
+
+export async function replaceMediaRecordForOwnerVariant(value) {
+  const normalizedRecord = normalizeMediaRecord(value);
+  return saveMediaRecord({
+    ...normalizedRecord,
+    mediaId: buildMediaRecordId(normalizedRecord.ownerType, normalizedRecord.ownerId, normalizedRecord.variant)
+  });
+}
+
+export async function listMediaRecordsForOwner(ownerType = "", ownerId = "") {
+  const normalizedOwnerType = normalizeMediaText(ownerType);
+  const normalizedOwnerId = normalizeMediaText(ownerId);
+
+  if (!normalizedOwnerType || !normalizedOwnerId) {
+    return [];
+  }
+
+  const ownerKey = `${normalizedOwnerType}:${normalizedOwnerId}`;
+  const rawRecords = await withStore(MEDIA_STORE, "readonly", (store) =>
+    store.index("ownerKey").getAll(ownerKey)
+  );
+
+  return (Array.isArray(rawRecords) ? rawRecords : []).map((record) => normalizeMediaRecord(record));
+}
+
+export async function deleteMediaRecordsForOwner(ownerType = "", ownerId = "") {
+  const records = await listMediaRecordsForOwner(ownerType, ownerId);
+
+  if (!records.length) {
+    return 0;
+  }
+
+  await withStore(MEDIA_STORE, "readwrite", (store) => {
+    records.forEach((record) => {
+      revokeCachedMediaObjectUrl(record.mediaId);
+      store.delete(record.mediaId);
+    });
+  });
+
+  return records.length;
+}
+
+export async function clearMediaStore() {
+  await withStore(MEDIA_STORE, "readwrite", (store) => {
+    [...mediaObjectUrlCache.keys()].forEach((mediaId) => revokeCachedMediaObjectUrl(mediaId));
+    store.clear();
+  });
+}
+
+export async function getCachedMediaObjectUrl(mediaId = "") {
+  const normalizedMediaId = normalizeMediaText(mediaId);
+
+  if (!normalizedMediaId || !canUseObjectUrls()) {
+    return "";
+  }
+
+  const cachedUrl = mediaObjectUrlCache.get(normalizedMediaId);
+
+  if (cachedUrl) {
+    return cachedUrl;
+  }
+
+  const mediaRecord = await getMediaRecord(normalizedMediaId);
+
+  if (!mediaRecord?.blob || !(mediaRecord.blob instanceof Blob) || mediaRecord.blob.size <= 0) {
+    return "";
+  }
+
+  const nextUrl = URL.createObjectURL(mediaRecord.blob);
+  mediaObjectUrlCache.set(normalizedMediaId, nextUrl);
+  return nextUrl;
 }
 
 export async function saveAppState(value) {
@@ -695,11 +863,15 @@ export async function exportLibraryCsv() {
 }
 
 export async function replaceWithBackup(backup) {
-  await withStores([ITEM_STORE, APP_STORE], "readwrite", ({ items, appState }) => {
+  await withStores([ITEM_STORE, APP_STORE, MEDIA_STORE], "readwrite", ({ items, appState, media }) => {
     items.clear();
     appState.clear();
+    media.clear();
 
     backup.items.forEach((item) => items.put(item));
+    (Array.isArray(backup?.mediaRecords) ? backup.mediaRecords : []).forEach((record) =>
+      media.put(normalizeMediaRecord(record))
+    );
     appState.put({
       key: "state",
       value: {

@@ -62,6 +62,16 @@ Tools operate on information.
 Current architecture supports multi-thousand-image local-first libraries and is considered stable enough for future sync/cloud foundations.
 Portable library reliability now includes not only backup format validity but also import/export scalability at 5k–10k item scale.
 
+OA now uses a split approach:
+
+- fitpic media is stored out-of-line in IndexedDB
+- wardrobe media remains inline for now
+
+This followed measured OA stabilization gains:
+
+- `appState` JSON about `199 MB` -> about `0.3 MB`
+- first-render heap about `2.5 GB` -> about `1.6 GB`
+
 ## Backup & Import Architecture
 
 Future work:
@@ -95,6 +105,7 @@ App Work
 - Stabilize repository-boundary refactors
 - Improve import provenance metadata
 - Continue OA/MBA architectural separation
+- Observe whether wardrobe media pressure justifies Phase 2 OA wardrobe media-store work
 
 Pre-Sync Foundations
 - Standardize storage contracts
@@ -125,6 +136,7 @@ Pre-Sync Foundations
 - Media reconciliation
 - High-resolution workflows
 - Archival preservation
+- OA wardrobe media-store remains a deferred Phase 2 option rather than an immediate priority
 
 ## Ecosystem Layer
 

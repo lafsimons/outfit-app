@@ -334,12 +334,17 @@ function normalizeImageAsset(value, fallbackSrc = "") {
 
 function normalizeImages(images, imageUrl) {
   const normalizedImages = isRecord(images) ? images : {};
-  const preview = normalizeImageAsset(normalizedImages.preview, imageUrl);
-  const thumbnail = normalizeImageAsset(normalizedImages.thumbnail, preview.src || imageUrl);
+  const display = normalizeImageAsset(
+    normalizedImages.display,
+    normalizedImages.preview?.src ?? imageUrl
+  );
+  const preview = normalizeImageAsset(normalizedImages.preview, display.src || imageUrl);
+  const thumbnail = normalizeImageAsset(normalizedImages.thumbnail, display.src || preview.src || imageUrl);
 
   return {
     ...normalizedImages,
     original: normalizeImageAsset(normalizedImages.original),
+    display,
     preview,
     thumbnail
   };
@@ -390,7 +395,9 @@ function buildLegacyWardrobeImageAsset(record) {
     sourceOriginalCreatedAt: record?.sourceOriginalCreatedAt,
     sourceCameraMake: record?.sourceCameraMake,
     sourceCameraModel: record?.sourceCameraModel,
-    sourceLensModel: record?.sourceLensModel
+    sourceLensModel: record?.sourceLensModel,
+    originalPreserved: record?.originalPreserved,
+    archivalOriginalPreserved: record?.archivalOriginalPreserved
   };
 }
 
@@ -438,7 +445,11 @@ export function normalizeWardrobeImageAsset(
   );
   const resolvedKind = normalizedAsset.kind === "derived" || kind === "derived" ? "derived" : "canonical";
   const imageUrl = resolveImageUrl(
-    normalizedAsset.imageUrl ?? normalizedAsset.img ?? normalizedAsset.images?.preview?.src ?? ""
+    normalizedAsset.imageUrl
+    ?? normalizedAsset.img
+    ?? normalizedAsset.images?.display?.src
+    ?? normalizedAsset.images?.preview?.src
+    ?? ""
   );
   const importedAt = normalizeTimestamp(normalizedAsset.importedAt) || fallbackImportedAt;
 
@@ -453,6 +464,8 @@ export function normalizeWardrobeImageAsset(
     order,
     imageUrl,
     images: normalizeImages(normalizedAsset.images, imageUrl),
+    originalPreserved: normalizedAsset.originalPreserved === true,
+    archivalOriginalPreserved: normalizedAsset.archivalOriginalPreserved === true,
     ...normalizeImportMetadataFields(normalizedAsset, importedAt)
   };
 }
@@ -564,6 +577,28 @@ export function getActiveWardrobeItemImageAsset(item) {
   return candidateAssets.find((asset) => asset.assetUuid === activeImageAssetUuid) ?? activeItemImage.canonicalAsset;
 }
 
+export function getWardrobeImageAssetRenderSrc(asset, preferredTier = "display") {
+  const normalizedAsset = isRecord(asset) ? asset : {};
+  const preferredVariant = preferredTier === "thumbnail"
+    ? normalizedAsset?.images?.thumbnail
+    : normalizedAsset?.images?.display;
+  const fallbackVariant = preferredTier === "thumbnail"
+    ? normalizedAsset?.images?.display
+    : normalizedAsset?.images?.thumbnail;
+
+  return (
+    preferredVariant?.src
+    || normalizedAsset?.images?.preview?.src
+    || fallbackVariant?.src
+    || normalizedAsset?.imageUrl
+    || ""
+  );
+}
+
+export function getActiveWardrobeItemImageRenderSrc(item, preferredTier = "display") {
+  return getWardrobeImageAssetRenderSrc(getActiveWardrobeItemImageAsset(item), preferredTier);
+}
+
 export function mirrorActiveWardrobeImageAssetToLegacyAliases(item) {
   const activeItemImage = getActiveWardrobeItemImage(item);
   const activeAsset = getActiveWardrobeItemImageAsset(item);
@@ -576,7 +611,9 @@ export function mirrorActiveWardrobeImageAssetToLegacyAliases(item) {
     itemImages: getWardrobeItemImages(item),
     activeItemImageUuid: activeItemImage?.itemImageUuid ?? null,
     imageUrl: activeAsset?.imageUrl ?? legacyImageUrl,
-    images: mirroredImages
+    images: mirroredImages,
+    originalPreserved: activeAsset?.originalPreserved === true,
+    archivalOriginalPreserved: activeAsset?.archivalOriginalPreserved === true
   };
 }
 
@@ -595,13 +632,16 @@ export function normalizeItem(
 ) {
   const value = item.value ?? "";
   const retailValue = item.retailValue ?? "";
-  const imageUrl = resolveImageUrl(item.imageUrl ?? item.img ?? item.images?.preview?.src ?? "");
+  const imageUrl = resolveImageUrl(
+    item.imageUrl ?? item.img ?? item.images?.display?.src ?? item.images?.preview?.src ?? ""
+  );
   const correction = getDefaultMetadataCorrection({ ...item, imageUrl });
   const createdAt = normalizeTimestamp(item.createdAt) || fallbackCreatedAt || new Date().toISOString();
   const updatedAt = normalizeTimestamp(item.updatedAt) || createdAt;
   const imageCrop = getNormalizedImageCrop(item);
   const images = normalizeImages(item.images, imageUrl);
   const originalPreserved = item.originalPreserved === true;
+  const archivalOriginalPreserved = item.archivalOriginalPreserved === true;
   const itemUuid = normalizeItemUuid(item.itemUuid, createUuid);
   const importMetadata = normalizeImportMetadataFields(item, createdAt);
   const itemImages = getNormalizedWardrobeItemImages(item, {
@@ -622,6 +662,7 @@ export function normalizeItem(
     images,
     itemImages,
     originalPreserved,
+    archivalOriginalPreserved,
     description: typeof item.description === "string" ? item.description : "",
     imageFrameScale: normalizeImageFrameScale(item.imageFrameScale),
     imageScale: normalizeImageScale(item.imageScale),
@@ -654,11 +695,39 @@ export function normalizeItem(
 export function itemNeedsImageContractMigration(originalItem, normalizedItem) {
   const originalHasExplicitWardrobeImages = Array.isArray(originalItem?.itemImages)
     || Object.prototype.hasOwnProperty.call(originalItem ?? {}, "activeItemImageUuid");
+  const originalUsesLegacyPreviewAlias = !isRecord(originalItem?.images)
+    || !Object.prototype.hasOwnProperty.call(originalItem.images, "display");
+  const normalizeMigrationImages = (images, fallbackImageUrl = "", stripCompatDisplay = false) => {
+    const normalizedImages = normalizeImages(images, fallbackImageUrl);
+
+    if (
+      stripCompatDisplay
+    ) {
+      const nextImages = { ...normalizedImages };
+
+      if (nextImages.display?.src === nextImages.preview?.src) {
+        delete nextImages.display;
+      }
+
+      return nextImages;
+    }
+
+    return normalizedImages;
+  };
 
   return (
     (originalItem.imageUrl ?? originalItem.img ?? originalItem.images?.preview?.src ?? "") !== normalizedItem.imageUrl ||
-    JSON.stringify(isRecord(originalItem.images) ? originalItem.images : {}) !== JSON.stringify(normalizedItem.images) ||
-    originalItem.originalPreserved !== normalizedItem.originalPreserved ||
+    JSON.stringify(
+      normalizeMigrationImages(
+        isRecord(originalItem.images) ? originalItem.images : {},
+        originalItem.imageUrl ?? originalItem.img ?? originalItem.images?.preview?.src ?? "",
+        originalUsesLegacyPreviewAlias
+      )
+    ) !== JSON.stringify(
+      normalizeMigrationImages(normalizedItem.images, normalizedItem.imageUrl, originalUsesLegacyPreviewAlias)
+    ) ||
+    Boolean(originalItem.originalPreserved) !== normalizedItem.originalPreserved ||
+    Boolean(originalItem.archivalOriginalPreserved) !== normalizedItem.archivalOriginalPreserved ||
     (
       originalHasExplicitWardrobeImages && (
         JSON.stringify(Array.isArray(originalItem?.itemImages) ? originalItem.itemImages : []) !== JSON.stringify(normalizedItem.itemImages) ||

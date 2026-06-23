@@ -94,6 +94,31 @@ test("fitpic spread export primary image respects primaryImageUuid", () => {
   );
 });
 
+test("fitpic spread export prefers original before display and preview for primary rendering", () => {
+  assert.deepEqual(
+    getFitpicSpreadExportPrimaryImage({
+      primaryImageUuid: "image-1",
+      fitpicImages: [
+        {
+          fitpicImageUuid: "image-1",
+          order: 0,
+          imageData: "data:image/png;base64,legacy",
+          images: {
+            original: "data:image/webp;base64,original",
+            display: "data:image/webp;base64,display",
+            preview: "data:image/webp;base64,preview"
+          }
+        }
+      ]
+    }),
+    {
+      fitpicImageUuid: "image-1",
+      order: 0,
+      src: "data:image/webp;base64,original"
+    }
+  );
+});
+
 test("fitpic spread export detail images exclude the primary image", () => {
   assert.deepEqual(
     getFitpicSpreadExportDetailImages({

@@ -339,6 +339,72 @@ test("buildOaAiExportBundle can export selected statuses as separate datasets", 
   assert.equal(files["statuses/archived.webp"] !== undefined, true);
 });
 
+test("buildOaAiExportBundle keeps Archived exports when a status item is missing its image", async () => {
+  const bundle = await buildOaAiExportBundle({
+    items: [
+      {
+        id: "archived-1",
+        itemUuid: "uuid-7",
+        name: "Archived One",
+        brand: "Brand X",
+        status: "Archived",
+        collections: [],
+        imageUrl: ""
+      }
+    ],
+    savedOutfits: [],
+    fitpics: [],
+    options: {
+      includeCurrentWardrobe: false,
+      includeAcquisitionPipeline: false,
+      includeFitpics: false,
+      includeSavedOutfits: false,
+      excludeCollectionsFromCurrentWardrobe: true,
+      excludedCollections: [],
+      collectionExports: [],
+      statusExports: ["Archived"],
+      statusExportMode: "separate"
+    },
+    renderWardrobePng: async ({ fileName }) => ({
+      fileName,
+      mimeType: "image/webp",
+      blob: new Blob([`webp:${fileName}`], { type: "image/webp" }),
+      report: {
+        fileName,
+        format: "webp",
+        sizeBytes: 20,
+        pixelWidth: 100,
+        pixelHeight: 100,
+        missingImageCount: 1,
+        warningCount: 1,
+        warnings: [
+          {
+            reason: "missing export image",
+            itemId: "archived-1",
+            status: "Archived"
+          }
+        ]
+      }
+    })
+  });
+
+  const files = unzipSync(new Uint8Array(await bundle.blob.arrayBuffer()));
+  const archivedCsv = strFromU8(files["statuses/archived.csv"]);
+
+  assert.equal(files["statuses/archived.csv"] !== undefined, true);
+  assert.equal(files["statuses/archived.webp"] !== undefined, true);
+  assert.match(archivedCsv, /archived-1/);
+  assert.match(archivedCsv, /Archived One/);
+  assert.equal(bundle.wardrobeImageReports.length, 1);
+  assert.equal(bundle.wardrobeImageReports[0].fileName, "statuses/archived.webp");
+  assert.equal(bundle.wardrobeImageReports[0].missingImageCount, 1);
+  assert.equal(bundle.wardrobeImageReports[0].warningCount, 1);
+  assert.equal(bundle.wardrobeImageReports[0].warnings.length, 1);
+  assert.equal(bundle.wardrobeImageReports[0].warnings[0].reason, "missing export image");
+  assert.equal(bundle.wardrobeImageReports[0].warnings[0].itemId, "archived-1");
+  assert.equal(bundle.wardrobeImageReports[0].warnings[0].status, "Archived");
+});
+
 test("buildOaAiExportBundle skips empty wardrobe core datasets without blank csv or png files", async () => {
   const bundle = await buildOaAiExportBundle({
     items: [],

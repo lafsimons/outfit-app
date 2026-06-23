@@ -1,4 +1,9 @@
 import { normalizeImportMetadataFields, normalizeExtendedImageMetadataFields, readImageFileMetadata } from "./importMetadata.js";
+import {
+  createFitpicMediaRef,
+  isFitpicMediaRefVariant,
+  materializeFitpicForRuntime
+} from "./fitpicMedia.js";
 
 function normalizeTimestampLike(value) {
   if (typeof value === "number" && Number.isFinite(value) && value > 0) {
@@ -11,6 +16,26 @@ function normalizeTimestampLike(value) {
 
 function normalizeStringField(value) {
   return typeof value === "string" ? value : "";
+}
+
+function normalizeImageVariantString(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return normalizeStringField(value.src);
+  }
+
+  return "";
+}
+
+function normalizeFitpicMediaRefVariant(value) {
+  if (!isFitpicMediaRefVariant(value)) {
+    return null;
+  }
+
+  return createFitpicMediaRef(value);
 }
 
 function normalizeOptionalTimestamp(value) {
@@ -75,13 +100,48 @@ function normalizeNullableString(value) {
 
 function normalizeImages(images, imageData) {
   const currentImages = images && typeof images === "object" && !Array.isArray(images) ? images : {};
+  const displayRef = normalizeFitpicMediaRefVariant(currentImages.display);
+  const previewRef = normalizeFitpicMediaRefVariant(currentImages.preview);
+  const originalRef = normalizeFitpicMediaRefVariant(currentImages.original);
+  const thumbnailRef = normalizeFitpicMediaRefVariant(currentImages.thumbnail);
+  const display = displayRef
+    ?? (
+      normalizeImageVariantString(currentImages.display)
+      || normalizeImageVariantString(currentImages.preview)
+      || normalizeStringField(imageData)
+    );
+  const preview = previewRef
+    ?? (
+      normalizeImageVariantString(currentImages.preview)
+      || (typeof display === "string" ? display : "")
+      || normalizeStringField(imageData)
+    );
 
   return {
     ...currentImages,
-    preview: normalizeStringField(imageData) || normalizeStringField(currentImages.preview),
-    original: normalizeStringField(currentImages.original),
-    thumbnail: normalizeStringField(currentImages.thumbnail)
+    original: originalRef ?? normalizeImageVariantString(currentImages.original),
+    display,
+    preview,
+    thumbnail: thumbnailRef ?? normalizeImageVariantString(currentImages.thumbnail)
   };
+}
+
+function fitpicImageHasUsableMedia(fitpicImage = {}) {
+  const images = fitpicImage?.images && typeof fitpicImage.images === "object" && !Array.isArray(fitpicImage.images)
+    ? fitpicImage.images
+    : {};
+
+  return Boolean(
+    normalizeStringField(fitpicImage?.imageData)
+    || normalizeImageVariantString(images.original)
+    || normalizeImageVariantString(images.display)
+    || normalizeImageVariantString(images.preview)
+    || normalizeImageVariantString(images.thumbnail)
+    || isFitpicMediaRefVariant(images.original)
+    || isFitpicMediaRefVariant(images.display)
+    || isFitpicMediaRefVariant(images.preview)
+    || isFitpicMediaRefVariant(images.thumbnail)
+  );
 }
 
 function normalizeOrder(value, fallback = 0) {
@@ -97,6 +157,88 @@ function normalizeOrder(value, fallback = 0) {
 function normalizeOptionalString(value) {
   const trimmed = normalizeStringField(value).trim();
   return trimmed || "";
+}
+
+function normalizeImportedImageAssets(value) {
+  if (typeof value === "string") {
+    return {
+      originalPreserved: false,
+      archivalOriginalPreserved: false,
+      original: { src: "", mimeType: "", fileSize: 0, width: 0, height: 0 },
+      display: { src: value, mimeType: "", fileSize: 0, width: 0, height: 0 },
+      thumbnail: { src: value, mimeType: "", fileSize: 0, width: 0, height: 0 }
+    };
+  }
+
+  const record = value && typeof value === "object" ? value : {};
+  const displaySrc = normalizeImageVariantString(record.display) || normalizeImageVariantString(record.preview);
+  const originalSrc = normalizeImageVariantString(record.original);
+  const thumbnailSrc = normalizeImageVariantString(record.thumbnail) || displaySrc;
+
+  return {
+    originalPreserved: record.originalPreserved === true,
+    archivalOriginalPreserved: record.archivalOriginalPreserved === true,
+    original: {
+      src: originalSrc,
+      mimeType: normalizeStringField(record.original?.mimeType),
+      fileSize: Number(record.original?.fileSize) || 0,
+      width: Number(record.original?.width) || 0,
+      height: Number(record.original?.height) || 0
+    },
+    display: {
+      src: displaySrc,
+      mimeType: normalizeStringField(record.display?.mimeType),
+      fileSize: Number(record.display?.fileSize) || 0,
+      width: Number(record.display?.width) || 0,
+      height: Number(record.display?.height) || 0
+    },
+    thumbnail: {
+      src: thumbnailSrc,
+      mimeType: normalizeStringField(record.thumbnail?.mimeType),
+      fileSize: Number(record.thumbnail?.fileSize) || 0,
+      width: Number(record.thumbnail?.width) || 0,
+      height: Number(record.thumbnail?.height) || 0
+    }
+  };
+}
+
+async function persistFitpicImageAssets(
+  fitpicImage,
+  imageAssets,
+  {
+    saveFitpicMediaSet: saveFitpicMediaSetImpl = null,
+    sourceKind = "fitpicImport"
+  } = {}
+) {
+  if (typeof saveFitpicMediaSetImpl !== "function") {
+    return {
+      imageData: imageAssets.display.src,
+      images: {
+        original: imageAssets.original.src,
+        display: imageAssets.display.src,
+        preview: imageAssets.display.src,
+        thumbnail: imageAssets.thumbnail.src
+      }
+    };
+  }
+
+  const mediaRefs = await saveFitpicMediaSetImpl(
+    fitpicImage,
+    {
+      original: imageAssets.original,
+      display: imageAssets.display,
+      preview: imageAssets.display,
+      thumbnail: imageAssets.thumbnail
+    },
+    {
+      sourceKind
+    }
+  );
+
+  return {
+    imageData: "",
+    images: mediaRefs
+  };
 }
 
 export function createFitpicUuid() {
@@ -149,6 +291,8 @@ export function normalizeFitpicImage(
     order: normalizeOrder(fitpicImage?.order, fallbackOrder),
     imageData,
     images: normalizeImages(fitpicImage?.images, imageData),
+    originalPreserved: fitpicImage?.originalPreserved === true,
+    archivalOriginalPreserved: fitpicImage?.archivalOriginalPreserved === true,
     ...normalizeImportMetadataFields(fitpicImage, importedAt),
     ...normalizeExtendedImageMetadataFields(fitpicImage),
     imageKind: normalizeOptionalString(fitpicImage?.imageKind)
@@ -190,7 +334,9 @@ export function createFitpicImageFromLegacyFitpic(
       sourceNamespace: fitpic?.sourceNamespace,
       sourceRelativePath: fitpic?.sourceRelativePath,
       relinkStatus: fitpic?.relinkStatus,
-      imageKind: fitpic?.imageKind
+      imageKind: fitpic?.imageKind,
+      originalPreserved: fitpic?.originalPreserved,
+      archivalOriginalPreserved: fitpic?.archivalOriginalPreserved
     },
     {
       createUuid,
@@ -222,7 +368,7 @@ export function getFitpicImages(
           parentFitpicUuid: resolvedParentFitpicUuid
         })
       )
-      .filter((fitpicImage) => fitpicImage.imageData)
+      .filter((fitpicImage) => fitpicImageHasUsableMedia(fitpicImage))
       .sort((left, right) => left.order - right.order)
       .map((fitpicImage, index) => (
         fitpicImage.order === index
@@ -318,7 +464,9 @@ export function getFitpicImageEntities(
     sourceNamespace: fitpicImage.sourceNamespace,
     sourceRelativePath: fitpicImage.sourceRelativePath,
     relinkStatus: fitpicImage.relinkStatus,
-    imageKind: fitpicImage.imageKind
+    imageKind: fitpicImage.imageKind,
+    originalPreserved: fitpicImage.originalPreserved === true,
+    archivalOriginalPreserved: fitpicImage.archivalOriginalPreserved === true
   }));
 }
 
@@ -393,6 +541,10 @@ export function normalizeFitpic(
     imageData: primaryImageData,
     images: primaryImages,
     fitpicImages,
+    originalPreserved: primaryFitpicImage?.originalPreserved === true || fitpic?.originalPreserved === true,
+    archivalOriginalPreserved:
+      primaryFitpicImage?.archivalOriginalPreserved === true
+      || fitpic?.archivalOriginalPreserved === true,
     linkedItemUuids: normalizeStringList(fitpic?.linkedItemUuids),
     linkedItemIds: normalizeStringList(fitpic?.linkedItemIds),
     savedOutfitUuid: normalizeNullableString(fitpic?.savedOutfitUuid),
@@ -429,7 +581,9 @@ async function createImportedFitpicImageFromFile(
     createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
+    buildImportedImageAssetSet,
     compressImageSource,
+    saveFitpicMediaSet,
     now = () => new Date().toISOString(),
     importedAt = now(),
     parentFitpicUuid = "",
@@ -441,17 +595,36 @@ async function createImportedFitpicImageFromFile(
     readFileAsDataUrl,
     loadImage
   });
-  const imageData = await compressImageSource(file);
+  const rawImageAssets = typeof buildImportedImageAssetSet === "function"
+    ? await buildImportedImageAssetSet(file, {
+        readFileAsDataUrl,
+        loadImage
+      })
+    : (() => {
+        if (typeof compressImageSource !== "function") {
+          throw new Error("Image import pipeline is unavailable.");
+        }
+
+        return compressImageSource(file);
+      })();
+  const imageAssets = normalizeImportedImageAssets(rawImageAssets);
+  const baseFitpicImage = {
+    fitpicImageUuid: createImageUuid?.(),
+    parentFitpicUuid,
+    order
+  };
+  const persistedMedia = await persistFitpicImageAssets(baseFitpicImage, imageAssets, {
+    saveFitpicMediaSet,
+    sourceKind: "fitpicImport"
+  });
 
   return normalizeFitpicImage(
     {
-      fitpicImageUuid: createImageUuid?.(),
-      parentFitpicUuid,
-      order,
-      imageData,
-      images: {
-        preview: imageData
-      },
+      ...baseFitpicImage,
+      imageData: persistedMedia.imageData,
+      images: persistedMedia.images,
+      originalPreserved: imageAssets.originalPreserved,
+      archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
       ...importMetadata
     },
     {
@@ -471,7 +644,9 @@ export async function createImportedFitpicFromFile(
     createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
+    buildImportedImageAssetSet,
     compressImageSource,
+    saveFitpicMediaSet,
     now = () => new Date().toISOString()
   }
 ) {
@@ -481,14 +656,17 @@ export async function createImportedFitpicFromFile(
     createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
+    buildImportedImageAssetSet,
     compressImageSource,
+    saveFitpicMediaSet,
     now,
     importedAt,
     parentFitpicUuid: fitpicUuid,
     order: 0
   });
 
-  return normalizeFitpic(
+  return materializeFitpicForRuntime(
+    normalizeFitpic(
     {
       id: createId?.(),
       fitpicUuid,
@@ -502,6 +680,8 @@ export async function createImportedFitpicFromFile(
       fitpicImages: [fitpicImage],
       imageData: fitpicImage.imageData,
       images: fitpicImage.images,
+      originalPreserved: fitpicImage.originalPreserved,
+      archivalOriginalPreserved: fitpicImage.archivalOriginalPreserved,
       ...normalizeImportMetadataFields(fitpicImage, importedAt),
       ...normalizeExtendedImageMetadataFields(fitpicImage)
     },
@@ -511,7 +691,7 @@ export async function createImportedFitpicFromFile(
       createFitpicImageUuid: createImageUuid,
       fallbackTimestamp: importedAt
     }
-  );
+  ));
 }
 
 export async function createImportedGroupedFitpicFromFiles(
@@ -522,7 +702,9 @@ export async function createImportedGroupedFitpicFromFiles(
     createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
+    buildImportedImageAssetSet,
     compressImageSource,
+    saveFitpicMediaSet,
     now = () => new Date().toISOString()
   }
 ) {
@@ -540,7 +722,9 @@ export async function createImportedGroupedFitpicFromFiles(
         createFitpicImageUuid: createImageUuid,
         readFileAsDataUrl,
         loadImage,
+        buildImportedImageAssetSet,
         compressImageSource,
+        saveFitpicMediaSet,
         now,
         importedAt,
         parentFitpicUuid: fitpicUuid,
@@ -551,7 +735,8 @@ export async function createImportedGroupedFitpicFromFiles(
 
   const primaryFitpicImage = fitpicImages[0] ?? null;
 
-  return normalizeFitpic(
+  return materializeFitpicForRuntime(
+    normalizeFitpic(
     {
       id: createId?.(),
       fitpicUuid,
@@ -564,7 +749,9 @@ export async function createImportedGroupedFitpicFromFiles(
       primaryImageUuid: primaryFitpicImage?.fitpicImageUuid ?? null,
       fitpicImages,
       imageData: primaryFitpicImage?.imageData ?? "",
-      images: primaryFitpicImage?.images ?? { preview: "", original: "", thumbnail: "" },
+      images: primaryFitpicImage?.images ?? { original: "", display: "", preview: "", thumbnail: "" },
+      originalPreserved: primaryFitpicImage?.originalPreserved === true,
+      archivalOriginalPreserved: primaryFitpicImage?.archivalOriginalPreserved === true,
       ...normalizeImportMetadataFields(primaryFitpicImage, importedAt),
       ...normalizeExtendedImageMetadataFields(primaryFitpicImage)
     },
@@ -574,7 +761,7 @@ export async function createImportedGroupedFitpicFromFiles(
       createFitpicImageUuid: createImageUuid,
       fallbackTimestamp: importedAt
     }
-  );
+  ));
 }
 
 export async function replaceFitpicImageFromFile(
@@ -584,7 +771,9 @@ export async function replaceFitpicImageFromFile(
     createFitpicImageUuid: createImageUuid,
     readFileAsDataUrl,
     loadImage,
+    buildImportedImageAssetSet,
     compressImageSource,
+    saveFitpicMediaSet,
     now = () => new Date().toISOString()
   }
 ) {
@@ -598,19 +787,35 @@ export async function replaceFitpicImageFromFile(
     readFileAsDataUrl,
     loadImage
   });
-  const imageData = await compressImageSource(file);
+  const rawImageAssets = typeof buildImportedImageAssetSet === "function"
+    ? await buildImportedImageAssetSet(file, {
+        readFileAsDataUrl,
+        loadImage
+      })
+    : (() => {
+        if (typeof compressImageSource !== "function") {
+          throw new Error("Image import pipeline is unavailable.");
+        }
+
+        return compressImageSource(file);
+      })();
+  const imageAssets = normalizeImportedImageAssets(rawImageAssets);
+  const primaryImage = getPrimaryFitpicImage(currentFitpic, {
+    createFitpicImageUuid: createImageUuid,
+    fallbackTimestamp: updatedAt,
+    parentFitpicUuid: currentFitpic.fitpicUuid
+  });
+  const persistedMedia = await persistFitpicImageAssets(primaryImage, imageAssets, {
+    saveFitpicMediaSet,
+    sourceKind: "fitpicReplace"
+  });
   const replacementPrimaryImage = normalizeFitpicImage(
     {
-      ...getPrimaryFitpicImage(currentFitpic, {
-        createFitpicImageUuid: createImageUuid,
-        fallbackTimestamp: updatedAt,
-        parentFitpicUuid: currentFitpic.fitpicUuid
-      }),
-      imageData,
-      images: {
-        ...(currentFitpic.images ?? {}),
-        preview: imageData
-      },
+      ...primaryImage,
+      imageData: persistedMedia.imageData,
+      images: persistedMedia.images,
+      originalPreserved: imageAssets.originalPreserved,
+      archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
       ...importMetadata
     },
     {
@@ -626,7 +831,8 @@ export async function replaceFitpicImageFromFile(
       : fitpicImage
   );
 
-  return normalizeFitpic(
+  return materializeFitpicForRuntime(
+    normalizeFitpic(
     {
       ...fitpic,
       fitDate: currentFitpic.fitDate,
@@ -642,5 +848,5 @@ export async function replaceFitpicImageFromFile(
       createFitpicImageUuid: createImageUuid,
       fallbackTimestamp: normalizeTimestampLike(fitpic?.createdAt) || updatedAt
     }
-  );
+  ));
 }

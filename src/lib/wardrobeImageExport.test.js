@@ -248,3 +248,113 @@ test("wardrobe image export keeps png as the default manual export format", asyn
     globalThis.getComputedStyle = originalGetComputedStyle;
   }
 });
+
+test("wardrobe image export renders placeholder cards and warning entries for missing images", async () => {
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  const originalImage = globalThis.Image;
+  const originalGetComputedStyle = globalThis.getComputedStyle;
+
+  class FakeImage {
+    constructor() {
+      this.naturalWidth = 800;
+      this.naturalHeight = 1000;
+    }
+
+    set src(value) {
+      this._src = value;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  globalThis.Image = FakeImage;
+  globalThis.getComputedStyle = () => ({
+    getPropertyValue() {
+      return "";
+    }
+  });
+  globalThis.fetch = async () => ({
+    blob: async () => new Blob(["png"], { type: "image/png" })
+  });
+  globalThis.document = {
+    createElement() {
+      return {
+        width: 0,
+        height: 0,
+        getContext() {
+          return {
+            fillStyle: "",
+            strokeStyle: "",
+            lineWidth: 1,
+            font: "",
+            textAlign: "",
+            textBaseline: "",
+            imageSmoothingEnabled: false,
+            imageSmoothingQuality: "low",
+            scale() {},
+            fillRect() {},
+            strokeRect() {},
+            drawImage() {},
+            save() {},
+            beginPath() {},
+            rect() {},
+            clip() {},
+            restore() {},
+            fillText() {},
+            measureText(text) {
+              return { width: String(text).length * 8 };
+            }
+          };
+        },
+        toBlob(callback, mimeType) {
+          callback(new Blob([mimeType], { type: mimeType }));
+        },
+        toDataURL(mimeType) {
+          return `data:${mimeType};base64,AAAA`;
+        }
+      };
+    }
+  };
+
+  try {
+    const result = await renderWardrobeImageExport({
+      items: [
+        {
+          id: "archived-1",
+          itemUuid: "archived-uuid-1",
+          name: "Archived One",
+          brand: "Brand X",
+          status: "Archived",
+          collections: ["Archive Bin"],
+          imageUrl: ""
+        }
+      ],
+      options: {
+        showItemName: true,
+        showBrand: true,
+        useCurrentSortOrder: true,
+        shuffleItems: false
+      },
+      exportProfile: "ai",
+      fileName: "statuses/archived.webp"
+    });
+
+    assert.equal(result.fileName, "statuses/archived.webp");
+    assert.equal(result.report.itemCount, 1);
+    assert.equal(result.report.missingImageCount, 1);
+    assert.equal(result.report.warningCount, 1);
+    assert.equal(result.report.warnings.length, 1);
+    assert.equal(result.report.warnings[0].reason, "missing export image");
+    assert.equal(result.report.warnings[0].itemId, "archived-1");
+    assert.equal(result.report.warnings[0].name, "Archived One");
+    assert.equal(result.report.warnings[0].status, "Archived");
+    assert.equal(result.report.warnings[0].fileName, "statuses/archived.webp");
+    assert.equal(result.mimeType, "image/webp");
+    assert.equal(result.blob.type, "image/webp");
+  } finally {
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+    globalThis.Image = originalImage;
+    globalThis.getComputedStyle = originalGetComputedStyle;
+  }
+});

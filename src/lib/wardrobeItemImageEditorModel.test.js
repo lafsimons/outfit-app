@@ -66,6 +66,32 @@ test("wardrobe item image draft helpers append images without changing the activ
   assert.deepEqual(added.itemImages[1].derivedAssets, []);
 });
 
+test("createImportedWardrobeItemImage preserves original display and thumbnail variants for new imports", () => {
+  const imported = createImportedWardrobeItemImage({
+    parentItemUuid: "item-uuid-1",
+    order: 1,
+    imageUrl: "data:image/webp;base64,display",
+    images: {
+      original: { src: "data:image/webp;base64,original", width: 3200, height: 2400 },
+      display: { src: "data:image/webp;base64,display", width: 1600, height: 1200 },
+      thumbnail: { src: "data:image/webp;base64,thumb", width: 480, height: 360 }
+    },
+    originalPreserved: false,
+    archivalOriginalPreserved: true,
+    importMetadata: {
+      importedAt: "2024-06-01T00:00:00.000Z",
+      sourceOriginalFilename: "archive.jpg"
+    }
+  });
+
+  assert.equal(imported.canonicalAsset.images.original.src, "data:image/webp;base64,original");
+  assert.equal(imported.canonicalAsset.images.display.src, "data:image/webp;base64,display");
+  assert.equal(imported.canonicalAsset.images.thumbnail.src, "data:image/webp;base64,thumb");
+  assert.equal(imported.canonicalAsset.imageUrl, "data:image/webp;base64,display");
+  assert.equal(imported.canonicalAsset.originalPreserved, false);
+  assert.equal(imported.canonicalAsset.archivalOriginalPreserved, true);
+});
+
 test("wardrobe item image draft helpers cannot remove the final remaining image", () => {
   const currentDraft = createBaseDraft();
   const unchanged = removeWardrobeItemImageFromDraft(currentDraft, "item-image-1");

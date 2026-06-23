@@ -39,9 +39,19 @@ class FakeDatabase {
     if (!this.state.stores.has(name)) {
       this.state.stores.set(name, {
         keyPath,
-        records: new Map()
+        records: new Map(),
+        indexes: new Map()
       });
     }
+
+    return {
+      createIndex: (indexName, keyPathValue) => {
+        const store = this.state.stores.get(name);
+        store.indexes.set(indexName, {
+          keyPath: keyPathValue
+        });
+      }
+    };
   }
 
   transaction(storeNames, mode) {
@@ -121,6 +131,22 @@ class FakeObjectStore {
     return this.transaction.createRequest(() =>
       [...this.store.records.values()].map((value) => structuredClone(value))
     );
+  }
+
+  index(name) {
+    const index = this.store.indexes.get(name);
+
+    if (!index) {
+      throw new Error(`Missing index: ${name}`);
+    }
+
+    return {
+      getAll: (key) => this.transaction.createRequest(() =>
+        [...this.store.records.values()]
+          .filter((value) => value?.[index.keyPath] === key)
+          .map((value) => structuredClone(value))
+      )
+    };
   }
 
   get(key) {
@@ -247,14 +273,14 @@ async function seedLegacyDatabase({ items = [], appState = null } = {}) {
 }
 
 async function getStoreNames() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const storeNames = [...db.objectStoreNames.stores.keys()].sort();
   db.close();
   return storeNames;
 }
 
 async function getSyncMetadataRows() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const transaction = db.transaction("syncMetadata", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("syncMetadata").getAll());
   await transactionDone(transaction);
@@ -263,7 +289,7 @@ async function getSyncMetadataRows() {
 }
 
 async function getSyncStateRows() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const transaction = db.transaction("syncState", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("syncState").getAll());
   await transactionDone(transaction);
@@ -272,7 +298,7 @@ async function getSyncStateRows() {
 }
 
 async function getStoredItems() {
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const transaction = db.transaction("items", "readonly");
   const rows = await openRequestToPromise(transaction.objectStore("items").getAll());
   await transactionDone(transaction);
@@ -320,7 +346,7 @@ test("IndexedDB upgrade creates sync stores without breaking existing stores", a
 
   assert.equal(items[0].id, "legacy_item");
   assert.equal(appState.savedOutfits[0].outfitUuid, "outfit-uuid-1");
-  assert.deepEqual(storeNames, ["appState", "items", "syncMetadata", "syncState"]);
+  assert.deepEqual(storeNames, ["appState", "items", "media", "syncMetadata", "syncState"]);
 });
 
 test("appState save and load preserves additive fitpic and saved outfit secondary-entity fields", async () => {
@@ -1087,7 +1113,7 @@ test("legacy OA metadata rows are normalized and migrated on read", async () => 
     lastLocalChangeAt: ""
   });
 
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const transaction = db.transaction("syncMetadata", "readwrite");
   transaction.objectStore("syncMetadata").put({
     key: "oa:item:item-uuid-legacy",
@@ -1127,7 +1153,7 @@ test("legacy OA metadata rows are normalized and migrated on read", async () => 
 
 test("legacy sync state row is normalized to the shared singleton shape", async () => {
   await getOrCreateDeviceId();
-  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 3));
+  const db = await openRequestToPromise(globalThis.indexedDB.open(INDEXED_DB_NAME, 4));
   const transaction = db.transaction("syncState", "readwrite");
   transaction.objectStore("syncState").delete("state");
   transaction.objectStore("syncState").put({

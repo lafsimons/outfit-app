@@ -34,7 +34,9 @@ export function createImportedWardrobeItemImage(
     order = 0,
     imageUrl = "",
     images,
-    importMetadata = {}
+    importMetadata = {},
+    originalPreserved = false,
+    archivalOriginalPreserved = false
   } = {}
 ) {
   const normalizedParentItemUuid = typeof parentItemUuid === "string" ? parentItemUuid.trim() : "";
@@ -58,7 +60,11 @@ export function createImportedWardrobeItemImage(
         parentItemImageUuid: itemImageUuid,
         order: 0,
         imageUrl,
+        originalPreserved,
+        archivalOriginalPreserved,
         images: images ?? {
+          original: { src: "" },
+          display: { src: imageUrl },
           preview: { src: imageUrl },
           thumbnail: { src: imageUrl }
         }
@@ -161,7 +167,9 @@ export function replaceActiveWardrobeItemImageAssetInDraft(
   {
     imageUrl,
     images,
-    importMetadata = null
+    importMetadata = null,
+    originalPreserved = null,
+    archivalOriginalPreserved = null
   } = {}
 ) {
     const activeItemImage = getActiveWardrobeItemImage(currentDraft);
@@ -176,12 +184,19 @@ export function replaceActiveWardrobeItemImageAssetInDraft(
         return itemImage;
       }
 
-      const nextCanonicalAsset = {
-        ...itemImage.canonicalAsset,
-        ...(importMetadata ?? {}),
-        imageUrl,
-        images: images ?? {
-          ...itemImage.canonicalAsset.images,
+        const nextCanonicalAsset = {
+          ...itemImage.canonicalAsset,
+          ...(importMetadata ?? {}),
+          imageUrl,
+          originalPreserved:
+            typeof originalPreserved === "boolean" ? originalPreserved : itemImage.canonicalAsset.originalPreserved,
+          archivalOriginalPreserved:
+            typeof archivalOriginalPreserved === "boolean"
+              ? archivalOriginalPreserved
+              : itemImage.canonicalAsset.archivalOriginalPreserved,
+          images: images ?? {
+            ...itemImage.canonicalAsset.images,
+            display: { src: imageUrl },
           preview: { src: imageUrl },
           thumbnail: { src: imageUrl }
         }
@@ -192,8 +207,14 @@ export function replaceActiveWardrobeItemImageAssetInDraft(
               ...asset,
               ...(importMetadata ?? {}),
               imageUrl,
+              originalPreserved: typeof originalPreserved === "boolean" ? originalPreserved : asset.originalPreserved,
+              archivalOriginalPreserved:
+                typeof archivalOriginalPreserved === "boolean"
+                  ? archivalOriginalPreserved
+                  : asset.archivalOriginalPreserved,
               images: images ?? {
                 ...asset.images,
+                display: { src: imageUrl },
                 preview: { src: imageUrl },
                 thumbnail: { src: imageUrl }
               }
