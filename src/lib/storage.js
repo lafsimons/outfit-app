@@ -29,82 +29,6 @@ function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function formatStorageMetricMegabytes(bytes = 0) {
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-function estimateStructuredBytes(value, seen = new WeakSet()) {
-  if (value == null) {
-    return 4;
-  }
-
-  const valueType = typeof value;
-
-  if (valueType === "string") {
-    return value.length;
-  }
-
-  if (valueType === "number" || valueType === "boolean" || valueType === "bigint") {
-    return String(value).length;
-  }
-
-  if (valueType !== "object") {
-    return 0;
-  }
-
-  if (seen.has(value)) {
-    return 0;
-  }
-
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.reduce((sum, entry) => sum + estimateStructuredBytes(entry, seen), 2);
-  }
-
-  return Object.entries(value).reduce(
-    (sum, [key, entry]) => sum + key.length + estimateStructuredBytes(entry, seen),
-    2
-  );
-}
-
-function getSafeJsonLength(value) {
-  try {
-    return JSON.stringify(value ?? {}).length;
-  } catch (error) {
-    return {
-      error: error?.message ?? "unknown",
-      length: null
-    };
-  }
-}
-
-function logTemporaryStartupStateMetrics(phase, value, extra = {}) {
-  try {
-    const jsonLengthResult = getSafeJsonLength(value ?? {});
-    const estimatedBytes = estimateStructuredBytes(value ?? {});
-    const usedJsHeapSize = globalThis?.performance?.memory?.usedJSHeapSize;
-    const lines = [
-      `phase=${phase}`,
-      `appStateJsonLength=${typeof jsonLengthResult === "number" ? jsonLengthResult : "unavailable"}`,
-      `appStateJsonLengthError=${typeof jsonLengthResult === "number" ? "" : jsonLengthResult.error}`,
-      `appStateEstimatedBytes=${estimatedBytes}`,
-      `appStateEstimatedMegabytes=${formatStorageMetricMegabytes(estimatedBytes)}`,
-      `heapUsed=${Number.isFinite(usedJsHeapSize) ? usedJsHeapSize : "unavailable"}`,
-      `heapUsedMB=${Number.isFinite(usedJsHeapSize) ? formatStorageMetricMegabytes(usedJsHeapSize) : "unavailable"}`,
-      ...Object.entries(extra)
-        .filter(([, extraValue]) => extraValue !== undefined && extraValue !== null && extraValue !== "")
-        .map(([key, extraValue]) => `${key}=${typeof extraValue === "string" ? extraValue : JSON.stringify(extraValue)}`)
-    ];
-
-    console.info(`[STATE_METRICS]\n${lines.join("\n")}\n[/STATE_METRICS]`);
-  } catch (error) {
-    console.info(
-      `[STATE_METRICS]\nphase=${phase}\nserializationError=${error?.message ?? "unknown"}\n[/STATE_METRICS]`
-    );
-  }
-}
-
 function stripLocalOnlyAppState(appState) {
   if (!appState || typeof appState !== "object") {
     return {};
@@ -744,10 +668,6 @@ export async function getCachedMediaObjectUrl(mediaId = "") {
 }
 
 export async function saveAppState(value) {
-  logTemporaryStartupStateMetrics("storage-save-queued", value, {
-    codePath: "storage.saveAppState -> cloneData -> JSON.parse(JSON.stringify(value))",
-    note: "temporary startup instrumentation for full app-state clone path"
-  });
   queuedAppStateSave = cloneData(value);
   emitOaPerfStorageEvent("saveQueued", {
     hasInFlightWrite: Boolean(appStateSaveInFlight)
@@ -777,12 +697,6 @@ export async function saveAppState(value) {
         durationMs: (typeof performance !== "undefined" && typeof performance.now === "function"
           ? performance.now()
           : Date.now()) - writeStartedAt
-      });
-      logTemporaryStartupStateMetrics("storage-save-write-complete", nextValue, {
-        durationMs: (typeof performance !== "undefined" && typeof performance.now === "function"
-          ? performance.now()
-          : Date.now()) - writeStartedAt,
-        codePath: "storage.saveAppState -> IndexedDB put(state)"
       });
 
       const deviceId = await getOrCreateDeviceId();

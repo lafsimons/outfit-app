@@ -65,6 +65,20 @@ Current status:
 - Core wardrobe workflows stable
 - Selector and preview interactions largely stabilized
 - Dashboard architecture established
+- Fitpic media-store Phase 1 is implemented
+- Backup v2 ZIP export/import supports fitpic media stored outside `appState`
+- Wardrobe media remains inline for now
+
+Recent measured impact from the fitpic media-store move:
+
+- `appState` JSON dropped from about `199 MB` to about `0.3 MB`
+- first-render heap dropped from about `2.5 GB` to about `1.6 GB`
+- fitpic media no longer dominates startup hydration and persistence pressure
+
+Current known warning state:
+
+- one genuinely media-less wardrobe asset still warns during Backup v2 export
+- fitpic media-store export/import no longer depends on inline fitpic payloads
 
 Current focus:
 
@@ -73,6 +87,7 @@ Current focus:
 - Saved outfit previews
 - Secondary entity systems
 - Ecosystem integration
+- Observe whether wardrobe media also needs out-of-line storage before starting Phase 2
 
 ---
 

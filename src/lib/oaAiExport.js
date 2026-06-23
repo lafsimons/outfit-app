@@ -16,6 +16,11 @@ const DEFAULT_EXCLUDED_COLLECTIONS = ["Beater Wardrobe", "Sportswear"];
 const DEFAULT_COLLECTION_EXPORTS = ["Core Wardrobe", "Sportswear"];
 const DEFAULT_STATUS_EXPORTS = ["Interested", "Wishlist", "Incoming", "Selling", "Archived"];
 const OA_AI_EXPORT_DEBUG_PREFIX = "[OA_AI_EXPORT_DEBUG]";
+const OA_AI_EXPORT_DEBUG_FLAG = "__OA_AI_EXPORT_DEBUG__";
+
+function isOaAiExportDebugEnabled() {
+  return Boolean(globalThis?.[OA_AI_EXPORT_DEBUG_FLAG]);
+}
 
 function createOaAiWardrobeImageExportOptions() {
   return createWardrobeSpreadExportOptions("detailed");
@@ -26,10 +31,18 @@ function createOaAiWardrobeImageExportProfile() {
 }
 
 function logOaAiExportDebug(event, payload = {}) {
+  if (!isOaAiExportDebugEnabled()) {
+    return;
+  }
+
   console.info(OA_AI_EXPORT_DEBUG_PREFIX, event, payload);
 }
 
 function logOaAiExportError(event, error, payload = {}) {
+  if (!isOaAiExportDebugEnabled()) {
+    return;
+  }
+
   console.error(OA_AI_EXPORT_DEBUG_PREFIX, event, {
     ...payload,
     error,
