@@ -13,6 +13,7 @@
     "@imgly/background-removal": "^1.7.0",
     "@supabase/supabase-js": "^2.106.0",
     "fflate": "^0.8.3",
+    "hub-core": "file:../hub-core",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
