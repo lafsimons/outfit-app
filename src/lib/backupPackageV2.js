@@ -2,6 +2,8 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { BACKUP_SOURCE, BACKUP_VERSION } from "./appIdentity.js";
 import { getActiveWardrobeItemImageAsset, getWardrobeItemImages } from "./itemModel.js";
 import { getFitpicImages, getPrimaryFitpicImage } from "./fitpics.js";
+import { createFitpicMediaRef, isFitpicMediaRefVariant } from "./fitpicMedia.js";
+import { getMediaRecord } from "./storage.js";
 
 export const PACKAGE_SOURCE = "outfit-app-package";
 export const PACKAGE_VERSION = 1;
@@ -414,6 +416,15 @@ function pickFirstImageVariantCandidate(...candidates) {
     if (getImageVariantSrc(candidate)) {
       return candidate;
     }
+
+    if (
+      candidate
+      && typeof candidate === "object"
+      && !Array.isArray(candidate)
+      && normalizeText(candidate.mediaId)
+    ) {
+      return candidate;
+    }
   }
 
   return "";
@@ -776,19 +787,55 @@ async function extractFitpicImage(fitpicImage, options, warnings) {
       originalSource
     )
   };
-  const extractedVariants = await extractVariantFiles({
-    entity: fitpicImage,
-    entityType: "oaFitpicImage",
-    entityId: fitpicImage?.fitpicImageUuid || "",
-    stableId: fitpicImage?.parentFitpicUuid || "",
-    variants,
-    buildFileName: buildFitpicVariantFileName,
-    packageDir: PACKAGE_FITPIC_PREVIEWS_DIR,
-    options,
-    warnings
-  });
+  const files = [];
+  const packagePaths = {};
+  const filePathByKey = new Map();
 
-  if (!Object.keys(extractedVariants.packagePaths).length) {
+  for (const variantKey of ["preview", "original", "display", "thumbnail"]) {
+    const normalizedVariantKey = normalizeVariantKey(variantKey);
+    const rawVariant = variants[normalizedVariantKey];
+    const variantSource = getImageVariantSrc(rawVariant);
+    const variantRef = rawVariant && typeof rawVariant === "object" && !Array.isArray(rawVariant)
+      ? rawVariant
+      : null;
+    const mediaId = isFitpicMediaRefVariant(variantRef) ? normalizeText(variantRef.mediaId) : "";
+    const dedupeKey = mediaId ? `media:${mediaId}` : variantSource ? `src:${variantSource}` : "";
+
+    if (!dedupeKey) {
+      continue;
+    }
+
+    const existingPackagePath = filePathByKey.get(dedupeKey) || "";
+
+    if (existingPackagePath) {
+      packagePaths[normalizedVariantKey] = existingPackagePath;
+      continue;
+    }
+
+    let blob = null;
+
+    if (mediaId) {
+      blob = (await getMediaRecord(mediaId))?.blob ?? null;
+    } else if (variantSource) {
+      blob = await resolveImageBlob(variantSource, options);
+    }
+
+    if (!blob) {
+      continue;
+    }
+
+    const fileName = buildFitpicVariantFileName(fitpicImage, normalizedVariantKey, variantSource);
+    const packagePath = `${PACKAGE_FITPIC_PREVIEWS_DIR}/${fileName}`;
+
+    filePathByKey.set(dedupeKey, packagePath);
+    packagePaths[normalizedVariantKey] = packagePath;
+    files.push({
+      path: packagePath,
+      blob
+    });
+  }
+
+  if (!Object.keys(packagePaths).length) {
     warnings.push(
       createExportWarning({
         entityType: "oaFitpicImage",
@@ -801,8 +848,8 @@ async function extractFitpicImage(fitpicImage, options, warnings) {
   }
 
   return {
-    fitpicImageRecord: createFitpicExportImageRecord(fitpicImage, extractedVariants.packagePaths),
-    files: extractedVariants.files
+    fitpicImageRecord: createFitpicExportImageRecord(fitpicImage, packagePaths),
+    files
   };
 }
 
@@ -998,6 +1045,44 @@ export async function buildBackupPackageZip({
   };
 }
 
+function createFitpicMediaRecordFromPackage({
+  fitpicImage = {},
+  variant = "display",
+  value = null,
+  bytes = null,
+  packagePath = ""
+} = {}) {
+  if (!(bytes instanceof Uint8Array)) {
+    return null;
+  }
+
+  const variantRecord = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const mimeType = normalizeText(variantRecord.mimeType) || dataUrlMimeTypeFromExtension(packagePath);
+  const ownerId = normalizeText(fitpicImage?.fitpicImageUuid);
+  const normalizedVariant = normalizeVariantKey(variant);
+
+  if (!ownerId) {
+    return null;
+  }
+
+  return {
+    mediaId:
+      (isFitpicMediaRefVariant(variantRecord) ? normalizeText(variantRecord.mediaId) : "")
+      || `fitpicImage:${ownerId}:${normalizedVariant}`,
+    ownerType: "fitpicImage",
+    ownerId,
+    variant: normalizedVariant,
+    blob: new Blob([bytes], { type: mimeType || "application/octet-stream" }),
+    mimeType,
+    fileSize: Number(variantRecord.fileSize) || bytes.byteLength || 0,
+    width: Number(variantRecord.width) || 0,
+    height: Number(variantRecord.height) || 0,
+    createdAt: normalizeText(fitpicImage?.importedAt) || normalizeText(fitpicImage?.createdAt),
+    updatedAt: normalizeText(fitpicImage?.updatedAt) || normalizeText(fitpicImage?.importedAt) || normalizeText(fitpicImage?.createdAt),
+    sourceKind: "backupImport"
+  };
+}
+
 function resolveRestoredVariant(value, zipEntries, warnings, {
   packageField = "",
   entityType = "",
@@ -1114,48 +1199,73 @@ function restoreFitpicImageMedia(fitpicImage = {}, zipEntries = {}, warnings = [
   const images = nextFitpicImage?.images && typeof nextFitpicImage.images === "object" && !Array.isArray(nextFitpicImage.images)
     ? nextFitpicImage.images
     : {};
-  const restoredOriginal = resolveRestoredVariant(images.original, zipEntries, warnings, {
-    packageField: "images.original",
-    entityType: "oaFitpicImage",
-    entityId: nextFitpicImage?.fitpicImageUuid || "",
-    stableId: nextFitpicImage?.parentFitpicUuid || "",
-    allowString: true
-  });
-  const restoredDisplay = resolveRestoredVariant(images.display, zipEntries, warnings, {
-    packageField: "images.display",
-    entityType: "oaFitpicImage",
-    entityId: nextFitpicImage?.fitpicImageUuid || "",
-    stableId: nextFitpicImage?.parentFitpicUuid || "",
-    allowString: true
-  });
-  const restoredPreview = resolveRestoredVariant(images.preview, zipEntries, warnings, {
-    packageField: "images.preview",
-    entityType: "oaFitpicImage",
-    entityId: nextFitpicImage?.fitpicImageUuid || "",
-    stableId: nextFitpicImage?.parentFitpicUuid || "",
-    allowString: true
-  });
-  const restoredThumbnail = resolveRestoredVariant(images.thumbnail, zipEntries, warnings, {
-    packageField: "images.thumbnail",
-    entityType: "oaFitpicImage",
-    entityId: nextFitpicImage?.fitpicImageUuid || "",
-    stableId: nextFitpicImage?.parentFitpicUuid || "",
-    allowString: true
-  });
-  const displaySrc = restoredDisplay || restoredPreview || restoredOriginal || restoredThumbnail || nextFitpicImage.imageData || "";
-  const previewSrc = restoredPreview || displaySrc || restoredOriginal || "";
-  const thumbnailSrc = restoredThumbnail || displaySrc || previewSrc || restoredOriginal || "";
+  const mediaRecords = [];
+  const mediaRecordByPackagePath = new Map();
+  const restoreVariantRef = (value, variant) => {
+    const packagePath = getImageVariantPackagePath(value);
+    const variantRecord = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+
+    if (!packagePath) {
+      const fallbackSrc = getImageVariantSrc(value);
+      return isFitpicMediaRefVariant(variantRecord) ? createFitpicMediaRef(variantRecord) : fallbackSrc;
+    }
+
+    const bytes = zipEntries[packagePath];
+
+    if (!bytes) {
+      warnings.push(
+        createExportWarning({
+          entityType: "oaFitpicImage",
+          id: nextFitpicImage?.fitpicImageUuid || "",
+          stableId: nextFitpicImage?.parentFitpicUuid || "",
+          field: `images.${variant}`,
+          message: `Referenced backup media was missing at "${packagePath}" during import.`
+        })
+      );
+      const fallbackSrc = getImageVariantSrc(value);
+      return isFitpicMediaRefVariant(variantRecord) ? createFitpicMediaRef(variantRecord) : fallbackSrc;
+    }
+
+    const existingMediaRecord = mediaRecordByPackagePath.get(packagePath);
+
+    if (existingMediaRecord) {
+      return createFitpicMediaRef(existingMediaRecord);
+    }
+
+    const mediaRecord = createFitpicMediaRecordFromPackage({
+      fitpicImage: nextFitpicImage,
+      variant,
+      value,
+      bytes,
+      packagePath
+    });
+
+    if (!mediaRecord) {
+      return "";
+    }
+
+    mediaRecordByPackagePath.set(packagePath, mediaRecord);
+    mediaRecords.push(mediaRecord);
+    return createFitpicMediaRef(mediaRecord);
+  };
+  const restoredOriginal = restoreVariantRef(images.original, "original");
+  const restoredDisplay = restoreVariantRef(images.display, "display");
+  const restoredPreview = restoreVariantRef(images.preview, "preview");
+  const restoredThumbnail = restoreVariantRef(images.thumbnail, "thumbnail");
 
   return {
-    ...nextFitpicImage,
-    imageData: displaySrc || nextFitpicImage.imageData || "",
-    images: {
-      ...images,
-      original: restoredOriginal,
-      display: displaySrc,
-      preview: previewSrc,
-      thumbnail: thumbnailSrc
-    }
+    fitpicImage: {
+      ...nextFitpicImage,
+      imageData: "",
+      images: {
+        ...images,
+        original: restoredOriginal || "",
+        display: restoredDisplay || restoredPreview || restoredOriginal || restoredThumbnail || "",
+        preview: restoredPreview || restoredDisplay || restoredOriginal || "",
+        thumbnail: restoredThumbnail || restoredDisplay || restoredPreview || restoredOriginal || ""
+      }
+    },
+    mediaRecords
   };
 }
 
@@ -1192,18 +1302,22 @@ function restoreWardrobeItemRecord(item = {}, zipEntries = {}, warnings = []) {
 
 function restoreFitpicRecord(fitpic = {}, zipEntries = {}, warnings = []) {
   const nextFitpic = cloneValue(fitpic);
-  const restoredFitpicImages = (Array.isArray(nextFitpic.fitpicImages) ? nextFitpic.fitpicImages : []).map((fitpicImage) =>
+  const restoredFitpicImageResults = (Array.isArray(nextFitpic.fitpicImages) ? nextFitpic.fitpicImages : []).map((fitpicImage) =>
     restoreFitpicImageMedia(fitpicImage, zipEntries, warnings)
   );
+  const restoredFitpicImages = restoredFitpicImageResults.map((result) => result.fitpicImage);
   const primaryFitpicImage = restoredFitpicImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === nextFitpic.primaryImageUuid)
     ?? restoredFitpicImages[0]
     ?? null;
 
   return {
-    ...nextFitpic,
-    fitpicImages: restoredFitpicImages,
-    imageData: primaryFitpicImage?.imageData ?? nextFitpic.imageData ?? "",
-    images: primaryFitpicImage?.images ?? nextFitpic.images
+    fitpic: {
+      ...nextFitpic,
+      fitpicImages: restoredFitpicImages,
+      imageData: "",
+      images: primaryFitpicImage?.images ?? nextFitpic.images
+    },
+    mediaRecords: restoredFitpicImageResults.flatMap((result) => result.mediaRecords)
   };
 }
 
@@ -1237,7 +1351,9 @@ export async function importBackupPackage({
   const rawSavedOutfits = parseNdjsonRecords(strFromU8(savedOutfitsBytes));
   const appState = JSON.parse(strFromU8(appStateBytes));
   const items = rawItems.map((item) => restoreWardrobeItemRecord(item, zipEntries, warnings));
-  const fitpics = rawFitpics.map((fitpic) => restoreFitpicRecord(fitpic, zipEntries, warnings));
+  const restoredFitpicResults = rawFitpics.map((fitpic) => restoreFitpicRecord(fitpic, zipEntries, warnings));
+  const fitpics = restoredFitpicResults.map((result) => result.fitpic);
+  const mediaRecords = restoredFitpicResults.flatMap((result) => result.mediaRecords);
 
   return {
     backup: {
@@ -1245,8 +1361,10 @@ export async function importBackupPackage({
       version: BACKUP_VERSION,
       importedAt: new Date().toISOString(),
       items,
+      mediaRecords,
       appState: {
         ...appState,
+        fitpicMediaMigrationVersion: 1,
         fitpics,
         savedOutfits: rawSavedOutfits
       }

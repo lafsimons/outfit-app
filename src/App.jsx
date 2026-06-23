@@ -135,6 +135,14 @@ import {
   normalizeFitpicImage
 } from "./lib/fitpics";
 import {
+  fitpicHasMediaRefs,
+  materializeFitpicForRuntime,
+  materializeFitpicsForRuntime,
+  migrateFitpicsToMediaStore,
+  saveFitpicMediaSet,
+  stripFitpicsRuntimeMediaAliasesForPersistence
+} from "./lib/fitpicMedia.js";
+import {
   addFitpicImagesToDraft,
   addFitpicTagsToDraft,
   addLinkedItemToFitpicDraft,
@@ -943,6 +951,8 @@ function cancelScheduledIdleWork(handle) {
 const ITEM_DEFAULTS_MIGRATION_VERSION = 3;
 const IMAGE_PRESENTATION_MIGRATION_VERSION = 2;
 const THUMBNAIL_DERIVATIVE_MIGRATION_VERSION = 1;
+const FITPIC_MEDIA_MIGRATION_VERSION = 1;
+const FITPIC_MEDIA_EAGER_MIGRATION_MAX_COUNT = 8;
 const WARDROBE_PREVIEW_DOUBLE_CLICK_MS = 220;
 const defaultWindowState = {
   outfitEditor: { width: 396 },
@@ -978,6 +988,33 @@ const defaultOutfitFilterSectionsOpen = {
   collections: false,
   status: false
 };
+
+function getFitpicImageDisplaySrc(fitpicImage = {}) {
+  if (typeof fitpicImage?.imageData === "string" && fitpicImage.imageData.trim()) {
+    return fitpicImage.imageData.trim();
+  }
+
+  const images = fitpicImage?.images && typeof fitpicImage.images === "object" && !Array.isArray(fitpicImage.images)
+    ? fitpicImage.images
+    : {};
+  const thumbnailSrc = typeof images.thumbnail === "string"
+    ? images.thumbnail.trim()
+    : typeof images.thumbnail?.src === "string"
+      ? images.thumbnail.src.trim()
+      : "";
+  const previewSrc = typeof images.preview === "string"
+    ? images.preview.trim()
+    : typeof images.preview?.src === "string"
+      ? images.preview.src.trim()
+      : "";
+  const displaySrc = typeof images.display === "string"
+    ? images.display.trim()
+    : typeof images.display?.src === "string"
+      ? images.display.src.trim()
+      : "";
+
+  return thumbnailSrc || previewSrc || displaySrc || "";
+}
 const outfitLayout = ["Headwear", "TopGroup", "Bottom", "Footwear"];
 const advancedTrackedFields = [
   "name",
@@ -2268,6 +2305,7 @@ export default function App() {
   const [recentOutfits, setRecentOutfits] = useState([]);
   const [generateCount, setGenerateCount] = useState(0);
   const [fitpics, setFitpics] = useState([]);
+  const [fitpicMediaMigrationVersion, setFitpicMediaMigrationVersion] = useState(0);
   const [generationLists, setGenerationLists] = useState(defaultGenerationLists);
   const [generationMode, setGenerationMode] = useState(defaultGenerationMode);
   const [outfitFilters, setOutfitFilters] = useState(emptyOutfitFilters);
@@ -2407,6 +2445,7 @@ export default function App() {
   const skipNextHydrationAppStateSaveRef = useRef(true);
   const startupFirstRenderLoggedRef = useRef(false);
   const startupFirstSaveLoggedRef = useRef(false);
+  const fitpicMediaMigrationInFlightRef = useRef(false);
   appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
@@ -4457,6 +4496,8 @@ export default function App() {
         (storedAppState?.imagePresentationMigrationVersion ?? 0) < IMAGE_PRESENTATION_MIGRATION_VERSION;
       const shouldApplyThumbnailDerivativeMigration =
         (storedAppState?.thumbnailDerivativeMigrationVersion ?? 0) < THUMBNAIL_DERIVATIVE_MIGRATION_VERSION;
+      const shouldApplyFitpicMediaMigration =
+        (storedAppState?.fitpicMediaMigrationVersion ?? 0) < FITPIC_MEDIA_MIGRATION_VERSION;
       skipNextHydrationAppStateSaveRef.current = !(
         !storedAppState
         || shouldApplyStyleWeightMigration
@@ -4492,6 +4533,19 @@ export default function App() {
             )
           }
         : storedAppState;
+      const shouldEagerMigrateFitpicMedia =
+        shouldApplyFitpicMediaMigration
+        && Array.isArray(effectiveStoredAppState?.fitpics)
+        && effectiveStoredAppState.fitpics.length <= FITPIC_MEDIA_EAGER_MIGRATION_MAX_COUNT;
+      const fitpicMediaPreparedAppState = shouldEagerMigrateFitpicMedia
+        ? {
+            ...(effectiveStoredAppState ?? {}),
+            fitpics: await migrateFitpicsToMediaStore(effectiveStoredAppState?.fitpics ?? [], {
+              sourceKind: "fitpicStartupMigration"
+            }),
+            fitpicMediaMigrationVersion: FITPIC_MEDIA_MIGRATION_VERSION
+          }
+        : effectiveStoredAppState;
       const effectiveItems = shouldApplyImagePresentationMigration
         ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
         : thumbnailMigratedItems;
@@ -4499,13 +4553,15 @@ export default function App() {
         "migration-complete",
         collectStartupDiagnostics({
           items: effectiveItems,
-          appState: effectiveStoredAppState
+          appState: fitpicMediaPreparedAppState
         }),
         {
           migratedItemCount: effectiveItems.length,
           shouldApplyStyleWeightMigration,
           shouldApplyImagePresentationMigration,
           shouldApplyThumbnailDerivativeMigration,
+          shouldApplyFitpicMediaMigration,
+          shouldEagerMigrateFitpicMedia,
           codePaths: [
             "bootstrap:normalizeStoredItem map",
             "bootstrap:thumbnail derivative migration rewrites inline thumbnails from existing display/original media",
@@ -4548,8 +4604,8 @@ export default function App() {
       }
 
       let hydratedAppState;
-      if (effectiveStoredAppState) {
-        hydratedAppState = normalizeHydratedAppState(effectiveStoredAppState, {
+      if (fitpicMediaPreparedAppState) {
+        hydratedAppState = normalizeHydratedAppState(fitpicMediaPreparedAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
@@ -4564,11 +4620,15 @@ export default function App() {
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
       }
+      hydratedAppState = {
+        ...hydratedAppState,
+        fitpics: await materializeFitpicsForRuntime(hydratedAppState.fitpics)
+      };
       logStartupDiagnosticBlocks(
         "state-hydration-complete",
         collectStartupDiagnostics({
           items: effectiveItems,
-          appState: effectiveStoredAppState,
+          appState: fitpicMediaPreparedAppState,
           hydratedAppState
         }),
         {
@@ -4602,6 +4662,7 @@ export default function App() {
       setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
       setWeatherData(hydratedAppState.weatherData);
       setFitpics(hydratedAppState.fitpics);
+      setFitpicMediaMigrationVersion(fitpicMediaPreparedAppState?.fitpicMediaMigrationVersion ?? storedAppState?.fitpicMediaMigrationVersion ?? 0);
       setWardrobeFilters(hydratedAppState.wardrobeFilters);
       setWardrobeSort(hydratedAppState.wardrobeSort);
       setSavedWardrobeViews(hydratedAppState.savedWardrobeViews);
@@ -4629,6 +4690,41 @@ export default function App() {
 
     setHasHydratedAppState(true);
   }, [loading]);
+
+  useEffect(() => {
+    if (loading || !hasHydratedAppState) {
+      return undefined;
+    }
+
+    if (fitpicMediaMigrationVersion >= FITPIC_MEDIA_MIGRATION_VERSION || fitpicMediaMigrationInFlightRef.current) {
+      return undefined;
+    }
+
+    fitpicMediaMigrationInFlightRef.current = true;
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      try {
+        const migratedFitpics = await migrateFitpicsToMediaStore(fitpics, {
+          sourceKind: "fitpicDeferredMigration"
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        setFitpics(migratedFitpics);
+        setFitpicMediaMigrationVersion(FITPIC_MEDIA_MIGRATION_VERSION);
+      } finally {
+        fitpicMediaMigrationInFlightRef.current = false;
+      }
+    }, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+      fitpicMediaMigrationInFlightRef.current = false;
+    };
+  }, [fitpicMediaMigrationVersion, fitpics, hasHydratedAppState, loading]);
 
   useEffect(() => {
     if (loading || startupFirstRenderLoggedRef.current) {
@@ -4695,6 +4791,7 @@ export default function App() {
             itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
             imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
             thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+            fitpicMediaMigrationVersion,
             layering,
             accessoriesEnabled,
             locked,
@@ -4713,7 +4810,7 @@ export default function App() {
             weatherSettings,
             weatherLocationDraft,
             weatherData,
-            fitpics,
+            fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
             wardrobeFilters,
             wardrobeSort,
             savedWardrobeViews,
@@ -4734,6 +4831,7 @@ export default function App() {
       itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
       imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
       thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+      fitpicMediaMigrationVersion,
       layering,
       accessoriesEnabled,
       locked,
@@ -4751,7 +4849,7 @@ export default function App() {
       outfitFilters,
       weatherSettings,
       weatherData,
-      fitpics,
+      fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
       wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
       wardrobeSort,
       savedWardrobeViews,
@@ -4776,6 +4874,7 @@ export default function App() {
     weatherSettings,
     weatherData,
     fitpics,
+    fitpicMediaMigrationVersion,
     wardrobeFilters,
     wardrobeSort,
     savedWardrobeViews,
@@ -5469,7 +5568,9 @@ export default function App() {
     return nextOutfit;
   }
 
-  function applyLoadedData(nextItems, hydratedAppState) {
+  async function applyLoadedData(nextItems, hydratedAppState) {
+    const runtimeFitpics = await materializeFitpicsForRuntime(hydratedAppState.fitpics);
+
     setItems(nextItems);
     setLayering(hydratedAppState.layering);
     setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
@@ -5490,7 +5591,8 @@ export default function App() {
     setWeatherSettings(hydratedAppState.weatherSettings);
     setWeatherLocationDraft(hydratedAppState.weatherLocationDraft);
     setWeatherData(hydratedAppState.weatherData);
-    setFitpics(hydratedAppState.fitpics);
+    setFitpics(runtimeFitpics);
+    setFitpicMediaMigrationVersion(hydratedAppState.fitpicMediaMigrationVersion ?? 0);
     setWardrobeFilters(hydratedAppState.wardrobeFilters);
     setWardrobeSort(hydratedAppState.wardrobeSort);
     setWindowState(hydratedAppState.windowState);
@@ -5532,6 +5634,7 @@ export default function App() {
         itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
         imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
         thumbnailDerivativeMigrationVersion: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+        fitpicMediaMigrationVersion,
         layering,
         accessoriesEnabled,
         locked,
@@ -5549,7 +5652,7 @@ export default function App() {
         outfitFilters,
         weatherSettings,
         weatherData,
-        fitpics,
+        fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
         wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
         wardrobeSort,
         windowState
@@ -5695,12 +5798,13 @@ export default function App() {
         migrationVersions: {
           itemDefaults: ITEM_DEFAULTS_MIGRATION_VERSION,
           imagePresentation: IMAGE_PRESENTATION_MIGRATION_VERSION,
-          thumbnailDerivative: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION
+          thumbnailDerivative: THUMBNAIL_DERIVATIVE_MIGRATION_VERSION,
+          fitpicMedia: FITPIC_MEDIA_MIGRATION_VERSION
         }
       });
 
       await replaceWithBackup(preparedBackup.backup);
-      applyLoadedData(preparedBackup.items, preparedBackup.appState);
+      await applyLoadedData(preparedBackup.items, preparedBackup.appState);
 
       if (importWarnings.length > 0) {
         window.alert(
@@ -9237,7 +9341,7 @@ export default function App() {
                       aria-label={fitpicCardAccessibleLabel}
                     >
                       <div className="fitpic-card-image-frame">
-                        <img src={fitpic.imageData} alt="" />
+                        <img src={fitpic.imageData || getFitpicImageDisplaySrc(getPrimaryFitpicImage(fitpic) ?? fitpic)} alt="" />
                       </div>
                       <div className="fitpic-card-copy">
                         <strong title={fitpic.name}>{fitpic.name}</strong>
@@ -9858,7 +9962,8 @@ export default function App() {
             createId: createFitpicId,
             readFileAsDataUrl,
             loadImage,
-            buildImportedImageAssetSet
+            buildImportedImageAssetSet,
+            saveFitpicMediaSet
           })
         )
       );
@@ -9904,7 +10009,8 @@ export default function App() {
         createId: createFitpicId,
         readFileAsDataUrl,
         loadImage,
-        buildImportedImageAssetSet
+        buildImportedImageAssetSet,
+        saveFitpicMediaSet
       });
 
       setFitpics((current) => [nextFitpic, ...current]);
@@ -9984,25 +10090,19 @@ export default function App() {
         readFileAsDataUrl,
         loadImage
       });
-      const imageData = imageAssets.display.src;
+      const currentImages = Array.isArray(fitpicDraft.fitpicImages) ? fitpicDraft.fitpicImages : [];
+      const primaryImageUuid = fitpicDraft.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
 
       setFitpicDraft((current) => {
-        const currentImages = Array.isArray(current.fitpicImages) ? current.fitpicImages : [];
-        const primaryImageUuid = current.primaryImageUuid || currentImages[0]?.fitpicImageUuid || null;
-
-        return {
+        const nextDraft = {
           ...current,
           fitpicImages: currentImages.map((fitpicImage, index) =>
             fitpicImage.fitpicImageUuid === primaryImageUuid
               ? normalizeFitpicImage(
                   {
                     ...fitpicImage,
-                    imageData,
                     images: {
-                      ...(fitpicImage.images ?? {}),
-                      original: imageAssets.original.src,
-                      display: imageAssets.display.src,
-                      thumbnail: imageAssets.thumbnail.src
+                      ...(fitpicImage.images ?? {})
                     },
                     originalPreserved: imageAssets.originalPreserved,
                     archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
@@ -10018,7 +10118,51 @@ export default function App() {
               : fitpicImage
           )
         };
+
+        return nextDraft;
       });
+      const targetFitpicImage = currentImages.find((fitpicImage) => fitpicImage.fitpicImageUuid === primaryImageUuid);
+
+      if (!targetFitpicImage) {
+        return;
+      }
+
+      const mediaRefs = await saveFitpicMediaSet(
+        targetFitpicImage,
+        {
+          original: imageAssets.original,
+          display: imageAssets.display,
+          preview: imageAssets.display,
+          thumbnail: imageAssets.thumbnail
+        },
+        {
+          sourceKind: "fitpicReplace"
+        }
+      );
+
+      setFitpicDraft((current) => ({
+        ...current,
+        fitpicImages: (Array.isArray(current.fitpicImages) ? current.fitpicImages : []).map((fitpicImage, index) =>
+          fitpicImage.fitpicImageUuid === primaryImageUuid
+            ? normalizeFitpicImage(
+                {
+                  ...fitpicImage,
+                  imageData: imageAssets.display.src,
+                  images: mediaRefs,
+                  originalPreserved: imageAssets.originalPreserved,
+                  archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
+                  ...importMetadata
+                },
+                {
+                  createUuid: createFitpicImageUuid,
+                  fallbackTimestamp: importMetadata.importedAt,
+                  fallbackOrder: index,
+                  parentFitpicUuid: editingFitpic.fitpicUuid
+                }
+              )
+            : fitpicImage
+        )
+      }));
     } catch (error) {
       setFitpicImportError(error?.message || "This image could not be used.");
     } finally {
@@ -10052,19 +10196,32 @@ export default function App() {
             readFileAsDataUrl,
             loadImage
           });
-          const imageData = imageAssets.display.src;
+          const fitpicImageUuid = createFitpicImageUuid();
+          const mediaRefs = await saveFitpicMediaSet(
+            {
+              fitpicImageUuid,
+              parentFitpicUuid: editingFitpic.fitpicUuid,
+              order: editingFitpicImages.length + index,
+              importedAt: importMetadata.importedAt
+            },
+            {
+              original: imageAssets.original,
+              display: imageAssets.display,
+              preview: imageAssets.display,
+              thumbnail: imageAssets.thumbnail
+            },
+            {
+              sourceKind: "fitpicAddImage"
+            }
+          );
 
           return normalizeFitpicImage(
             {
-              fitpicImageUuid: createFitpicImageUuid(),
+              fitpicImageUuid,
               parentFitpicUuid: editingFitpic.fitpicUuid,
               order: editingFitpicImages.length + index,
-              imageData,
-              images: {
-                original: imageAssets.original.src,
-                display: imageAssets.display.src,
-                thumbnail: imageAssets.thumbnail.src
-              },
+              imageData: imageAssets.display.src,
+              images: mediaRefs,
               originalPreserved: imageAssets.originalPreserved,
               archivalOriginalPreserved: imageAssets.archivalOriginalPreserved,
               ...importMetadata
@@ -12495,7 +12652,7 @@ export default function App() {
                 {activePreviewFitpicImage ? (
                   <img
                     className="preview-overlay-fitpic-image"
-                    src={activePreviewFitpicImage.imageData}
+                    src={getFitpicImageDisplaySrc(activePreviewFitpicImage)}
                     alt={fitpicPreview.name}
                   />
                 ) : (
@@ -12559,7 +12716,7 @@ export default function App() {
               <div className="fitpic-editor-media">
                 <img
                   className="fitpic-editor-image"
-                  src={editingFitpicPrimaryImage?.imageData || editingFitpic.imageData}
+                  src={getFitpicImageDisplaySrc(editingFitpicPrimaryImage) || editingFitpic.imageData}
                   alt={editingFitpic.name}
                 />
                 <div className="fitpic-editor-media-actions">
@@ -12608,7 +12765,7 @@ export default function App() {
                       >
                         <img
                           className="fitpic-editor-image-thumb"
-                          src={fitpicImage.images?.thumbnail || fitpicImage.images?.preview || fitpicImage.imageData}
+                          src={getFitpicImageDisplaySrc(fitpicImage)}
                           alt={imageFilename}
                         />
                         <div className="fitpic-editor-image-copy">

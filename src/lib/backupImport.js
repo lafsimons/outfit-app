@@ -39,6 +39,7 @@ export async function prepareBackupImport(
     (nextAppState?.imagePresentationMigrationVersion ?? 0) < migrationVersions.imagePresentation;
   const shouldApplyThumbnailDerivativeMigration =
     (nextAppState?.thumbnailDerivativeMigrationVersion ?? 0) < migrationVersions.thumbnailDerivative;
+  const fitpicMediaMigrationVersion = Number(migrationVersions?.fitpicMedia) || 0;
 
   const normalizedItems = nextItems
     .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
@@ -98,6 +99,10 @@ export async function prepareBackupImport(
         itemDefaultsMigrationVersion: migrationVersions.itemDefaults,
         imagePresentationMigrationVersion: migrationVersions.imagePresentation,
         thumbnailDerivativeMigrationVersion: migrationVersions.thumbnailDerivative,
+        fitpicMediaMigrationVersion: Math.max(
+          fitpicMediaMigrationVersion,
+          Number(nextAppState?.fitpicMediaMigrationVersion) || 0
+        ),
         layering: loadedAppState.layering,
         accessoriesEnabled: loadedAppState.accessoriesEnabled,
         locked: loadedAppState.locked,

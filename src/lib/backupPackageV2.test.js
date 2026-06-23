@@ -22,6 +22,187 @@ import {
   importBackupPackage,
   validateBackupPackageManifest
 } from "./backupPackageV2.js";
+import { saveMediaRecord } from "./storage.js";
+
+class FakeIDBRequest {}
+
+class FakeObjectStoreNames {
+  constructor(stores) {
+    this.stores = stores;
+  }
+
+  contains(name) {
+    return this.stores.has(name);
+  }
+}
+
+class FakeDatabase {
+  constructor(state) {
+    this.state = state;
+    this.objectStoreNames = new FakeObjectStoreNames(state.stores);
+  }
+
+  createObjectStore(name, { keyPath }) {
+    if (!this.state.stores.has(name)) {
+      this.state.stores.set(name, {
+        keyPath,
+        records: new Map(),
+        indexes: new Map()
+      });
+    }
+
+    return {
+      createIndex: (indexName, keyPathValue) => {
+        this.state.stores.get(name).indexes.set(indexName, { keyPath: keyPathValue });
+      }
+    };
+  }
+
+  transaction(storeNames, mode) {
+    return new FakeTransaction(this.state, storeNames, mode);
+  }
+
+  close() {}
+}
+
+class FakeTransaction {
+  constructor(state, storeNames, mode) {
+    this.state = state;
+    this.mode = mode;
+    this.error = null;
+    this.oncomplete = null;
+    this.onerror = null;
+    this.pendingCount = 0;
+    this.completed = false;
+    this.storeNames = Array.isArray(storeNames) ? storeNames : [storeNames];
+
+    queueMicrotask(() => {
+      this.maybeComplete();
+    });
+  }
+
+  objectStore(name) {
+    const store = this.state.stores.get(name);
+
+    if (!store) {
+      throw new Error(`Missing object store: ${name}`);
+    }
+
+    return new FakeObjectStore(this, store);
+  }
+
+  createRequest(run) {
+    const request = new FakeIDBRequest();
+    this.pendingCount += 1;
+
+    queueMicrotask(() => {
+      try {
+        request.result = run();
+        request.onsuccess?.();
+      } catch (error) {
+        request.error = error;
+        this.error = error;
+        request.onerror?.();
+        this.onerror?.();
+      } finally {
+        this.pendingCount -= 1;
+        this.maybeComplete();
+      }
+    });
+
+    return request;
+  }
+
+  maybeComplete() {
+    if (this.completed || this.error || this.pendingCount > 0) {
+      return;
+    }
+
+    this.completed = true;
+    queueMicrotask(() => {
+      this.oncomplete?.();
+    });
+  }
+}
+
+class FakeObjectStore {
+  constructor(transaction, store) {
+    this.transaction = transaction;
+    this.store = store;
+  }
+
+  get(key) {
+    return this.transaction.createRequest(() => {
+      const value = this.store.records.get(key);
+      return value === undefined ? undefined : structuredClone(value);
+    });
+  }
+
+  put(value) {
+    return this.transaction.createRequest(() => {
+      const key = value?.[this.store.keyPath];
+
+      if (key === undefined) {
+        throw new Error(`Missing keyPath value for ${this.store.keyPath}`);
+      }
+
+      this.store.records.set(key, structuredClone(value));
+      return key;
+    });
+  }
+}
+
+class FakeIndexedDB {
+  constructor() {
+    this.databases = new Map();
+  }
+
+  open(name, version) {
+    const request = new FakeIDBRequest();
+
+    queueMicrotask(() => {
+      const existingState = this.databases.get(name);
+
+      if (!existingState) {
+        const nextState = {
+          version: version ?? 1,
+          stores: new Map()
+        };
+        this.databases.set(name, nextState);
+        request.result = new FakeDatabase(nextState);
+        request.onupgradeneeded?.();
+        request.onsuccess?.();
+        return;
+      }
+
+      const nextVersion = version ?? existingState.version;
+
+      if (nextVersion < existingState.version) {
+        request.error = new Error("VersionError");
+        request.onerror?.();
+        return;
+      }
+
+      if (nextVersion > existingState.version) {
+        existingState.version = nextVersion;
+        request.result = new FakeDatabase(existingState);
+        request.onupgradeneeded?.();
+        request.onsuccess?.();
+        return;
+      }
+
+      request.result = new FakeDatabase(existingState);
+      request.onsuccess?.();
+    });
+
+    return request;
+  }
+}
+
+test.beforeEach(() => {
+  globalThis.indexedDB = new FakeIndexedDB();
+  globalThis.IDBRequest = FakeIDBRequest;
+});
 
 test("buildBackupPackageManifest returns the expected manifest", () => {
   const manifest = buildBackupPackageManifest({
@@ -374,6 +555,82 @@ test("buildBackupPackage extracts fitpic previews and preserves primary image id
   assert.equal(result.files.has(`${PACKAGE_FITPIC_PREVIEWS_DIR}/fitpic-image-2.webp`), true);
 });
 
+test("buildBackupPackage exports fitpic media-store refs without fitpic warnings", async () => {
+  await saveMediaRecord({
+    mediaId: "fitpicImage:fitpic-image-ref:display",
+    ownerType: "fitpicImage",
+    ownerId: "fitpic-image-ref",
+    variant: "display",
+    blob: new Blob(["display-bytes"], { type: "image/webp" }),
+    mimeType: "image/webp",
+    fileSize: 13,
+    width: 1200,
+    height: 1600,
+    createdAt: "2026-06-23T12:00:00.000Z",
+    updatedAt: "2026-06-23T12:00:00.000Z",
+    sourceKind: "test"
+  });
+
+  const result = await buildBackupPackage({
+    items: [],
+    appState: {
+      savedOutfits: [],
+      fitpics: [
+        {
+          id: "fitpic-ref",
+          fitpicUuid: "fitpic-uuid-ref",
+          name: "Ref only",
+          imageData: "",
+          primaryImageUuid: "fitpic-image-ref",
+          fitpicImages: [
+            {
+              fitpicImageUuid: "fitpic-image-ref",
+              parentFitpicUuid: "fitpic-uuid-ref",
+              order: 0,
+              imageData: "",
+              images: {
+                original: "",
+                display: {
+                  mediaId: "fitpicImage:fitpic-image-ref:display",
+                  mimeType: "image/webp",
+                  fileSize: 13,
+                  width: 1200,
+                  height: 1600
+                },
+                preview: {
+                  mediaId: "fitpicImage:fitpic-image-ref:display",
+                  mimeType: "image/webp",
+                  fileSize: 13,
+                  width: 1200,
+                  height: 1600
+                },
+                thumbnail: ""
+              }
+            }
+          ]
+        }
+      ]
+    }
+  });
+
+  const fitpicWarnings = result.warnings.filter((warning) => warning.entityType === "oaFitpicImage");
+  const [fitpicRecord] = strFromU8(result.files.get(PACKAGE_FITPICS_FILE))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+
+  assert.equal(fitpicWarnings.length, 0);
+  assert.equal(result.files.has(`${PACKAGE_FITPIC_PREVIEWS_DIR}/fitpic-image-ref.webp`), true);
+  assert.equal(
+    fitpicRecord.fitpicImages[0].images.display.packagePath,
+    `${PACKAGE_FITPIC_PREVIEWS_DIR}/fitpic-image-ref.webp`
+  );
+  assert.equal(
+    fitpicRecord.fitpicImages[0].images.preview.packagePath,
+    `${PACKAGE_FITPIC_PREVIEWS_DIR}/fitpic-image-ref.webp`
+  );
+});
+
 test("buildBackupPackage exports saved outfits separately and omits warnings when not needed", async () => {
   const result = await buildBackupPackage({
     items: [],
@@ -618,8 +875,10 @@ test("importBackupPackage restores wardrobe originals display thumbnails and fit
   assert.equal(imported.backup.items[0].images.display.src.startsWith("data:image/webp;base64,"), true);
   assert.equal(imported.backup.items[0].images.thumbnail.src.startsWith("data:image/webp;base64,"), true);
   assert.equal(imported.backup.items[0].itemImages[0].canonicalAsset.images.original.src.startsWith("data:image/webp;base64,"), true);
-  assert.equal(imported.backup.appState.fitpics[0].images.original.startsWith("data:image/webp;base64,"), true);
-  assert.equal(imported.backup.appState.fitpics[0].images.display.startsWith("data:image/webp;base64,"), true);
+  assert.equal(imported.backup.appState.fitpics[0].images.original.mediaId, "fitpicImage:fitpic-image-1:original");
+  assert.equal(imported.backup.appState.fitpics[0].images.display.mediaId, "fitpicImage:fitpic-image-1:display");
+  assert.equal(imported.backup.appState.fitpics[0].fitpicImages[0].images.preview.mediaId, "fitpicImage:fitpic-image-1:display");
+  assert.equal(imported.backup.mediaRecords.length, 3);
   assert.equal(imported.backup.appState.savedOutfits[0].outfitUuid, "outfit-uuid-1");
   assert.equal(imported.warnings.length, 0);
 });

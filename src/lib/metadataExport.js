@@ -112,7 +112,7 @@ export function sanitizeImageReference(value) {
       : value
   );
 
-  if (!normalizedValue || /^data:/i.test(normalizedValue)) {
+  if (!normalizedValue || /^data:/i.test(normalizedValue) || /^blob:/i.test(normalizedValue)) {
     return "";
   }
 
