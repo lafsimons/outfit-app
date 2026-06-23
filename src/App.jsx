@@ -564,6 +564,231 @@ function getManagedItemRenderUrl(item, renderTier = "thumbnail", context = null)
   );
 }
 
+function estimateDataUrlBytes(value = "") {
+  if (typeof value !== "string" || !value.startsWith("data:")) {
+    return 0;
+  }
+
+  const commaIndex = value.indexOf(",");
+  if (commaIndex === -1) {
+    return 0;
+  }
+
+  const metadata = value.slice(0, commaIndex);
+  const payload = value.slice(commaIndex + 1);
+
+  if (!/;base64/i.test(metadata)) {
+    return payload.length;
+  }
+
+  const paddingMatch = payload.match(/=+$/);
+  const paddingLength = paddingMatch ? paddingMatch[0].length : 0;
+  return Math.max(0, Math.floor((payload.length * 3) / 4) - paddingLength);
+}
+
+function estimateVariantBytes(variant) {
+  if (!variant) {
+    return 0;
+  }
+
+  if (typeof variant === "string") {
+    return estimateDataUrlBytes(variant);
+  }
+
+  if (Number.isFinite(variant.fileSize) && variant.fileSize > 0) {
+    return Math.round(variant.fileSize);
+  }
+
+  return estimateDataUrlBytes(variant.src ?? "");
+}
+
+function formatMetricMegabytes(bytes = 0) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function estimateStructuredBytes(value, seen = new WeakSet()) {
+  if (value == null) {
+    return 4;
+  }
+
+  const valueType = typeof value;
+
+  if (valueType === "string") {
+    return value.length;
+  }
+
+  if (valueType === "number" || valueType === "boolean" || valueType === "bigint") {
+    return String(value).length;
+  }
+
+  if (valueType !== "object") {
+    return 0;
+  }
+
+  if (seen.has(value)) {
+    return 0;
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.reduce((sum, entry) => sum + estimateStructuredBytes(entry, seen), 2);
+  }
+
+  return Object.entries(value).reduce(
+    (sum, [key, entry]) => sum + key.length + estimateStructuredBytes(entry, seen),
+    2
+  );
+}
+
+function getSafeJsonLength(value) {
+  try {
+    return JSON.stringify(value ?? {}).length;
+  } catch (error) {
+    return {
+      error: error?.message ?? "unknown",
+      length: null
+    };
+  }
+}
+
+function getHeapMetricsSnapshot() {
+  const usedJsHeapSize = globalThis?.performance?.memory?.usedJSHeapSize;
+  const totalJsHeapSize = globalThis?.performance?.memory?.totalJSHeapSize;
+  const jsHeapSizeLimit = globalThis?.performance?.memory?.jsHeapSizeLimit;
+
+  if (!Number.isFinite(usedJsHeapSize)) {
+    return null;
+  }
+
+  return {
+    usedJsHeapSize,
+    totalJsHeapSize: Number.isFinite(totalJsHeapSize) ? totalJsHeapSize : null,
+    jsHeapSizeLimit: Number.isFinite(jsHeapSizeLimit) ? jsHeapSizeLimit : null
+  };
+}
+
+function collectStartupDiagnostics({
+  items = [],
+  appState = null,
+  hydratedAppState = null
+} = {}) {
+  const safeItems = Array.isArray(items) ? items : [];
+  const safeAppState = appState && typeof appState === "object" ? appState : {};
+  const safeHydratedAppState = hydratedAppState && typeof hydratedAppState === "object" ? hydratedAppState : null;
+  const savedOutfits = Array.isArray((safeHydratedAppState ?? safeAppState)?.savedOutfits)
+    ? (safeHydratedAppState ?? safeAppState).savedOutfits
+    : [];
+  const fitpics = Array.isArray((safeHydratedAppState ?? safeAppState)?.fitpics)
+    ? (safeHydratedAppState ?? safeAppState).fitpics
+    : [];
+  const collectionSet = new Set();
+  const imageMetrics = {
+    originalImageCount: 0,
+    displayImageCount: 0,
+    thumbnailImageCount: 0,
+    estimatedOriginalBytes: 0,
+    estimatedDisplayBytes: 0,
+    estimatedThumbnailBytes: 0
+  };
+
+  const countVariant = (variant, keyPrefix) => {
+    const bytes = estimateVariantBytes(variant);
+    const hasValue = bytes > 0 || (typeof variant?.src === "string" && variant.src.trim()) || (typeof variant === "string" && variant.trim());
+
+    if (!hasValue) {
+      return;
+    }
+
+    imageMetrics[`${keyPrefix}ImageCount`] += 1;
+    imageMetrics[`estimated${keyPrefix[0].toUpperCase()}${keyPrefix.slice(1)}Bytes`] += bytes;
+  };
+
+  let wardrobeImageCount = 0;
+  for (const item of safeItems) {
+    normalizeCollections(item?.collections).forEach((collection) => collectionSet.add(collection));
+    const itemImages = getWardrobeItemImages(item);
+    wardrobeImageCount += itemImages.length;
+
+    for (const itemImage of itemImages) {
+      const assets = [itemImage?.canonicalAsset, ...(Array.isArray(itemImage?.derivedAssets) ? itemImage.derivedAssets : [])];
+
+      for (const asset of assets) {
+        countVariant(asset?.images?.original, "original");
+        countVariant(asset?.images?.display ?? asset?.images?.preview, "display");
+        countVariant(asset?.images?.thumbnail, "thumbnail");
+      }
+    }
+  }
+
+  let fitpicImageCount = 0;
+  for (const fitpic of fitpics) {
+    const fitpicImages = getFitpicImages(fitpic);
+    fitpicImageCount += fitpicImages.length;
+
+    for (const fitpicImage of fitpicImages) {
+      countVariant(fitpicImage?.images?.original, "original");
+      countVariant(fitpicImage?.images?.display ?? fitpicImage?.images?.preview, "display");
+      countVariant(fitpicImage?.images?.thumbnail, "thumbnail");
+    }
+  }
+
+  const serializedAppStateResult = getSafeJsonLength(safeAppState ?? {});
+  const hydratedStateEstimate = estimateStructuredBytes({
+    items: safeItems,
+    appState: safeHydratedAppState ?? safeAppState
+  });
+  const appStateEstimatedBytes = estimateStructuredBytes(safeAppState ?? {});
+  const appStateJsonLength = typeof serializedAppStateResult === "number"
+    ? serializedAppStateResult
+    : "unavailable";
+
+  return {
+    startupMetrics: {
+      wardrobeItemCount: safeItems.length,
+      wardrobeImageCount,
+      fitpicCount: fitpics.length,
+      fitpicImageCount,
+      savedOutfitCount: savedOutfits.length,
+      collectionCount: collectionSet.size
+    },
+    imageMetrics,
+    stateMetrics: {
+      appStateJsonLength,
+      appStateJsonLengthError: typeof serializedAppStateResult === "number" ? "" : serializedAppStateResult.error,
+      appStateEstimatedBytes,
+      appStateEstimatedMegabytes: formatMetricMegabytes(appStateEstimatedBytes),
+      hydratedStateEstimatedBytes: hydratedStateEstimate,
+      hydratedStateEstimatedMegabytes: formatMetricMegabytes(hydratedStateEstimate)
+    },
+    heapMetrics: getHeapMetricsSnapshot()
+  };
+}
+
+function logStartupDiagnosticBlocks(phase, diagnostics, extra = {}) {
+  const heapMetrics = diagnostics?.heapMetrics;
+  const heapLines = heapMetrics
+    ? [
+        `heapUsed=${heapMetrics.usedJsHeapSize}`,
+        `heapUsedMB=${formatMetricMegabytes(heapMetrics.usedJsHeapSize)}`,
+        `heapTotal=${heapMetrics.totalJsHeapSize ?? ""}`,
+        `heapLimit=${heapMetrics.jsHeapSizeLimit ?? ""}`
+      ]
+    : ["heapUsed=unavailable"];
+  const extraEntries = Object.entries(extra).filter(([, value]) => value !== undefined && value !== null && value !== "");
+  const extraLines = extraEntries.map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`);
+
+  console.info(
+    `[STARTUP_METRICS]\nphase=${phase}\n${Object.entries(diagnostics?.startupMetrics ?? {}).map(([key, value]) => `${key}=${value}`).join("\n")}\n${heapLines.join("\n")}\n${extraLines.join("\n")}\n[/STARTUP_METRICS]`
+  );
+  console.info(
+    `[IMAGE_METRICS]\nphase=${phase}\n${Object.entries(diagnostics?.imageMetrics ?? {}).map(([key, value]) => `${key}=${key.endsWith("Bytes") ? `${value} (${formatMetricMegabytes(value)})` : value}`).join("\n")}\n[/IMAGE_METRICS]`
+  );
+  console.info(
+    `[STATE_METRICS]\nphase=${phase}\n${Object.entries(diagnostics?.stateMetrics ?? {}).map(([key, value]) => `${key}=${value}`).join("\n")}\n[/STATE_METRICS]`
+  );
+}
+
 function getCachedImageMetrics(cacheKey, resolvedImageUrl) {
   if (cacheKey && imageMetricsCache.has(cacheKey)) {
     return imageMetricsCache.get(cacheKey);
@@ -2163,6 +2388,8 @@ export default function App() {
   const imageMetricsPrewarmHandleRef = useRef(null);
   const outfitPaletteUpdateHandleRef = useRef(null);
   const skipNextHydrationAppStateSaveRef = useRef(true);
+  const startupFirstRenderLoggedRef = useRef(false);
+  const startupFirstSaveLoggedRef = useRef(false);
   appRenderCountRef.current += 1;
 
   const itemsById = useMemo(
@@ -4184,6 +4411,21 @@ export default function App() {
 
     async function bootstrap() {
       const [storedItems, storedAppState] = await Promise.all([loadItems(), load(), getOrCreateDeviceId()]);
+      logStartupDiagnosticBlocks(
+        "indexeddb-load-complete",
+        collectStartupDiagnostics({
+          items: storedItems,
+          appState: storedAppState
+        }),
+        {
+          codePaths: [
+            "bootstrap:loadItems",
+            "bootstrap:loadAppState",
+            "storage.cloneData:saveAppState queue clone",
+            "startup state still contains inline media payloads in item/image records"
+          ]
+        }
+      );
       const fallbackTimestampBaseMs = Date.now() - Math.max(storedItems.length - 1, 0) * 1000;
       const normalizedItems = storedItems
         .map((item, index) => normalizeStoredItem(item, createFallbackItemTimestamp(fallbackTimestampBaseMs, index)))
@@ -4207,6 +4449,24 @@ export default function App() {
       const effectiveItems = shouldApplyImagePresentationMigration
         ? await Promise.all(styleWeightedItems.map((item) => bakeItemImagePresentation(item)))
         : styleWeightedItems;
+      logStartupDiagnosticBlocks(
+        "migration-complete",
+        collectStartupDiagnostics({
+          items: effectiveItems,
+          appState: storedAppState
+        }),
+        {
+          migratedItemCount: effectiveItems.length,
+          shouldApplyStyleWeightMigration,
+          shouldApplyImagePresentationMigration,
+          codePaths: [
+            "bootstrap:normalizeStoredItem map",
+            "bootstrap:Object.fromEntries(itemsById)",
+            "bootstrap:bakeItemImagePresentation may decode item display assets",
+            "itemModel:mirrorActiveWardrobeImageAssetToLegacyAliases duplicates active asset aliases"
+          ]
+        }
+      );
       const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
@@ -4256,6 +4516,22 @@ export default function App() {
           itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
         });
       }
+      logStartupDiagnosticBlocks(
+        "state-hydration-complete",
+        collectStartupDiagnostics({
+          items: effectiveItems,
+          appState: storedAppState,
+          hydratedAppState
+        }),
+        {
+          migratedItemsPendingSave: migratedItems.length,
+          codePaths: [
+            "normalizeHydratedAppState",
+            "setState payload fan-out across items/appState slices",
+            "hydrated state stringify measurement includes items + appState"
+          ]
+        }
+      );
 
       setItems(effectiveItems);
       setLayering(hydratedAppState.layering);
@@ -4307,6 +4583,51 @@ export default function App() {
   }, [loading]);
 
   useEffect(() => {
+    if (loading || startupFirstRenderLoggedRef.current) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      if (startupFirstRenderLoggedRef.current) {
+        return;
+      }
+
+      startupFirstRenderLoggedRef.current = true;
+      logStartupDiagnosticBlocks(
+        "first-render-complete",
+        collectStartupDiagnostics({
+          items,
+          appState: {
+            savedOutfits,
+            fitpics,
+            wardrobeFilters,
+            wardrobeSort,
+            windowState
+          },
+          hydratedAppState: {
+            savedOutfits,
+            fitpics,
+            wardrobeFilters,
+            wardrobeSort,
+            windowState
+          }
+        }),
+        {
+          codePaths: [
+            "ManagedItemImage thumbnail/display resolution",
+            "useImageMetrics image decode scheduling",
+            "first render requestAnimationFrame checkpoint"
+          ]
+        }
+      );
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [fitpics, items, loading, savedOutfits, wardrobeFilters, wardrobeSort, windowState]);
+
+  useEffect(() => {
     if (loading || !hasHydratedAppState) {
       return;
     }
@@ -4314,6 +4635,50 @@ export default function App() {
     if (skipNextHydrationAppStateSaveRef.current) {
       skipNextHydrationAppStateSaveRef.current = false;
       return;
+    }
+
+    if (!startupFirstSaveLoggedRef.current) {
+      startupFirstSaveLoggedRef.current = true;
+      logStartupDiagnosticBlocks(
+        "first-persistence-save-pass",
+        collectStartupDiagnostics({
+          items,
+          appState: {
+            itemDefaultsMigrationVersion: ITEM_DEFAULTS_MIGRATION_VERSION,
+            imagePresentationMigrationVersion: IMAGE_PRESENTATION_MIGRATION_VERSION,
+            layering,
+            accessoriesEnabled,
+            locked,
+            excluded,
+            outfit,
+            outfitItemUuids,
+            ignoredImportImages,
+            savedOutfits,
+            likedOutfitKeys,
+            outfitAffinity,
+            recentOutfits,
+            generateCount,
+            generationLists,
+            generationMode,
+            outfitFilters,
+            weatherSettings,
+            weatherLocationDraft,
+            weatherData,
+            fitpics,
+            wardrobeFilters,
+            wardrobeSort,
+            savedWardrobeViews,
+            windowState
+          }
+        }),
+        {
+          codePaths: [
+            "saveAppState",
+            "storage.cloneData",
+            "JSON.stringify(appState) measurement before persistence"
+          ]
+        }
+      );
     }
 
     saveAppState({
