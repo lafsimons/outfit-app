@@ -22,7 +22,15 @@ import {
   importBackupPackage,
   validateBackupPackageManifest
 } from "./backupPackageV2.js";
-import { saveMediaRecord } from "./storage.js";
+import { materializeFitpicsForRuntime } from "./fitpicMedia.js";
+import { buildOaAiExportBundle } from "./oaAiExport.js";
+import {
+  listMediaRecordsForOwner,
+  loadAppState,
+  loadItems,
+  replaceWithBackup,
+  saveMediaRecord
+} from "./storage.js";
 
 class FakeIDBRequest {}
 
@@ -150,6 +158,43 @@ class FakeObjectStore {
       return key;
     });
   }
+
+  getAll() {
+    return this.transaction.createRequest(() =>
+      [...this.store.records.values()].map((value) => structuredClone(value))
+    );
+  }
+
+  clear() {
+    return this.transaction.createRequest(() => {
+      this.store.records.clear();
+      return undefined;
+    });
+  }
+
+  delete(key) {
+    return this.transaction.createRequest(() => {
+      this.store.records.delete(key);
+      return undefined;
+    });
+  }
+
+  index(indexName) {
+    const indexDefinition = this.store.indexes.get(indexName);
+
+    if (!indexDefinition) {
+      throw new Error(`Missing index: ${indexName}`);
+    }
+
+    return {
+      getAll: (expectedValue) =>
+        this.transaction.createRequest(() =>
+          [...this.store.records.values()]
+            .filter((record) => record?.[indexDefinition.keyPath] === expectedValue)
+            .map((record) => structuredClone(record))
+        )
+    };
+  }
 }
 
 class FakeIndexedDB {
@@ -203,6 +248,139 @@ test.beforeEach(() => {
   globalThis.indexedDB = new FakeIndexedDB();
   globalThis.IDBRequest = FakeIDBRequest;
 });
+
+async function seedFitpicMediaFixture({
+  fitpicImageUuid = "fitpic-image-restore-1",
+  createdAt = "2026-06-23T12:00:00.000Z"
+} = {}) {
+  await saveMediaRecord({
+    mediaId: `fitpicImage:${fitpicImageUuid}:original`,
+    ownerType: "fitpicImage",
+    ownerId: fitpicImageUuid,
+    variant: "original",
+    blob: new Blob(["original-bytes"], { type: "image/webp" }),
+    mimeType: "image/webp",
+    fileSize: 14,
+    width: 2000,
+    height: 2600,
+    createdAt,
+    updatedAt: createdAt,
+    sourceKind: "test"
+  });
+  await saveMediaRecord({
+    mediaId: `fitpicImage:${fitpicImageUuid}:display`,
+    ownerType: "fitpicImage",
+    ownerId: fitpicImageUuid,
+    variant: "display",
+    blob: new Blob(["display-bytes"], { type: "image/webp" }),
+    mimeType: "image/webp",
+    fileSize: 13,
+    width: 1200,
+    height: 1600,
+    createdAt,
+    updatedAt: createdAt,
+    sourceKind: "test"
+  });
+  await saveMediaRecord({
+    mediaId: `fitpicImage:${fitpicImageUuid}:thumbnail`,
+    ownerType: "fitpicImage",
+    ownerId: fitpicImageUuid,
+    variant: "thumbnail",
+    blob: new Blob(["thumb-bytes"], { type: "image/webp" }),
+    mimeType: "image/webp",
+    fileSize: 11,
+    width: 320,
+    height: 427,
+    createdAt,
+    updatedAt: createdAt,
+    sourceKind: "test"
+  });
+}
+
+function createFitpicRefFixture({
+  fitpicId = "fitpic-restore-1",
+  fitpicUuid = "fitpic-uuid-restore-1",
+  fitpicImageUuid = "fitpic-image-restore-1"
+} = {}) {
+  return {
+    id: fitpicId,
+    fitpicUuid,
+    name: "Restored fitpic",
+    imageData: "",
+    images: {
+      original: {
+        mediaId: `fitpicImage:${fitpicImageUuid}:original`,
+        mimeType: "image/webp",
+        fileSize: 14,
+        width: 2000,
+        height: 2600
+      },
+      display: {
+        mediaId: `fitpicImage:${fitpicImageUuid}:display`,
+        mimeType: "image/webp",
+        fileSize: 13,
+        width: 1200,
+        height: 1600
+      },
+      preview: {
+        mediaId: `fitpicImage:${fitpicImageUuid}:display`,
+        mimeType: "image/webp",
+        fileSize: 13,
+        width: 1200,
+        height: 1600
+      },
+      thumbnail: {
+        mediaId: `fitpicImage:${fitpicImageUuid}:thumbnail`,
+        mimeType: "image/webp",
+        fileSize: 11,
+        width: 320,
+        height: 427
+      }
+    },
+    primaryImageUuid: fitpicImageUuid,
+    fitpicImages: [
+      {
+        fitpicImageUuid,
+        parentFitpicUuid: fitpicUuid,
+        order: 0,
+        imageData: "",
+        images: {
+          original: {
+            mediaId: `fitpicImage:${fitpicImageUuid}:original`,
+            mimeType: "image/webp",
+            fileSize: 14,
+            width: 2000,
+            height: 2600
+          },
+          display: {
+            mediaId: `fitpicImage:${fitpicImageUuid}:display`,
+            mimeType: "image/webp",
+            fileSize: 13,
+            width: 1200,
+            height: 1600
+          },
+          preview: {
+            mediaId: `fitpicImage:${fitpicImageUuid}:display`,
+            mimeType: "image/webp",
+            fileSize: 13,
+            width: 1200,
+            height: 1600
+          },
+          thumbnail: {
+            mediaId: `fitpicImage:${fitpicImageUuid}:thumbnail`,
+            mimeType: "image/webp",
+            fileSize: 11,
+            width: 320,
+            height: 427
+          }
+        },
+        sourceMimeType: "image/webp",
+        sourceOriginalFilename: "restored-fitpic.webp",
+        importedAt: "2026-06-23T12:00:00.000Z"
+      }
+    ]
+  };
+}
 
 test("buildBackupPackageManifest returns the expected manifest", () => {
   const manifest = buildBackupPackageManifest({
@@ -629,6 +807,248 @@ test("buildBackupPackage exports fitpic media-store refs without fitpic warnings
     fitpicRecord.fitpicImages[0].images.preview.packagePath,
     `${PACKAGE_FITPIC_PREVIEWS_DIR}/fitpic-image-ref.webp`
   );
+});
+
+test("Backup v2 restore persistence roundtrip keeps fitpic refs in appState and restores media records", async () => {
+  await seedFitpicMediaFixture();
+
+  const zipResult = await buildBackupPackageZip({
+    items: [
+      {
+        id: "item-restore-1",
+        itemUuid: "item-uuid-restore-1",
+        name: "Restore item",
+        imageUrl: "data:image/png;base64,Zm9v",
+        images: {
+          original: { src: "", mimeType: "image/png" },
+          display: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+          preview: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+          thumbnail: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" }
+        },
+        activeItemImageUuid: "item-image-restore-1",
+        itemImages: [
+          {
+            itemImageUuid: "item-image-restore-1",
+            parentItemUuid: "item-uuid-restore-1",
+            order: 0,
+            canonicalAsset: {
+              assetUuid: "asset-restore-1",
+              kind: "canonical",
+              parentItemImageUuid: "item-image-restore-1",
+              order: 0,
+              imageUrl: "data:image/png;base64,Zm9v",
+              images: {
+                original: { src: "", mimeType: "image/png" },
+                display: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+                preview: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+                thumbnail: { src: "data:image/png;base64,Zm9v", mimeType: "image/png" }
+              }
+            },
+            derivedAssets: [],
+            activeImageAssetUuid: "asset-restore-1"
+          }
+        ]
+      }
+    ],
+    appState: {
+      savedOutfits: [],
+      fitpics: [createFitpicRefFixture()]
+    }
+  });
+
+  const imported = await importBackupPackage({
+    file: zipResult.blob
+  });
+
+  await replaceWithBackup(imported.backup);
+
+  const loadedItems = await loadItems();
+  const persistedAppState = await loadAppState();
+  const fitpicMediaRecords = await listMediaRecordsForOwner("fitpicImage", "fitpic-image-restore-1");
+  const persistedJson = JSON.stringify(persistedAppState);
+
+  assert.equal(loadedItems.length, 1);
+  assert.equal(persistedAppState.fitpics.length, 1);
+  assert.equal(persistedAppState.fitpics[0].imageData, "");
+  assert.equal(persistedAppState.fitpics[0].images.display.mediaId, "fitpicImage:fitpic-image-restore-1:display");
+  assert.equal(persistedAppState.fitpics[0].fitpicImages[0].imageData, "");
+  assert.equal(persistedAppState.fitpics[0].fitpicImages[0].images.preview.mediaId, "fitpicImage:fitpic-image-restore-1:display");
+  assert.equal(fitpicMediaRecords.length, 3);
+  assert.equal(persistedJson.includes("data:image/"), false);
+});
+
+test("runtime rematerialization after Backup v2 restore resolves fitpic media store sources without repersisting inline payloads", async () => {
+  await seedFitpicMediaFixture();
+
+  const zipResult = await buildBackupPackageZip({
+    items: [],
+    appState: {
+      savedOutfits: [],
+      fitpics: [createFitpicRefFixture()]
+    }
+  });
+
+  const imported = await importBackupPackage({
+    file: zipResult.blob
+  });
+
+  await replaceWithBackup(imported.backup);
+
+  const persistedAppState = await loadAppState();
+  const runtimeFitpics = await materializeFitpicsForRuntime(persistedAppState.fitpics);
+  const persistedJsonAfterMaterialize = JSON.stringify(await loadAppState());
+
+  assert.equal(runtimeFitpics.length, 1);
+  assert.equal(runtimeFitpics[0].fitpicImages[0].imageData.startsWith("blob:"), true);
+  assert.equal(runtimeFitpics[0].imageData.startsWith("blob:"), true);
+  assert.equal(persistedJsonAfterMaterialize.includes("data:image/"), false);
+  assert.equal((await loadAppState()).fitpics[0].imageData, "");
+});
+
+test("OA AI export completes after Backup v2 restore and fitpic rematerialization", async () => {
+  await seedFitpicMediaFixture();
+
+  const zipResult = await buildBackupPackageZip({
+    items: [],
+    appState: {
+      savedOutfits: [],
+      fitpics: [createFitpicRefFixture()]
+    }
+  });
+
+  const imported = await importBackupPackage({
+    file: zipResult.blob
+  });
+
+  await replaceWithBackup(imported.backup);
+
+  const persistedAppState = await loadAppState();
+  const runtimeFitpics = await materializeFitpicsForRuntime(persistedAppState.fitpics);
+  const bundle = await buildOaAiExportBundle({
+    items: [],
+    savedOutfits: [],
+    fitpics: runtimeFitpics,
+    options: {
+      includeCurrentWardrobe: false,
+      includeAcquisitionPipeline: false,
+      includeFitpics: true,
+      includeSavedOutfits: false,
+      excludeCollectionsFromCurrentWardrobe: true,
+      excludedCollections: [],
+      collectionExports: [],
+      statusExports: [],
+      statusExportMode: "separate"
+    },
+    renderWardrobePng: async ({ fileName }) => ({
+      fileName,
+      mimeType: "image/webp",
+      blob: new Blob([`image:${fileName}`], { type: "image/webp" }),
+      report: {
+        fileName,
+        format: "webp",
+        sizeBytes: 20,
+        pixelWidth: 100,
+        pixelHeight: 100
+      }
+    }),
+    renderFitpicPng: async ({ fileName }) => ({
+      fileName,
+      blob: new Blob([`fitpic:${fileName}`], { type: "image/webp" }),
+      report: {
+        fileName,
+        sizeBytes: 18,
+        targetBytes: 30,
+        budgetExceeded: false
+      }
+    })
+  });
+  const files = unzipSync(new Uint8Array(await bundle.blob.arrayBuffer()));
+
+  assert.equal(files["fitpics/fitpics.csv"] !== undefined, true);
+  assert.equal(files["fitpics/fitpics-compact.webp"] !== undefined, true);
+  assert.equal(files["fitpics/fitpics-details.webp"] !== undefined, true);
+});
+
+test("warning isolation keeps only the known wardrobe warning when fitpic media refs are valid", async () => {
+  await seedFitpicMediaFixture();
+
+  const result = await buildBackupPackage({
+    items: [
+      {
+        id: "item-missing",
+        itemUuid: "item-uuid-missing",
+        imageUrl: "",
+        images: {
+          preview: { src: "", mimeType: "image/png" },
+          thumbnail: { src: "", mimeType: "image/png" },
+          original: { src: "", mimeType: "image/png" }
+        },
+        itemImages: [
+          {
+            itemImageUuid: "item-image-missing",
+            parentItemUuid: "item-uuid-missing",
+            order: 0,
+            canonicalAsset: {
+              assetUuid: "asset-missing",
+              kind: "canonical",
+              parentItemImageUuid: "item-image-missing",
+              order: 0,
+              imageUrl: "",
+              images: {
+                preview: { src: "", mimeType: "image/png" },
+                thumbnail: { src: "", mimeType: "image/png" },
+                original: { src: "", mimeType: "image/png" }
+              }
+            },
+            derivedAssets: [],
+            activeImageAssetUuid: "asset-missing"
+          }
+        ]
+      }
+    ],
+    appState: {
+      savedOutfits: [],
+      fitpics: [createFitpicRefFixture()]
+    }
+  });
+
+  assert.equal(result.warningCount, 1);
+  assert.equal(result.warnings[0].entityType, "oaWardrobeAsset");
+  assert.equal(result.warnings.some((warning) => warning.entityType === "oaFitpicImage"), false);
+
+  const imported = await importBackupPackage({
+    file: new Blob([zipSync(Object.fromEntries(result.files.entries()))], { type: "application/zip" })
+  });
+
+  assert.equal(imported.warnings.length, 0);
+  assert.equal(imported.backup.mediaRecords.length, 3);
+});
+
+test("persisted appState stays small and fitpic ref-only after Backup v2 restore", async () => {
+  await seedFitpicMediaFixture();
+
+  const zipResult = await buildBackupPackageZip({
+    items: [],
+    appState: {
+      savedOutfits: [],
+      fitpics: [createFitpicRefFixture()]
+    }
+  });
+
+  const imported = await importBackupPackage({
+    file: zipResult.blob
+  });
+
+  await replaceWithBackup(imported.backup);
+
+  const persistedAppState = await loadAppState();
+  const persistedJson = JSON.stringify(persistedAppState);
+
+  assert.equal(persistedJson.length < 10_000, true);
+  assert.equal(persistedJson.includes("data:image/"), false);
+  assert.equal(persistedAppState.fitpics[0].imageData, "");
+  assert.equal(typeof persistedAppState.fitpics[0].images.display.src, "undefined");
+  assert.equal(typeof persistedAppState.fitpics[0].fitpicImages[0].images.preview.src, "undefined");
 });
 
 test("buildBackupPackage exports saved outfits separately and omits warnings when not needed", async () => {
