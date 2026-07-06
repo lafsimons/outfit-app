@@ -11782,7 +11782,7 @@ export default function App() {
                         Manage
                       </button>
                       <div
-                        className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`}
+                        className={`wardrobe-manage-window wardrobe-manage-window-wardrobe ${wardrobeManageOpen ? "is-open" : ""}`}
                         aria-label="Wardrobe management"
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => event.stopPropagation()}
