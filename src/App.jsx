@@ -79,6 +79,7 @@ import {
   buildDisplayName,
   getActiveWardrobeItemImageRenderSrc,
   getActiveWardrobeItemImageAsset,
+  createDuplicateItemUuid,
   createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
@@ -108,7 +109,9 @@ import {
   normalizeItem,
   normalizeItemColor,
   normalizeItemUuid,
-  normalizeTimestamp
+  normalizeTimestamp,
+  auditDuplicateItemUuids,
+  resolveDuplicateItemUuids
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
@@ -4307,6 +4310,7 @@ export default function App() {
       const effectiveItems = shouldApplyImagePresentationMigration
         ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
         : thumbnailMigratedItems;
+      const deduplicatedItems = resolveDuplicateItemUuids(effectiveItems).items;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
@@ -4330,13 +4334,25 @@ export default function App() {
           (shouldApplyStyleWeightMigration &&
             itemNeedsStyleWeightMappingMigration(storedItems[index], item, areEditorValuesEqual))
       );
+      const duplicateResolvedItems = deduplicatedItems.filter(
+        (item, index) => item.itemUuid !== effectiveItems[index]?.itemUuid
+      );
 
       if (cancelled) {
         return;
       }
 
-      if (migratedItems.length) {
-        await Promise.all(migratedItems.map((item) => saveItem(item)));
+      if (migratedItems.length || duplicateResolvedItems.length) {
+        const itemsToPersist = new Map();
+
+        migratedItems.forEach((item) => {
+          itemsToPersist.set(item.id, item);
+        });
+        duplicateResolvedItems.forEach((item) => {
+          itemsToPersist.set(item.id, item);
+        });
+
+        await Promise.all([...itemsToPersist.values()].map((item) => saveItem(item)));
       }
 
       let hydratedAppState;
@@ -4344,23 +4360,23 @@ export default function App() {
         hydratedAppState = normalizeHydratedAppState(fitpicMediaPreparedAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
-          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
+          itemsById: Object.fromEntries(deduplicatedItems.map((item) => [item.id, item]))
         });
       } else {
         const defaultData = getDefaultData();
         const defaultState = defaultData.appState;
-        const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
+        const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(deduplicatedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
         hydratedAppState = normalizeHydratedAppState(defaultState, {
           fallbackOutfit,
           normalizeWeatherSettings,
-          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
+          itemsById: Object.fromEntries(deduplicatedItems.map((item) => [item.id, item]))
         });
       }
       hydratedAppState = {
         ...hydratedAppState,
         fitpics: await materializeFitpicsForRuntime(hydratedAppState.fitpics)
       };
-      setItems(effectiveItems);
+      setItems(deduplicatedItems);
       setLayering(hydratedAppState.layering);
       setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
       setLocked(hydratedAppState.locked);
@@ -4401,6 +4417,27 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const duplicateGroups = auditDuplicateItemUuids(items);
+
+    if (!duplicateGroups.length || typeof console === "undefined" || typeof console.warn !== "function") {
+      return;
+    }
+
+    const duplicateSummary = duplicateGroups
+      .map((group) => {
+        const itemIds = group.entries.map(({ item }) => item?.id || "(missing-id)").join(", ");
+        return `${group.itemUuid}: ${itemIds}`;
+      })
+      .join(" | ");
+
+    console.warn(`[wardrobe] Duplicate itemUuid detected: ${duplicateSummary}`);
+  }, [items]);
 
   useEffect(() => {
     if (loading) {
@@ -6811,7 +6848,7 @@ export default function App() {
     const timestamp = new Date().toISOString();
     const nextItem = {
       ...normalizedDraft,
-      itemUuid: normalizeItemUuid(draft.itemUuid, createItemUuid),
+      itemUuid: duplicate ? createDuplicateItemUuid(draft.itemUuid, createItemUuid) : normalizeItemUuid(draft.itemUuid, createItemUuid),
       importedAt: normalizeTimestamp(draft.importedAt) || normalizeTimestamp(draft.createdAt) || timestamp,
       createdAt:
         duplicate || editingId === "new"

@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  auditDuplicateItemUuids,
+  createDuplicateItemUuid,
   createUniqueItemId,
   getActiveWardrobeItemImage,
   getActiveWardrobeItemImageAsset,
@@ -15,7 +17,8 @@ import {
   itemNeedsItemUuidMigration,
   mirrorActiveWardrobeImageAssetToLegacyAliases,
   normalizeCollections,
-  normalizeItem
+  normalizeItem,
+  resolveDuplicateItemUuids
 } from "./itemModel.js";
 
 const baseEmptyForm = {
@@ -636,6 +639,58 @@ test("itemUuid migration detection stays false when normalization keeps the exis
   });
 
   assert.equal(itemNeedsItemUuidMigration(originalItem, normalized), false);
+});
+
+test("auditDuplicateItemUuids reports duplicate groups and preserves the oldest entry", () => {
+  const duplicateGroups = auditDuplicateItemUuids([
+    { id: "item-2", itemUuid: "shared-uuid", createdAt: "2024-01-02T00:00:00.000Z" },
+    { id: "item-1", itemUuid: "shared-uuid", createdAt: "2024-01-01T00:00:00.000Z" },
+    { id: "item-3", itemUuid: "unique-uuid", createdAt: "2024-01-03T00:00:00.000Z" }
+  ]);
+
+  assert.equal(duplicateGroups.length, 1);
+  assert.equal(duplicateGroups[0].itemUuid, "shared-uuid");
+  assert.equal(duplicateGroups[0].preservedEntry.item.id, "item-1");
+  assert.deepEqual(
+    duplicateGroups[0].duplicateEntries.map(({ item }) => item.id),
+    ["item-2"]
+  );
+});
+
+test("resolveDuplicateItemUuids preserves the original UUID and regenerates later duplicates", () => {
+  const resolved = resolveDuplicateItemUuids(
+    [
+      { id: "item-2", itemUuid: "shared-uuid", createdAt: "2024-01-02T00:00:00.000Z" },
+      { id: "item-1", itemUuid: "shared-uuid", createdAt: "2024-01-01T00:00:00.000Z" },
+      { id: "item-3", itemUuid: "unique-uuid", createdAt: "2024-01-03T00:00:00.000Z" }
+    ],
+    {
+      createItemUuid: (() => {
+        const generated = ["shared-uuid", "replacement-uuid"];
+        return () => generated.shift() ?? "replacement-fallback";
+      })()
+    }
+  );
+
+  assert.equal(resolved.items[1].itemUuid, "shared-uuid");
+  assert.equal(resolved.items[0].itemUuid, "replacement-uuid");
+  assert.equal(resolved.items[2].itemUuid, "unique-uuid");
+  assert.equal(resolved.changedItems.length, 1);
+  assert.equal(resolved.changedItems[0].previousItemUuid, "shared-uuid");
+});
+
+test("createDuplicateItemUuid always generates a new UUID without mutating the original", () => {
+  const originalItemUuid = "stable-item-uuid";
+  const duplicateItemUuid = createDuplicateItemUuid(
+    originalItemUuid,
+    (() => {
+      const generated = ["stable-item-uuid", "duplicated-item-uuid"];
+      return () => generated.shift() ?? "duplicate-fallback-uuid";
+    })()
+  );
+
+  assert.equal(originalItemUuid, "stable-item-uuid");
+  assert.equal(duplicateItemUuid, "duplicated-item-uuid");
 });
 
 test("import metadata migration detection catches importedAt backfill for existing items", () => {
