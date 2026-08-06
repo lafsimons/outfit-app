@@ -6158,6 +6158,8 @@ label.ghost-button[aria-disabled="true"] {
   .wardrobe-card {
     padding: 4px;
     gap: 4px;
+    content-visibility: auto;
+    contain-intrinsic-size: 132px;
   }
 
   .wardrobe-preview {

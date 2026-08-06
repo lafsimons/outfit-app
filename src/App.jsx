@@ -1190,7 +1190,7 @@ function getManagedImagePlaceholderAspect(perfSlot, item) {
   return 0.82;
 }
 
-const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
+const ManagedItemPresentationImage = memo(function ManagedItemPresentationImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
     ? {
@@ -1276,23 +1276,6 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
     };
   }, [activeImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
 
-  if (!usePresentation && !activeImageUrl) {
-    return null;
-  }
-
-  if (!usePresentation) {
-    return (
-      <img
-        ref={imageRef}
-        src={activeImageUrl}
-        alt={alt}
-        decoding="async"
-        className={`managed-image managed-image-plain ${className}`.trim()}
-        data-item-id={dataItemId || item?.id || ""}
-      />
-    );
-  }
-
   if (!activeImageUrl) {
     return (
       <span
@@ -1322,9 +1305,62 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
           src={activeImageUrl}
           alt={alt}
           decoding="async"
+          loading="lazy"
+          fetchPriority="low"
           className="managed-image-content"
         />
       </span>
+  );
+}, (previousProps, nextProps) => (
+  previousProps.item === nextProps.item
+  && previousProps.alt === nextProps.alt
+  && previousProps.className === nextProps.className
+  && previousProps.frameRef === nextProps.frameRef
+  && previousProps.imageRef === nextProps.imageRef
+  && previousProps.dataItemId === nextProps.dataItemId
+  && previousProps.useFrameScale === nextProps.useFrameScale
+  && previousProps.normalizeToFrameScale === nextProps.normalizeToFrameScale
+  && previousProps.useCrop === nextProps.useCrop
+  && previousProps.perfSlot === nextProps.perfSlot
+  && previousProps.renderTier === nextProps.renderTier
+));
+
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
+  const imageUrl = getManagedItemRenderUrl(item, renderTier);
+
+  if (!usePresentation) {
+    if (!imageUrl) {
+      return null;
+    }
+
+    return (
+      <img
+        ref={imageRef}
+        src={imageUrl}
+        alt={alt}
+        decoding="async"
+        loading="lazy"
+        fetchPriority="low"
+        className={`managed-image managed-image-plain ${className}`.trim()}
+        data-item-id={dataItemId || item?.id || ""}
+      />
+    );
+  }
+
+  return (
+    <ManagedItemPresentationImage
+      item={item}
+      alt={alt}
+      className={className}
+      frameRef={frameRef}
+      imageRef={imageRef}
+      dataItemId={dataItemId}
+      useFrameScale={useFrameScale}
+      normalizeToFrameScale={normalizeToFrameScale}
+      useCrop={useCrop}
+      perfSlot={perfSlot}
+      renderTier={renderTier}
+    />
   );
 }, (previousProps, nextProps) => (
   previousProps.item === nextProps.item
