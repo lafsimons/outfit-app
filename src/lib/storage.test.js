@@ -1013,7 +1013,7 @@ test("library CSV export includes status and collections for all stored items", 
   assert.equal(rows.length, 4);
   assert.equal(
     rows[0],
-    "id,itemUuid,name,brand,garment,type,color,status,favorite,size,weight,quantity,collections,styleTags,climateTags,description,createdAt,updatedAt,imageFilename,imageWidth,imageHeight"
+    "id,itemUuid,name,brand,garment,layerType,accessorySlot,type,color,status,list,favorite,size,weight,quantity,paid,worth,collections,styleTags,climateTags,description,importedAt,sourceOriginalFilename,sourceFileSize,sourceImageWidth,sourceImageHeight,sourceLastModified,importSource,sourceNamespace,sourceRelativePath,relinkStatus,sourceFileExtension,sourceMimeType,sourceAspectRatio,sourceOrientation,sourceCapturedAt,sourceOriginalCreatedAt,sourceCameraMake,sourceCameraModel,sourceLensModel,originalPreserved,archivalOriginalPreserved,createdAt,updatedAt,imageFilename,imageWidth,imageHeight"
   );
   assert.equal(rows.some((row) => row.includes("Wardrobe item") && row.includes(",Wardrobe,true,")), true);
   assert.equal(rows.some((row) => row.includes("Wardrobe item") && row.includes(",Travel,")), true);

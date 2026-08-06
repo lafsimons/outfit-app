@@ -260,6 +260,48 @@ test("prepareBackupImport preserves explicit wardrobe item images and active ass
   assert.equal(prepared.backup.items[0].images.preview.src, "data:image/png;base64,derived");
 });
 
+test("prepareBackupImport resolves duplicate itemUuids while preserving the oldest item UUID", async () => {
+  const prepared = await prepare({
+    source: "outfit-app",
+    version: 1,
+    items: [
+      {
+        id: "later_duplicate",
+        itemUuid: "shared-item-uuid",
+        imageUrl: "data:image/png;base64,later",
+        createdAt: "2024-01-02T00:00:00.000Z"
+      },
+      {
+        id: "older_original",
+        itemUuid: "shared-item-uuid",
+        imageUrl: "data:image/png;base64,older",
+        createdAt: "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    appState: {}
+  }, {
+    normalizeStoredItem: (item, fallbackCreatedAt) =>
+      normalizeItem(item, {
+        fallbackCreatedAt,
+        emptyForm,
+        resolveImageUrl: (value) => value ?? "",
+        normalizeImageFrameScale,
+        normalizeImageScale,
+        normalizeImageOffset,
+        getNormalizedImageCrop,
+        createItemUuid: (() => {
+          const generated = ["shared-item-uuid", "replacement-item-uuid"];
+          return () => generated.shift() ?? "replacement-fallback-uuid";
+        })()
+      })
+  });
+
+  assert.equal(prepared.backup.items[1].itemUuid, "shared-item-uuid");
+  assert.notEqual(prepared.backup.items[0].itemUuid, "shared-item-uuid");
+  assert.equal(prepared.items[1].itemUuid, "shared-item-uuid");
+  assert.equal(prepared.items[0].itemUuid, prepared.backup.items[0].itemUuid);
+});
+
 test("prepareBackupImport preserves unknown future list values from backups", async () => {
   const prepared = await prepare({
     source: "outfit-app",

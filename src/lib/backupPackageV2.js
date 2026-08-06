@@ -1,4 +1,13 @@
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import {
+  buildWarningReport as buildGenericWarningReport,
+  getExtensionFromDataUrl,
+  getExtensionFromFilename,
+  getExtensionFromMimeType,
+  normalizeCount,
+  sanitizeFileSegment,
+  serializeNdjsonRecord
+} from "hub-core/backup";
 import { BACKUP_SOURCE, BACKUP_VERSION } from "./appIdentity.js";
 import { getActiveWardrobeItemImageAsset, getWardrobeItemImages } from "./itemModel.js";
 import { getFitpicImages, getPrimaryFitpicImage } from "./fitpics.js";
@@ -20,26 +29,12 @@ export const PACKAGE_WARDROBE_PREVIEWS_DIR = "media/wardrobe-previews";
 export const PACKAGE_FITPIC_PREVIEWS_DIR = "media/fitpic-previews";
 export const PACKAGE_WARNINGS_FILE = "export-warnings.json";
 
-const MIME_EXTENSION_MAP = {
-  "image/avif": ".avif",
-  "image/gif": ".gif",
-  "image/jpeg": ".jpg",
-  "image/jpg": ".jpg",
-  "image/png": ".png",
-  "image/webp": ".webp"
-};
-
 function cloneValue(value) {
   if (typeof globalThis.structuredClone === "function") {
     return globalThis.structuredClone(value);
   }
 
   return JSON.parse(JSON.stringify(value));
-}
-
-function normalizeCount(value) {
-  const numericValue = Number(value);
-  return Number.isFinite(numericValue) && numericValue >= 0 ? Math.round(numericValue) : 0;
 }
 
 function normalizeText(value) {
@@ -75,49 +70,6 @@ function createExportWarning({
 
 function createJsonText(value) {
   return JSON.stringify(value, null, 2);
-}
-
-function serializeNdjsonRecord(record) {
-  return `${JSON.stringify(record)}\n`;
-}
-
-function sanitizeFileSegment(value, fallback = "asset") {
-  const normalized = typeof value === "string" ? value.normalize("NFKD") : "";
-  const ascii = normalized.replace(/[^\x00-\x7F]/g, "");
-  const safe = ascii
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/^\.+|\.+$/g, "")
-    .replace(/\.{2,}/g, ".")
-    .replace(/-{2,}/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return safe || fallback;
-}
-
-function getExtensionFromMimeType(mimeType = "") {
-  return MIME_EXTENSION_MAP[normalizeText(mimeType).toLowerCase()] ?? "";
-}
-
-function getExtensionFromFilename(filename = "") {
-  const normalized = normalizeText(filename).toLowerCase();
-
-  if (!normalized.includes(".")) {
-    return "";
-  }
-
-  const extension = normalized.slice(normalized.lastIndexOf("."));
-  return /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : "";
-}
-
-function getExtensionFromDataUrl(dataUrl = "") {
-  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
-    return "";
-  }
-
-  const mimeType = dataUrl.match(/^data:([^;,]+)/i)?.[1] ?? "";
-  return getExtensionFromMimeType(mimeType);
 }
 
 function ensureImageVariantRecord(value, fallbackSrc = "") {
@@ -252,17 +204,12 @@ function buildWarningReport({
   exportedAt = new Date().toISOString(),
   warnings = []
 } = {}) {
-  const normalizedWarnings = Array.isArray(warnings)
-    ? warnings.filter((warning) => warning && typeof warning === "object")
-    : [];
-
-  return {
+  return buildGenericWarningReport({
     source: PACKAGE_SOURCE,
     version: PACKAGE_VERSION,
     exportedAt,
-    warningCount: normalizedWarnings.length,
-    warnings: normalizedWarnings
-  };
+    warnings
+  });
 }
 
 export function findEmbeddedDataImagePaths(value, path = "") {

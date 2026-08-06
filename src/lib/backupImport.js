@@ -1,3 +1,5 @@
+import { resolveDuplicateItemUuids } from "./itemModel.js";
+
 async function mapSequential(values, mapper) {
   const list = Array.isArray(values) ? values : [];
   const results = [];
@@ -65,9 +67,10 @@ export async function prepareBackupImport(
   const effectiveItems = shouldApplyImagePresentationMigration
     ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
     : thumbnailMigratedItems;
+  const deduplicatedItems = resolveDuplicateItemUuids(effectiveItems).items;
 
   const fallbackOutfit = effectiveImportAppState?.outfit ?? buildNextOutfit(
-    effectiveItems,
+    deduplicatedItems,
     {},
     {},
     false,
@@ -83,7 +86,7 @@ export async function prepareBackupImport(
   const hydratedAppState = normalizeHydratedAppState(effectiveImportAppState, {
     fallbackOutfit,
     normalizeWeatherSettings,
-    itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
+    itemsById: Object.fromEntries(deduplicatedItems.map((item) => [item.id, item]))
   });
 
   const loadedAppState = {
@@ -94,7 +97,7 @@ export async function prepareBackupImport(
   return {
     backup: {
       ...backup,
-      items: effectiveItems,
+      items: deduplicatedItems,
       appState: {
         itemDefaultsMigrationVersion: migrationVersions.itemDefaults,
         imagePresentationMigrationVersion: migrationVersions.imagePresentation,
@@ -126,7 +129,7 @@ export async function prepareBackupImport(
         savedWardrobeViews: loadedAppState.savedWardrobeViews
       }
     },
-    items: effectiveItems,
+    items: deduplicatedItems,
     appState: loadedAppState
   };
 }

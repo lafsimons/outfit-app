@@ -79,6 +79,7 @@ import {
   buildDisplayName,
   getActiveWardrobeItemImageRenderSrc,
   getActiveWardrobeItemImageAsset,
+  createDuplicateItemUuid,
   createItemUuid,
   createFallbackItemTimestamp,
   createUniqueItemId,
@@ -108,7 +109,9 @@ import {
   normalizeItem,
   normalizeItemColor,
   normalizeItemUuid,
-  normalizeTimestamp
+  normalizeTimestamp,
+  auditDuplicateItemUuids,
+  resolveDuplicateItemUuids
 } from "./lib/itemModel";
 import { readImageFileMetadata } from "./lib/importMetadata";
 import {
@@ -1187,7 +1190,7 @@ function getManagedImagePlaceholderAspect(perfSlot, item) {
   return 0.82;
 }
 
-const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
+const ManagedItemPresentationImage = memo(function ManagedItemPresentationImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
   const perfInteractionId = perfSlot ? getOaGenerationPerfState()?.activeBySlot?.[perfSlot] ?? null : null;
   const perfContext = perfSlot
     ? {
@@ -1273,23 +1276,6 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
     };
   }, [activeImageUrl, perfInteractionId, perfSlot, targetImageUrl]);
 
-  if (!usePresentation && !activeImageUrl) {
-    return null;
-  }
-
-  if (!usePresentation) {
-    return (
-      <img
-        ref={imageRef}
-        src={activeImageUrl}
-        alt={alt}
-        decoding="async"
-        className={`managed-image managed-image-plain ${className}`.trim()}
-        data-item-id={dataItemId || item?.id || ""}
-      />
-    );
-  }
-
   if (!activeImageUrl) {
     return (
       <span
@@ -1319,9 +1305,62 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
           src={activeImageUrl}
           alt={alt}
           decoding="async"
+          loading="lazy"
+          fetchPriority="low"
           className="managed-image-content"
         />
       </span>
+  );
+}, (previousProps, nextProps) => (
+  previousProps.item === nextProps.item
+  && previousProps.alt === nextProps.alt
+  && previousProps.className === nextProps.className
+  && previousProps.frameRef === nextProps.frameRef
+  && previousProps.imageRef === nextProps.imageRef
+  && previousProps.dataItemId === nextProps.dataItemId
+  && previousProps.useFrameScale === nextProps.useFrameScale
+  && previousProps.normalizeToFrameScale === nextProps.normalizeToFrameScale
+  && previousProps.useCrop === nextProps.useCrop
+  && previousProps.perfSlot === nextProps.perfSlot
+  && previousProps.renderTier === nextProps.renderTier
+));
+
+const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", className = "", frameRef = null, imageRef = null, dataItemId = "", useFrameScale = false, normalizeToFrameScale = false, useCrop = false, usePresentation = false, perfSlot = null, renderTier = "thumbnail" }) {
+  const imageUrl = getManagedItemRenderUrl(item, renderTier);
+
+  if (!usePresentation) {
+    if (!imageUrl) {
+      return null;
+    }
+
+    return (
+      <img
+        ref={imageRef}
+        src={imageUrl}
+        alt={alt}
+        decoding="async"
+        loading="lazy"
+        fetchPriority="low"
+        className={`managed-image managed-image-plain ${className}`.trim()}
+        data-item-id={dataItemId || item?.id || ""}
+      />
+    );
+  }
+
+  return (
+    <ManagedItemPresentationImage
+      item={item}
+      alt={alt}
+      className={className}
+      frameRef={frameRef}
+      imageRef={imageRef}
+      dataItemId={dataItemId}
+      useFrameScale={useFrameScale}
+      normalizeToFrameScale={normalizeToFrameScale}
+      useCrop={useCrop}
+      perfSlot={perfSlot}
+      renderTier={renderTier}
+    />
   );
 }, (previousProps, nextProps) => (
   previousProps.item === nextProps.item
@@ -4307,6 +4346,7 @@ export default function App() {
       const effectiveItems = shouldApplyImagePresentationMigration
         ? await Promise.all(thumbnailMigratedItems.map((item) => bakeItemImagePresentation(item)))
         : thumbnailMigratedItems;
+      const deduplicatedItems = resolveDuplicateItemUuids(effectiveItems).items;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
           itemNeedsRetailMigration(storedItems[index], item) ||
@@ -4330,13 +4370,25 @@ export default function App() {
           (shouldApplyStyleWeightMigration &&
             itemNeedsStyleWeightMappingMigration(storedItems[index], item, areEditorValuesEqual))
       );
+      const duplicateResolvedItems = deduplicatedItems.filter(
+        (item, index) => item.itemUuid !== effectiveItems[index]?.itemUuid
+      );
 
       if (cancelled) {
         return;
       }
 
-      if (migratedItems.length) {
-        await Promise.all(migratedItems.map((item) => saveItem(item)));
+      if (migratedItems.length || duplicateResolvedItems.length) {
+        const itemsToPersist = new Map();
+
+        migratedItems.forEach((item) => {
+          itemsToPersist.set(item.id, item);
+        });
+        duplicateResolvedItems.forEach((item) => {
+          itemsToPersist.set(item.id, item);
+        });
+
+        await Promise.all([...itemsToPersist.values()].map((item) => saveItem(item)));
       }
 
       let hydratedAppState;
@@ -4344,23 +4396,23 @@ export default function App() {
         hydratedAppState = normalizeHydratedAppState(fitpicMediaPreparedAppState, {
           fallbackOutfit: {},
           normalizeWeatherSettings,
-          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
+          itemsById: Object.fromEntries(deduplicatedItems.map((item) => [item.id, item]))
         });
       } else {
         const defaultData = getDefaultData();
         const defaultState = defaultData.appState;
-        const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(effectiveItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
+        const fallbackOutfit = defaultState.outfit ?? buildNextOutfit(deduplicatedItems, {}, {}, false, {}, defaultGenerationLists, emptyOutfitFilters, null, defaultGenerationMode, normalizeOutfitAffinity(defaultState.outfitAffinity), normalizeRecentOutfits(defaultState.recentOutfits));
         hydratedAppState = normalizeHydratedAppState(defaultState, {
           fallbackOutfit,
           normalizeWeatherSettings,
-          itemsById: Object.fromEntries(effectiveItems.map((item) => [item.id, item]))
+          itemsById: Object.fromEntries(deduplicatedItems.map((item) => [item.id, item]))
         });
       }
       hydratedAppState = {
         ...hydratedAppState,
         fitpics: await materializeFitpicsForRuntime(hydratedAppState.fitpics)
       };
-      setItems(effectiveItems);
+      setItems(deduplicatedItems);
       setLayering(hydratedAppState.layering);
       setAccessoriesEnabled(hydratedAppState.accessoriesEnabled);
       setLocked(hydratedAppState.locked);
@@ -4401,6 +4453,27 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const duplicateGroups = auditDuplicateItemUuids(items);
+
+    if (!duplicateGroups.length || typeof console === "undefined" || typeof console.warn !== "function") {
+      return;
+    }
+
+    const duplicateSummary = duplicateGroups
+      .map((group) => {
+        const itemIds = group.entries.map(({ item }) => item?.id || "(missing-id)").join(", ");
+        return `${group.itemUuid}: ${itemIds}`;
+      })
+      .join(" | ");
+
+    console.warn(`[wardrobe] Duplicate itemUuid detected: ${duplicateSummary}`);
+  }, [items]);
 
   useEffect(() => {
     if (loading) {
@@ -6811,7 +6884,7 @@ export default function App() {
     const timestamp = new Date().toISOString();
     const nextItem = {
       ...normalizedDraft,
-      itemUuid: normalizeItemUuid(draft.itemUuid, createItemUuid),
+      itemUuid: duplicate ? createDuplicateItemUuid(draft.itemUuid, createItemUuid) : normalizeItemUuid(draft.itemUuid, createItemUuid),
       importedAt: normalizeTimestamp(draft.importedAt) || normalizeTimestamp(draft.createdAt) || timestamp,
       createdAt:
         duplicate || editingId === "new"
@@ -11782,7 +11855,7 @@ export default function App() {
                         Manage
                       </button>
                       <div
-                        className={`wardrobe-manage-window ${wardrobeManageOpen ? "is-open" : ""}`}
+                        className={`wardrobe-manage-window wardrobe-manage-window-wardrobe ${wardrobeManageOpen ? "is-open" : ""}`}
                         aria-label="Wardrobe management"
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => event.stopPropagation()}

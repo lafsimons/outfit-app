@@ -313,6 +313,125 @@ export function normalizeItemUuid(value, createUuid = createItemUuid) {
   return createUuid();
 }
 
+function compareDuplicateItemCandidates(left, right) {
+  const leftCreatedAt = Date.parse(left?.item?.createdAt ?? "");
+  const rightCreatedAt = Date.parse(right?.item?.createdAt ?? "");
+  const leftHasCreatedAt = Number.isFinite(leftCreatedAt);
+  const rightHasCreatedAt = Number.isFinite(rightCreatedAt);
+
+  if (leftHasCreatedAt && rightHasCreatedAt && leftCreatedAt !== rightCreatedAt) {
+    return leftCreatedAt - rightCreatedAt;
+  }
+
+  if (leftHasCreatedAt !== rightHasCreatedAt) {
+    return leftHasCreatedAt ? -1 : 1;
+  }
+
+  return left.index - right.index;
+}
+
+export function auditDuplicateItemUuids(items = []) {
+  const entriesByUuid = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((item, index) => {
+    const itemUuid = typeof item?.itemUuid === "string" ? item.itemUuid.trim() : "";
+
+    if (!itemUuid) {
+      return;
+    }
+
+    const currentEntries = entriesByUuid.get(itemUuid) ?? [];
+    currentEntries.push({
+      index,
+      item
+    });
+    entriesByUuid.set(itemUuid, currentEntries);
+  });
+
+  return [...entriesByUuid.entries()]
+    .filter(([, entries]) => entries.length > 1)
+    .map(([itemUuid, entries]) => {
+      const orderedEntries = [...entries].sort(compareDuplicateItemCandidates);
+
+      return {
+        itemUuid,
+        entries: orderedEntries,
+        preservedEntry: orderedEntries[0],
+        duplicateEntries: orderedEntries.slice(1)
+      };
+    });
+}
+
+function createUniqueResolvedItemUuid(usedItemUuids, createUuid) {
+  let nextItemUuid = createUuid();
+
+  while (usedItemUuids.has(nextItemUuid)) {
+    nextItemUuid = createUuid();
+  }
+
+  usedItemUuids.add(nextItemUuid);
+  return nextItemUuid;
+}
+
+export function createDuplicateItemUuid(itemUuid, createUuid = createItemUuid) {
+  const usedItemUuids = new Set();
+  const normalizedItemUuid = typeof itemUuid === "string" ? itemUuid.trim() : "";
+
+  if (normalizedItemUuid) {
+    usedItemUuids.add(normalizedItemUuid);
+  }
+
+  return createUniqueResolvedItemUuid(usedItemUuids, createUuid);
+}
+
+export function resolveDuplicateItemUuids(
+  items = [],
+  {
+    createItemUuid: createUuid = createItemUuid
+  } = {}
+) {
+  const duplicateGroups = auditDuplicateItemUuids(items);
+  const usedItemUuids = new Set(
+    (Array.isArray(items) ? items : [])
+      .map((item) => (typeof item?.itemUuid === "string" ? item.itemUuid.trim() : ""))
+      .filter(Boolean)
+  );
+
+  if (!duplicateGroups.length) {
+    return {
+      items: Array.isArray(items) ? [...items] : [],
+      duplicateGroups,
+      changedItems: []
+    };
+  }
+
+  const nextItems = Array.isArray(items) ? [...items] : [];
+  const changedItems = [];
+
+  duplicateGroups.forEach((group) => {
+    group.duplicateEntries.forEach(({ index, item }) => {
+      const nextItemUuid = createUniqueResolvedItemUuid(usedItemUuids, createUuid);
+      const nextItem = {
+        ...item,
+        itemUuid: nextItemUuid
+      };
+
+      nextItems[index] = nextItem;
+      changedItems.push({
+        index,
+        previousItemUuid: group.itemUuid,
+        item: nextItem
+      });
+    });
+  });
+
+  return {
+    items: nextItems,
+    duplicateGroups,
+    changedItems
+  };
+}
+
 export function getItemSortTimestamp(item, field = "createdAt") {
   const parsed = Date.parse(item?.[field] ?? "");
   return Number.isFinite(parsed) ? parsed : 0;
