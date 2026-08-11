@@ -271,7 +271,7 @@ import {
   getManagedImageFrameStyle,
   getManagedImageSourceRect,
   getNormalizedImageCrop,
-  getVisibleAlphaBounds,
+  getVisibleContentBounds,
   itemNeedsImageBake,
   normalizeImageCropSize,
   normalizeImageCropStart,
@@ -1003,7 +1003,7 @@ async function getAutoImageCrop(item) {
       height
     );
 
-    const bounds = getVisibleAlphaBounds(context.getImageData(0, 0, width, height).data, width, height);
+    const bounds = getVisibleContentBounds(context.getImageData(0, 0, width, height).data, width, height);
     if (!bounds) {
       return getNormalizedImageCrop(item);
     }
@@ -1071,6 +1071,31 @@ async function bakeItemImagePresentation(item) {
     imageScale: normalizeImageScale(item?.imageScale),
     imageOffsetX: normalizeImageOffset(item?.imageOffsetX),
     imageOffsetY: normalizeImageOffset(item?.imageOffsetY),
+    imageCropX: autoCrop.x,
+    imageCropY: autoCrop.y,
+    imageCropWidth: autoCrop.width,
+    imageCropHeight: autoCrop.height
+  };
+}
+
+async function buildResetImagePresentation(item) {
+  const autoCrop = await getAutoImageCrop({
+    ...item,
+    imageFrameScale: 100,
+    imageScale: 100,
+    imageOffsetX: 0,
+    imageOffsetY: 0,
+    imageCropX: 0,
+    imageCropY: 0,
+    imageCropWidth: 100,
+    imageCropHeight: 100
+  });
+
+  return {
+    imageFrameScale: 100,
+    imageScale: 100,
+    imageOffsetX: 0,
+    imageOffsetY: 0,
     imageCropX: autoCrop.x,
     imageCropY: autoCrop.y,
     imageCropWidth: autoCrop.width,
@@ -1358,6 +1383,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
       useFrameScale={useFrameScale}
       normalizeToFrameScale={normalizeToFrameScale}
       useCrop={useCrop}
+      usePresentation={usePresentation}
       perfSlot={perfSlot}
       renderTier={renderTier}
     />
@@ -3293,6 +3319,55 @@ export default function App() {
   );
   const selectedStyleTagCount = normalizeTagList(draft.styleTags, styleTagOptions).length;
   const selectedClimateTagCount = normalizeTagList(draft.climateTags, editableClimateTagOptions).length;
+  const [livePreviewDraftItem, setLivePreviewDraftItem] = useState(null);
+
+  useEffect(() => {
+    if (!editingId || editingId === "new" || draft.id !== editingId) {
+      setLivePreviewDraftItem(null);
+      return undefined;
+    }
+
+    const baseItem = itemsById[editingId];
+
+    if (!baseItem) {
+      setLivePreviewDraftItem(null);
+      return undefined;
+    }
+
+    const normalizedImageCrop = getNormalizedImageCrop(draft);
+    const nextDraftItem = {
+      ...baseItem,
+      ...draft,
+      imageFrameScale: normalizeImageFrameScale(draft.imageFrameScale),
+      imageScale: normalizeImageScale(draft.imageScale),
+      imageOffsetX: normalizeImageOffset(draft.imageOffsetX),
+      imageOffsetY: normalizeImageOffset(draft.imageOffsetY),
+      imageCropX: normalizedImageCrop.x,
+      imageCropY: normalizedImageCrop.y,
+      imageCropWidth: normalizedImageCrop.width,
+      imageCropHeight: normalizedImageCrop.height
+    };
+    let cancelled = false;
+
+    bakeItemImagePresentation(nextDraftItem).then((bakedDraftItem) => {
+      if (!cancelled) {
+        setLivePreviewDraftItem(bakedDraftItem);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [draft, editingId, itemsById]);
+
+  function getBoardPreviewItem(item) {
+    if (!item || !livePreviewDraftItem) {
+      return item;
+    }
+
+    return item.id === livePreviewDraftItem.id ? livePreviewDraftItem : item;
+  }
+
   const itemListOptions = useMemo(
     () => getItemStatusOptions([
       ...items.map((item) => item.status ?? item.list),
@@ -3708,6 +3783,47 @@ export default function App() {
 
       return nextItem;
     });
+
+    if (!changedItems.length) {
+      return false;
+    }
+
+    await Promise.all(changedItems.map((item) => saveItem(item)));
+    setItems(nextItems);
+
+    if (updatedEditingDraft) {
+      setDraft(updatedEditingDraft);
+    }
+
+    return true;
+  }
+
+  async function persistAllItemsUpdate(updater) {
+    const timestamp = new Date().toISOString();
+    let updatedEditingDraft = null;
+    const changedItems = [];
+
+    const nextItems = await Promise.all(items.map(async (item) => {
+      const draftItem = await updater(item);
+      const normalizedItem = normalizeStoredItem(draftItem, normalizeTimestamp(item.createdAt) || timestamp);
+
+      if (!hasMeaningfulItemChange(item, normalizedItem)) {
+        return item;
+      }
+
+      const nextItem = {
+        ...normalizedItem,
+        createdAt: normalizeTimestamp(item.createdAt) || normalizedItem.createdAt,
+        updatedAt: timestamp
+      };
+
+      if (editingId === item.id) {
+        updatedEditingDraft = nextItem;
+      }
+
+      changedItems.push(nextItem);
+      return nextItem;
+    }));
 
     if (!changedItems.length) {
       return false;
@@ -5529,9 +5645,10 @@ export default function App() {
     const frameEntries = [...stage.querySelectorAll(".outfit-slot .managed-image, .accessory-slot.has-item .managed-image")]
       .map((element) => {
         const itemId = element.dataset.itemId;
-        const item = itemId ? itemsById[itemId] : null;
+        const item = itemId ? getBoardPreviewItem(itemsById[itemId]) : null;
+        const imageElement = element.querySelector(".managed-image-content");
 
-        return item ? { element, item } : null;
+        return item && imageElement instanceof HTMLImageElement ? { element, item, imageElement } : null;
       })
       .filter(Boolean);
 
@@ -5560,26 +5677,27 @@ export default function App() {
     context.fillRect(0, 0, cropWidth, cropHeight);
 
     try {
-      const loadedEntries = await Promise.all(
-        frameEntries.map(async ({ element, item }) => ({
-          element,
-          item,
-          image: await loadImage(resolveImageUrl(item.imageUrl))
-        }))
-      );
+      frameEntries.forEach(({ element, imageElement }) => {
+        const frameRect = element.getBoundingClientRect();
+        const renderedImageRect = imageElement.getBoundingClientRect();
 
-      loadedEntries.forEach(({ element, item, image }) => {
-        const imageRect = element.getBoundingClientRect();
-        drawManagedImageToCanvas(
-          context,
-          item,
-          image,
-          imageRect.left - cropLeft,
-          imageRect.top - cropTop,
-          imageRect.width,
-          imageRect.height,
-          { useFrameScale: true, useCrop: true, usePresentation: true }
+        context.save();
+        context.beginPath();
+        context.rect(
+          frameRect.left - cropLeft,
+          frameRect.top - cropTop,
+          frameRect.width,
+          frameRect.height
         );
+        context.clip();
+        context.drawImage(
+          imageElement,
+          renderedImageRect.left - cropLeft,
+          renderedImageRect.top - cropTop,
+          renderedImageRect.width,
+          renderedImageRect.height
+        );
+        context.restore();
       });
 
       const link = document.createElement("a");
@@ -5732,6 +5850,29 @@ export default function App() {
     const defaultData = await resetToDefaults();
     await applyLoadedData(defaultData.items, defaultData.appState);
     window.alert("Default data restored.");
+  }
+
+  async function handleResetAllItemCrops() {
+    const confirmed = await requestConfirmation({
+      title: "Reset all item crops?",
+      message: "This will recalculate image crops and reset image framing to the default baseline for every wardrobe item in this browser.",
+      confirmLabel: "Reset all"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    const didChange = await persistAllItemsUpdate(async (item) => ({
+      ...item,
+      ...(await buildResetImagePresentation(item))
+    }));
+
+    if (didChange) {
+      window.alert("All item crops were reset.");
+    } else {
+      window.alert("No item crops needed resetting.");
+    }
   }
 
   function getSlotOptionsForOutfit(slot, nextOutfit) {
@@ -7167,18 +7308,24 @@ export default function App() {
     setImageUploadError("");
   }
 
-  function resetDraftImageCrop() {
-    setDraft((current) => ({
-      ...current,
-      imageFrameScale: 100,
-      imageScale: 100,
-      imageOffsetX: 0,
-      imageOffsetY: 0,
-      imageCropX: 0,
-      imageCropY: 0,
-      imageCropWidth: 100,
-      imageCropHeight: 100
-    }));
+  async function resetDraftImageCrop() {
+    if (!draft.imageUrl.trim() || imageProcessing) {
+      return;
+    }
+
+    try {
+      setImageProcessing(true);
+      setImageUploadError("");
+      const nextPresentation = await buildResetImagePresentation(draft);
+      setDraft((current) => ({
+        ...current,
+        ...nextPresentation
+      }));
+    } catch {
+      setImageUploadError("Crop could not be reset.");
+    } finally {
+      setImageProcessing(false);
+    }
   }
 
   async function removeDraftBackground() {
@@ -7205,6 +7352,20 @@ export default function App() {
         readFileAsDataUrl,
         loadImage
       });
+      const nextPresentation = await buildResetImagePresentation({
+        ...draft,
+        ...replaceActiveWardrobeItemImageAssetInDraft(draft, {
+          imageUrl: imageAssets.display.src,
+          images: {
+            original: imageAssets.original,
+            display: imageAssets.display,
+            thumbnail: imageAssets.thumbnail
+          },
+          originalPreserved: imageAssets.originalPreserved,
+          archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
+        })
+      });
+
       setDraft((current) => ({
         ...replaceActiveWardrobeItemImageAssetInDraft(current, {
           imageUrl: imageAssets.display.src,
@@ -7216,14 +7377,7 @@ export default function App() {
           originalPreserved: imageAssets.originalPreserved,
           archivalOriginalPreserved: imageAssets.archivalOriginalPreserved
         }),
-        imageFrameScale: 100,
-        imageScale: 100,
-        imageOffsetX: 0,
-        imageOffsetY: 0,
-        imageCropX: 0,
-        imageCropY: 0,
-        imageCropWidth: 100,
-        imageCropHeight: 100
+        ...nextPresentation
       }));
     } catch (error) {
       setImageUploadError(error?.message || "Background could not be removed.");
@@ -7392,24 +7546,136 @@ export default function App() {
   }
 
   function renderAccessorySlot(slot) {
-    const item = itemsById[outfit[slot]];
+    const item = getBoardPreviewItem(itemsById[outfit[slot]]);
     const isActive = activeAccessorySlot === slot || selectedAccessorySlot === slot;
+    const isActionsOpen = activeSlotActionsSlot === slot;
+
+    if (!item) {
+      return (
+        <button
+          key={slot}
+          type="button"
+          className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${isActive ? "is-active" : ""}`}
+          onClick={(event) => handleOutfitItemPreviewClick(item, () => selectAccessoryItem(slot), () => openAccessoryPicker(slot), event)}
+          onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
+          aria-label={`${getAccessoryLabel(slot)} options`}
+        />
+      );
+    }
 
     return (
-      <button
+      <div
         key={slot}
-        type="button"
-        className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${item ? "has-item" : ""} ${isActive ? "is-active" : ""}`}
-        onClick={(event) => handleOutfitItemPreviewClick(item, () => selectAccessoryItem(slot), () => openAccessoryPicker(slot), event)}
-        onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
-        aria-label={`${getAccessoryLabel(slot)} options`}
+        className={`accessory-slot accessory-slot-${slot.toLowerCase()} ${item ? "has-item" : ""} ${isActive ? "is-active" : ""} ${isActionsOpen ? "is-actions-open" : ""}`}
       >
-        {item ? (
-          <span className="item-figure accessory-figure has-item">
-            <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation renderTier="display" />
-          </span>
-        ) : null}
-      </button>
+        <button
+          type="button"
+          className="item-figure accessory-figure has-item"
+          onClick={(event) => handleOutfitItemPreviewClick(item, () => selectAccessoryItem(slot), () => openAccessoryPicker(slot), event)}
+          onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
+          aria-label={`${getAccessoryLabel(slot)} options`}
+        >
+          <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation renderTier="display" />
+        </button>
+        <div className="slot-actions-anchor">
+          <div className="outfit-slot-hover-actions slot-action-chips">
+            <button
+              type="button"
+              className="outfit-slot-hover-button"
+              onMouseDown={preventMouseButtonFocus}
+              onClick={(event) => {
+                event.stopPropagation();
+                startFloatingEdit(item);
+              }}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              className="outfit-slot-hover-button"
+              onMouseDown={preventMouseButtonFocus}
+              onClick={(event) => {
+                event.stopPropagation();
+                openAccessoryPicker(slot);
+              }}
+            >
+              Select
+            </button>
+            <button
+              type="button"
+              className={`outfit-slot-hover-button slot-actions-trigger ${isActionsOpen ? "is-active" : ""}`}
+              onMouseDown={preventMouseButtonFocus}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleSlotActionsPopover(slot);
+              }}
+              aria-expanded={isActionsOpen}
+              aria-label={`${getAccessoryLabel(slot)} actions`}
+              title="Actions"
+            >
+              Actions
+            </button>
+            {isActionsOpen ? (
+              <div
+                ref={slotActionsPopoverRef}
+                className="slot-actions-inline-tools"
+                role="group"
+                aria-label={`${getAccessoryLabel(slot)} actions`}
+              >
+                <button
+                  type="button"
+                  className={`ghost-button slot-action-icon-button ${locked[slot] ? "is-active" : ""}`}
+                  onClick={() => toggleLock(slot)}
+                  aria-label={locked[slot] ? `Unlock ${getAccessoryLabel(slot)}` : `Lock ${getAccessoryLabel(slot)}`}
+                  title={locked[slot] ? "Unlock" : "Lock"}
+                >
+                  <SlotActionIcon kind="lock" locked={locked[slot]} />
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button slot-action-icon-button"
+                  onClick={() => cycleAccessorySlot(slot, 1)}
+                  aria-label={`Reroll ${getAccessoryLabel(slot)}`}
+                  title="Reroll"
+                  disabled={!item}
+                >
+                  <SlotActionIcon kind="reroll" />
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button slot-action-icon-button"
+                  onClick={() => cycleAccessorySlot(slot, -1)}
+                  aria-label={`Previous item for ${getAccessoryLabel(slot)}`}
+                  title="Previous"
+                  disabled={!item}
+                >
+                  <SlotActionIcon kind="previous" />
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button slot-action-icon-button"
+                  onClick={() => cycleAccessorySlot(slot, 1)}
+                  aria-label={`Next item for ${getAccessoryLabel(slot)}`}
+                  title="Next"
+                  disabled={!item}
+                >
+                  <SlotActionIcon kind="next" />
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button danger slot-action-icon-button"
+                  onClick={() => removeAccessoryFromSlot(slot)}
+                  aria-label={`Remove item from ${getAccessoryLabel(slot)}`}
+                  title="Remove"
+                  disabled={!item}
+                >
+                  <SlotActionIcon kind="remove" />
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -10432,7 +10698,17 @@ export default function App() {
       >
         <div className="item-image-preview">
           {draft.imageUrl.trim() ? (
-            <ManagedItemImage item={draft} alt="" frameRef={editorImageFrameRef} imageRef={editorImageRef} renderTier="display" />
+            <ManagedItemImage
+              item={draft}
+              alt=""
+              frameRef={editorImageFrameRef}
+              imageRef={editorImageRef}
+              useFrameScale
+              normalizeToFrameScale
+              useCrop
+              usePresentation
+              renderTier="display"
+            />
           ) : (
             <span>No image selected</span>
           )}
@@ -10944,13 +11220,13 @@ export default function App() {
   );
 
   function renderOutfitSlot(slot) {
-    const item = itemsById[outfit[slot]];
+    const item = getBoardPreviewItem(itemsById[outfit[slot]]);
     const isActive = activeOutfitSlot === slot || selectedOutfitSlot === slot;
     const isActionsOpen = activeSlotActionsSlot === slot;
     return (
       <div key={slot} className="outfit-slot-wrap">
         <article
-          className={`outfit-slot outfit-slot-${slot.toLowerCase()} ${locked[slot] ? "is-locked" : ""} ${isActive ? "is-active" : ""}`}
+          className={`outfit-slot outfit-slot-${slot.toLowerCase()} ${locked[slot] ? "is-locked" : ""} ${isActive ? "is-active" : ""} ${isActionsOpen ? "is-actions-open" : ""}`}
         >
           <button
             type="button"
@@ -11880,6 +12156,9 @@ export default function App() {
                               </button>
                               <button type="button" className="ghost-button" onClick={() => importBackupRef.current?.click()}>
                                 Import Backup
+                              </button>
+                              <button type="button" className="ghost-button" onClick={handleResetAllItemCrops}>
+                                Reset All Item Crops
                               </button>
                               <div className="wardrobe-manage-divider" aria-hidden="true" />
                               <button type="button" className="ghost-button secondary-button" onClick={clearExcluded}>

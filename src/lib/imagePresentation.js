@@ -140,6 +140,182 @@ export function getVisibleAlphaBounds(imageData, width, height, alphaThreshold =
   };
 }
 
+function getPixelOffset(width, x, y) {
+  return (y * width + x) * 4;
+}
+
+function getPixelRgba(imageData, width, x, y) {
+  const offset = getPixelOffset(width, x, y);
+  return {
+    r: imageData[offset],
+    g: imageData[offset + 1],
+    b: imageData[offset + 2],
+    a: imageData[offset + 3]
+  };
+}
+
+function getCornerBackgroundReference(imageData, width, height, alphaThreshold, colorSpreadThreshold) {
+  const corners = [
+    getPixelRgba(imageData, width, 0, 0),
+    getPixelRgba(imageData, width, Math.max(0, width - 1), 0),
+    getPixelRgba(imageData, width, 0, Math.max(0, height - 1)),
+    getPixelRgba(imageData, width, Math.max(0, width - 1), Math.max(0, height - 1))
+  ].filter((pixel) => pixel.a >= alphaThreshold);
+
+  if (corners.length < 3) {
+    return null;
+  }
+
+  const channels = ["r", "g", "b"];
+  const maxSpread = Math.max(
+    ...channels.map((channel) => Math.max(...corners.map((pixel) => pixel[channel])) - Math.min(...corners.map((pixel) => pixel[channel])))
+  );
+
+  if (maxSpread > colorSpreadThreshold) {
+    return null;
+  }
+
+  const sum = corners.reduce((accumulator, pixel) => ({
+    r: accumulator.r + pixel.r,
+    g: accumulator.g + pixel.g,
+    b: accumulator.b + pixel.b,
+    a: accumulator.a + pixel.a
+  }), { r: 0, g: 0, b: 0, a: 0 });
+
+  return {
+    r: sum.r / corners.length,
+    g: sum.g / corners.length,
+    b: sum.b / corners.length,
+    a: sum.a / corners.length
+  };
+}
+
+function isBackgroundLikePixel(pixel, backgroundReference, alphaThreshold, colorThreshold, alphaDistanceThreshold) {
+  if (pixel.a < alphaThreshold) {
+    return true;
+  }
+
+  if (!backgroundReference) {
+    return false;
+  }
+
+  const colorDistance = Math.max(
+    Math.abs(pixel.r - backgroundReference.r),
+    Math.abs(pixel.g - backgroundReference.g),
+    Math.abs(pixel.b - backgroundReference.b)
+  );
+  const alphaDistance = Math.abs(pixel.a - backgroundReference.a);
+
+  return colorDistance <= colorThreshold && alphaDistance <= alphaDistanceThreshold;
+}
+
+export function getVisibleContentBounds(
+  imageData,
+  width,
+  height,
+  {
+    alphaThreshold = 16,
+    colorThreshold = 26,
+    colorSpreadThreshold = 32,
+    alphaDistanceThreshold = 32
+  } = {}
+) {
+  const alphaBounds = getVisibleAlphaBounds(imageData, width, height, alphaThreshold);
+
+  if (!alphaBounds) {
+    return null;
+  }
+
+  const backgroundReference = getCornerBackgroundReference(
+    imageData,
+    width,
+    height,
+    alphaThreshold,
+    colorSpreadThreshold
+  );
+
+  if (!backgroundReference) {
+    return alphaBounds;
+  }
+
+  const visited = new Uint8Array(width * height);
+  const queue = [];
+  let queueIndex = 0;
+
+  function enqueue(x, y) {
+    if (x < 0 || x >= width || y < 0 || y >= height) {
+      return;
+    }
+
+    const pixelIndex = y * width + x;
+    if (visited[pixelIndex]) {
+      return;
+    }
+
+    const pixel = getPixelRgba(imageData, width, x, y);
+    if (!isBackgroundLikePixel(pixel, backgroundReference, alphaThreshold, colorThreshold, alphaDistanceThreshold)) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue.push({ x, y });
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    enqueue(x, 0);
+    enqueue(x, height - 1);
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    enqueue(0, y);
+    enqueue(width - 1, y);
+  }
+
+  while (queueIndex < queue.length) {
+    const { x, y } = queue[queueIndex];
+    queueIndex += 1;
+    enqueue(x + 1, y);
+    enqueue(x - 1, y);
+    enqueue(x, y + 1);
+    enqueue(x, y - 1);
+  }
+
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const pixelIndex = y * width + x;
+      if (visited[pixelIndex]) {
+        continue;
+      }
+
+      const pixel = getPixelRgba(imageData, width, x, y);
+      if (pixel.a < alphaThreshold) {
+        continue;
+      }
+
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return alphaBounds;
+  }
+
+  return {
+    left: minX,
+    top: minY,
+    right: maxX + 1,
+    bottom: maxY + 1
+  };
+}
+
 export function getItemImageStyle(item, { useFrameScale = false, normalizeToFrameScale = false, usePresentation = false } = {}) {
   const frameScale = useFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100;
   const transformFrameScale = normalizeToFrameScale && usePresentation ? normalizeImageFrameScale(item?.imageFrameScale) : 100;

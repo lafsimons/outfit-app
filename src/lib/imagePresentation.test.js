@@ -8,6 +8,7 @@ import {
   getManagedImageDrawBox,
   getManagedImageFrameStyle,
   getManagedImageSourceRect,
+  getVisibleContentBounds,
   getNormalizedImageCrop,
   getVisibleAlphaBounds,
   itemNeedsImageBake,
@@ -120,6 +121,71 @@ test("visible alpha bounds returns null for transparent data and bounds for opaq
     top: 1,
     right: 3,
     bottom: 2
+  });
+});
+
+test("visible content bounds trims opaque uniform corner background", () => {
+  const width = 5;
+  const height = 5;
+  const data = new Uint8ClampedArray(width * height * 4);
+
+  for (let index = 0; index < width * height; index += 1) {
+    const offset = index * 4;
+    data[offset] = 255;
+    data[offset + 1] = 255;
+    data[offset + 2] = 255;
+    data[offset + 3] = 255;
+  }
+
+  for (let y = 1; y <= 3; y += 1) {
+    for (let x = 1; x <= 3; x += 1) {
+      const offset = (y * width + x) * 4;
+      data[offset] = 40;
+      data[offset + 1] = 40;
+      data[offset + 2] = 40;
+      data[offset + 3] = 255;
+    }
+  }
+
+  assert.deepEqual(getVisibleContentBounds(data, width, height), {
+    left: 1,
+    top: 1,
+    right: 4,
+    bottom: 4
+  });
+});
+
+test("visible content bounds falls back to alpha bounds when corner colors are inconsistent", () => {
+  const width = 4;
+  const height = 4;
+  const data = new Uint8ClampedArray(width * height * 4);
+
+  const corners = [
+    { x: 0, y: 0, rgb: [255, 255, 255] },
+    { x: 3, y: 0, rgb: [255, 0, 0] },
+    { x: 0, y: 3, rgb: [0, 255, 0] },
+    { x: 3, y: 3, rgb: [0, 0, 255] }
+  ];
+
+  corners.forEach(({ x, y, rgb }) => {
+    const offset = (y * width + x) * 4;
+    data[offset] = rgb[0];
+    data[offset + 1] = rgb[1];
+    data[offset + 2] = rgb[2];
+    data[offset + 3] = 255;
+  });
+
+  const centerOffset = (1 * width + 1) * 4;
+  data[centerOffset] = 20;
+  data[centerOffset + 1] = 20;
+  data[centerOffset + 2] = 20;
+  data[centerOffset + 3] = 255;
+
+  assert.deepEqual(getVisibleContentBounds(data, width, height), {
+    left: 0,
+    top: 0,
+    right: 4,
+    bottom: 4
   });
 });
 

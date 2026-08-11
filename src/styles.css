@@ -1267,6 +1267,16 @@ button:disabled {
   filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.18));
 }
 
+.accessory-slot .slot-actions-anchor {
+  top: -6px;
+  right: -6px;
+}
+
+.accessory-slot-neck .slot-actions-anchor {
+  top: -28px;
+  right: -10px;
+}
+
 .accessory-slot .accessory-figure {
   width: 100%;
   min-height: inherit;
@@ -1741,7 +1751,7 @@ button:disabled {
 }
 
 .outfit-slot-bottom {
-  min-height: 140px;
+  min-height: 220px;
 }
 
 .outfit-slot-footwear {
@@ -1754,21 +1764,22 @@ button:disabled {
 
 .slot-actions-anchor {
   grid-area: stack;
-  position: relative;
-  justify-self: end;
-  align-self: start;
-  margin: 8px;
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  margin: 0;
   z-index: 2;
 }
 
 .outfit-slot-hover-actions {
-  position: static;
-  z-index: auto;
+  position: relative;
+  z-index: 2;
   opacity: 0;
   pointer-events: none;
   transition: opacity 140ms ease;
   display: grid;
   gap: 6px;
+  justify-items: end;
 }
 
 .slot-action-chips {
@@ -1800,7 +1811,12 @@ button:disabled {
 
 .outfit-slot:hover .outfit-slot-hover-actions,
 .outfit-slot.is-active .outfit-slot-hover-actions,
-.outfit-slot:focus-within .outfit-slot-hover-actions {
+.outfit-slot.is-actions-open .outfit-slot-hover-actions,
+.outfit-slot:focus-within .outfit-slot-hover-actions,
+.accessory-slot:hover .outfit-slot-hover-actions,
+.accessory-slot.is-active .outfit-slot-hover-actions,
+.accessory-slot.is-actions-open .outfit-slot-hover-actions,
+.accessory-slot:focus-within .outfit-slot-hover-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1820,15 +1836,16 @@ button:disabled {
 }
 
 .slot-actions-inline-tools {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  position: relative;
-  left: calc(100% + 8px);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
   width: max-content;
-  margin-top: -34px;
-  padding-left: 8px;
-  border-left: 1px solid rgba(40, 48, 56, 0.12);
+  margin-top: 0;
+  padding: 6px 0 0;
+  border-left: none;
   justify-content: flex-start;
   flex-wrap: nowrap;
 }
@@ -1964,25 +1981,75 @@ button:disabled {
 }
 
 .outfit-slot-headwear .item-figure .managed-image {
-  max-width: calc(104px * var(--managed-frame-scale, 1));
+  width: min(
+    100%,
+    calc(104px * var(--managed-frame-scale, 1)),
+    calc(72px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(104px * var(--managed-frame-scale, 1)),
+    calc(72px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: calc(72px * var(--managed-frame-scale, 1));
 }
 
 .outfit-slot-topinner .item-figure .managed-image,
 .outfit-slot-topouter .item-figure .managed-image {
-  max-width: calc(196px * var(--managed-frame-scale, 1));
+  width: min(
+    100%,
+    calc(196px * var(--managed-frame-scale, 1)),
+    calc(188px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(196px * var(--managed-frame-scale, 1)),
+    calc(188px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: calc(188px * var(--managed-frame-scale, 1));
 }
 
 .top-layer-row .outfit-slot-topinner .item-figure .managed-image,
 .top-layer-row .outfit-slot-topouter .item-figure .managed-image {
-  max-width: calc(214px * var(--managed-frame-scale, 1));
+  width: min(
+    100%,
+    calc(214px * var(--managed-frame-scale, 1)),
+    calc(188px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(214px * var(--managed-frame-scale, 1)),
+    calc(188px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: calc(188px * var(--managed-frame-scale, 1));
 }
 
 .outfit-slot-bottom .item-figure .managed-image {
-  max-width: calc(138px * var(--managed-frame-scale, 1));
+  width: min(
+    100%,
+    calc(188px * var(--managed-frame-scale, 1)),
+    calc(220px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(188px * var(--managed-frame-scale, 1)),
+    calc(220px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: calc(220px * var(--managed-frame-scale, 1));
 }
 
 .outfit-slot-footwear .item-figure .managed-image {
-  max-width: calc(124px * var(--managed-frame-scale, 1));
+  width: min(
+    100%,
+    calc(124px * var(--managed-frame-scale, 1)),
+    calc(84px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-width: min(
+    100%,
+    calc(124px * var(--managed-frame-scale, 1)),
+    calc(84px * var(--managed-crop-aspect, 1) * var(--managed-frame-scale, 1))
+  );
+  max-height: calc(84px * var(--managed-frame-scale, 1));
 }
 
 .slot-meta,
