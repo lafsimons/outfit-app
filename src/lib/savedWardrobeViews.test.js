@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { emptyOutfitFilters } from "./generation.js";
+import { defaultGenerationLists, emptyOutfitFilters, isEligibleForGeneration } from "./generation.js";
 import { emptyWardrobeFilters } from "./wardrobeLibrary.js";
 import {
   applySavedWardrobeView,
+  applySavedWardrobeViewToGenerationLists,
   applySavedWardrobeViewToOutfitFilters,
   createSavedWardrobeViewSnapshot,
   deleteSavedWardrobeView,
@@ -175,9 +176,35 @@ test("saved wardrobe views map to generation outfit filters by supported shared 
       climateExcluded: ["Rain"],
       collections: ["S/S Rotation", "Sportswear"],
       collectionsExcluded: ["Archive"]
-    }),
+    }, { ...defaultGenerationLists, Wardrobe: false, Wishlist: true, Sold: "exclude" }),
     true
   );
+});
+
+test("controls saved views replace status selections and match status as well as other filters", () => {
+  const wishlist = { filters: { status: ["Wishlist"], statusExcluded: ["Sold"] } };
+  const wardrobe = { filters: { status: ["Wardrobe"] } };
+  const lists = applySavedWardrobeViewToGenerationLists(wishlist, ["Custom"]);
+  assert.deepEqual(lists, { ...defaultGenerationLists, Wardrobe: false, Wishlist: true, Sold: "exclude", Custom: false });
+  assert.equal(matchesCurrentOutfitFiltersSavedWardrobeView(wishlist, emptyOutfitFilters, lists), true);
+  assert.equal(matchesCurrentOutfitFiltersSavedWardrobeView(wardrobe, emptyOutfitFilters, lists), false);
+  assert.equal(matchesCurrentOutfitFiltersSavedWardrobeView(wishlist, emptyOutfitFilters, { ...lists, Wishlist: false }), false);
+  assert.equal(isEligibleForGeneration({ status: "Wishlist" }, {}, lists), true);
+  assert.equal(isEligibleForGeneration({ status: "Wardrobe" }, {}, lists), false);
+  assert.equal(isEligibleForGeneration({ status: "Sold" }, {}, lists), false);
+});
+
+test("saved status filters support custom statuses, exclusions alone, and clearing restrictions", () => {
+  const custom = applySavedWardrobeViewToGenerationLists({ filters: { status: ["Rotation"] } });
+  assert.equal(custom.Rotation, true);
+  assert.equal(custom.Wardrobe, false);
+  const excluded = applySavedWardrobeViewToGenerationLists({ filters: { statusExcluded: ["Sold", "Rotation"] } });
+  assert.equal(excluded.Wishlist, true);
+  assert.equal(excluded.Wardrobe, true);
+  assert.equal(excluded.Sold, "exclude");
+  assert.equal(excluded.Rotation, "exclude");
+  const cleared = applySavedWardrobeViewToGenerationLists({ filters: {} }, ["Rotation"]);
+  assert.equal(Object.values(cleared).every((value) => value === true), true);
 });
 
 test("upsertSavedWardrobeView reports duplicate-name conflicts unless replacement is allowed", () => {

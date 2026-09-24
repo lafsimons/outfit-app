@@ -4,12 +4,14 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_SELECTOR_SORT,
   createEmptySelectorFilters,
+  createSelectorFiltersFromControls,
   filterAndSortSelectorItems,
   getSelectorSearchText,
   getSelectorFilterOptions,
   hasActiveSelectorControls,
   normalizeSelectorSort
 } from "./outfitItemSelectorLibrary.js";
+import { defaultGenerationLists, getManualSelectorSlotPool } from "./generation.js";
 
 const selectorItems = [
   {
@@ -57,6 +59,33 @@ const selectorItems = [
 ];
 
 const searchTextById = Object.fromEntries(selectorItems.map((item) => [item.id, getSelectorSearchText(item)]));
+
+test("selector inherits controls filters and clearing them restores items outside the saved view", () => {
+  const lists = { ...defaultGenerationLists, Wardrobe: false, Wishlist: true, Sold: "exclude" };
+  const controls = { style: ["Casual"], climate: ["Warm"], collections: ["Travel"] };
+  const filters = createSelectorFiltersFromControls(controls, lists);
+  assert.deepEqual(filters.status, ["Wishlist"]);
+  assert.deepEqual(filters.statusExcluded, ["Sold"]);
+  assert.deepEqual(filters.style, ["Casual"]);
+  assert.deepEqual(filters.climate, ["Warm"]);
+  assert.deepEqual(filters.collections, ["Travel"]);
+  const items = selectorItems.map((item) => ({ ...item, garmentType: "Bottom" }));
+  const pool = getManualSelectorSlotPool(items, "Bottom", false, {}, {}, null);
+  assert.equal(pool.length, 3);
+  assert.deepEqual(filterAndSortSelectorItems(pool, { filters }).map((item) => item.id), ["item_3"]);
+  assert.equal(filterAndSortSelectorItems(pool, { filters: createEmptySelectorFilters() }).length, 3);
+  const multi = { ...createEmptySelectorFilters(), status: ["Wardrobe", "Wishlist"] };
+  assert.equal(filterAndSortSelectorItems(pool, { filters: multi }).length, 3);
+  assert.equal(lists.Wardrobe, false);
+});
+
+test("selector retains exclusion-only filters and an empty generation status selection", () => {
+  const filters = createSelectorFiltersFromControls({ climateExcluded: ["Cold"] });
+  assert.equal(hasActiveSelectorControls({ filters: { climateExcluded: ["Cold"] } }), true);
+  assert.deepEqual(filters.climateExcluded, ["Cold"]);
+  const none = createSelectorFiltersFromControls({}, Object.fromEntries(Object.keys(defaultGenerationLists).map((key) => [key, false])));
+  assert.equal(filterAndSortSelectorItems(selectorItems, { filters: none }).length, 0);
+});
 
 test("normalizeSelectorSort falls back to the selector default", () => {
   assert.equal(normalizeSelectorSort("bad-sort"), DEFAULT_SELECTOR_SORT);

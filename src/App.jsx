@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import FilterMultiSelect from "./components/FilterMultiSelect";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DismissibleBackdrop from "./components/DismissibleBackdrop";
 import FitpicExportDialog from "./components/FitpicExportDialog";
@@ -195,6 +196,7 @@ import {
 } from "./lib/savedOutfitLibrary";
 import {
   applySavedWardrobeView,
+  applySavedWardrobeViewToGenerationLists,
   applySavedWardrobeViewToOutfitFilters,
   createSavedWardrobeViewSnapshot,
   deleteSavedWardrobeView,
@@ -207,6 +209,7 @@ import {
 } from "./lib/savedWardrobeViews";
 import {
   createEmptySelectorFilters,
+  createSelectorFiltersFromControls,
   DEFAULT_SELECTOR_SORT,
   filterAndSortSelectorItems,
   getSelectorSearchText,
@@ -760,13 +763,6 @@ const defaultFitpicFilterSectionsOpen = {
   collections: false,
   favorite: false
 };
-const defaultOutfitFilterSectionsOpen = {
-  climate: false,
-  style: false,
-  collections: false,
-  status: false
-};
-
 function getFitpicImageDisplaySrc(fitpicImage = {}) {
   if (typeof fitpicImage?.imageData === "string" && fitpicImage.imageData.trim()) {
     return fitpicImage.imageData.trim();
@@ -2251,12 +2247,7 @@ export default function App() {
   const [dockExpanded, setDockExpanded] = useState(getIsMobileViewport);
   const [isMobileViewport, setIsMobileViewport] = useState(getIsMobileViewport);
   const [mobileWardrobeSelectionMode, setMobileWardrobeSelectionMode] = useState(false);
-  const [weatherOpen, setWeatherOpen] = useState(false);
-  const [generationSettingsOpen, setGenerationSettingsOpen] = useState(false);
-  const [outfitFiltersOpen, setOutfitFiltersOpen] = useState(false);
-  const [outfitFiltersAdvancedOpen, setOutfitFiltersAdvancedOpen] = useState(false);
   const [controlsAdvancedOpen, setControlsAdvancedOpen] = useState(false);
-  const [outfitFilterSectionsOpen, setOutfitFilterSectionsOpen] = useState(defaultOutfitFilterSectionsOpen);
   const [weatherSettings, setWeatherSettings] = useState(emptyWeatherSettings);
   const [weatherLocationDraft, setWeatherLocationDraft] = useState("");
   const [weatherData, setWeatherData] = useState(null);
@@ -2563,7 +2554,7 @@ export default function App() {
   useEffect(() => {
     setSelectorSearch("");
     setSelectorSort(DEFAULT_SELECTOR_SORT);
-    setSelectorFilters(createEmptySelectorFilters());
+    setSelectorFilters(createSelectorFiltersFromControls(outfitFilters, generationLists, items.map((item) => item.status ?? item.list)));
     setSelectorFiltersOpen(false);
   }, [activeOutfitSlot]);
 
@@ -3402,12 +3393,11 @@ export default function App() {
   const activeSelectorPool = useMemo(
     () => (
       activeOutfitSlot
-        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById, generationLists)
+        ? getManualSelectorSlotPool(items, activeOutfitSlot, layering, outfit, itemsById, null)
         : []
     ),
     [
       activeOutfitSlot,
-      generationLists,
       items,
       itemsById,
       layering,
@@ -3439,12 +3429,7 @@ export default function App() {
     [selectorFilters, selectorSearch, selectorSort]
   );
   const hasActiveSelectorLocalFilters = useMemo(
-    () => Boolean(
-      (selectorFilters.type ?? []).length
-      || (selectorFilters.status ?? []).length
-      || (selectorFilters.collections ?? []).length
-      || selectorFilters.favorite
-    ),
+    () => hasActiveSelectorControls({ filters: selectorFilters }),
     [selectorFilters]
   );
   const wardrobeFilterOptions = useMemo(
@@ -3504,13 +3489,9 @@ export default function App() {
   const matchingOutfitFiltersSavedWardrobeViewId = useMemo(
     () =>
       normalizeSavedWardrobeViews(savedWardrobeViews).find((view) =>
-        matchesCurrentOutfitFiltersSavedWardrobeView(view, outfitFilters)
+        matchesCurrentOutfitFiltersSavedWardrobeView(view, outfitFilters, generationLists, itemListOptions)
       )?.id ?? "",
-    [outfitFilters, savedWardrobeViews]
-  );
-  const matchingOutfitFiltersSavedWardrobeView = useMemo(
-    () => savedWardrobeViews.find((view) => view.id === matchingOutfitFiltersSavedWardrobeViewId) ?? null,
-    [matchingOutfitFiltersSavedWardrobeViewId, savedWardrobeViews]
+    [outfitFilters, generationLists, itemListOptions, savedWardrobeViews]
   );
   const activeDashboardFilterCount = Object.entries(dashboardFilters).reduce(
     (count, [key, value]) =>
@@ -3532,67 +3513,6 @@ export default function App() {
     () => itemListOptions.filter((list) => isGenerationListExcluded(list)),
     [itemListOptions, generationLists]
   );
-  const outfitFiltersControlSummary = useMemo(() => {
-    if (matchingOutfitFiltersSavedWardrobeView?.name) {
-      return matchingOutfitFiltersSavedWardrobeView.name;
-    }
-
-    const hasDefaultStatusSelection = includedGenerationLists.length === 1
-      && includedGenerationLists[0] === defaultItemList
-      && !excludedGenerationLists.length;
-
-    if (activeOutfitFilterCount > 0 || !hasDefaultStatusSelection) {
-      return "Custom";
-    }
-
-    return "None";
-  }, [
-    activeOutfitFilterCount,
-    excludedGenerationLists.length,
-    includedGenerationLists,
-    matchingOutfitFiltersSavedWardrobeView?.name
-  ]);
-  const outfitFilterSections = useMemo(
-    () => [
-      {
-        key: "climate",
-        label: "Climate",
-        options: climateTagOptions,
-        summary: getSelectedFilterValueCount(outfitFilters, "climate")
-          ? `${getSelectedFilterValueCount(outfitFilters, "climate")} selected`
-          : "None"
-      },
-      {
-        key: "style",
-        label: "Style",
-        options: styleTagOptions,
-        summary: getSelectedFilterValueCount(outfitFilters, "style")
-          ? `${getSelectedFilterValueCount(outfitFilters, "style")} selected`
-          : "None"
-      },
-      {
-        key: "collections",
-        label: "Collections",
-        options: collectionOptions,
-        summary: getSelectedFilterValueCount(outfitFilters, "collections")
-          ? `${getSelectedFilterValueCount(outfitFilters, "collections")} selected`
-          : "None"
-      },
-      {
-        key: "status",
-        label: "Status",
-        options: itemListOptions,
-        summary: includedGenerationLists.length && excludedGenerationLists.length
-          ? `${includedGenerationLists.length} included, ${excludedGenerationLists.length} excluded`
-          : includedGenerationLists.length
-            ? `${includedGenerationLists.length} included`
-            : excludedGenerationLists.length
-              ? `${excludedGenerationLists.length} excluded`
-              : "None"
-      }
-    ],
-    [collectionOptions, excludedGenerationLists.length, includedGenerationLists.length, itemListOptions, outfitFilters]
-  );
   const buildActiveFilterChips = (filters) => [
     ...[
       ["Brand", "brand"],
@@ -3605,13 +3525,14 @@ export default function App() {
       ["Status", "status"],
       ["Collections", "collections"]
     ].flatMap(([label, key]) => [
-      ...getIncludedFilterValues(filters, key).map((value) => ({ label, value, excluded: false })),
-      ...getExcludedFilterValues(filters, key).map((value) => ({ label, value, excluded: true }))
+      ...getIncludedFilterValues(filters, key).map((value) => ({ key, label, value, excluded: false })),
+      ...getExcludedFilterValues(filters, key).map((value) => ({ key, label, value, excluded: true }))
     ]),
-    ...(filters.laundry ? [{ label: "Exclude", value: filters.laundry, excluded: false }] : []),
-    ...(filters.favorite ? [{ label: "Favorite", value: filters.favorite, excluded: false }] : [])
+    ...(filters.laundry ? [{ key: "laundry", label: "Exclude", value: filters.laundry, excluded: false }] : []),
+    ...(filters.favorite ? [{ key: "favorite", label: "Favorite", value: filters.favorite, excluded: false }] : [])
   ].map((filter) => ({
     ...filter,
+    rawValue: filter.value,
     value:
       filter.label === "Favorite"
         ? filter.value === "yes"
@@ -5411,6 +5332,7 @@ export default function App() {
     setFitpicMediaMigrationVersion(hydratedAppState.fitpicMediaMigrationVersion ?? 0);
     setWardrobeFilters(hydratedAppState.wardrobeFilters);
     setWardrobeSort(hydratedAppState.wardrobeSort);
+    setSavedWardrobeViews(hydratedAppState.savedWardrobeViews);
     setWindowState(hydratedAppState.windowState);
     setEditingId(null);
     setEditorReturnTarget(null);
@@ -5471,6 +5393,7 @@ export default function App() {
         fitpics: stripFitpicsRuntimeMediaAliasesForPersistence(fitpics),
         wardrobeFilters: normalizeWardrobeFilters(wardrobeFilters),
         wardrobeSort,
+        savedWardrobeViews,
         windowState
       },
       resolveAssetUrl: resolveImageUrl
@@ -6621,6 +6544,7 @@ export default function App() {
 
   function applyOutfitFiltersSavedWardrobeView(savedView, event = null) {
     setOutfitFilters(applySavedWardrobeViewToOutfitFilters(savedView));
+    setGenerationLists(applySavedWardrobeViewToGenerationLists(savedView, itemListOptions));
 
     if (event) {
       blurPointerActivatedControl(event);
@@ -6791,13 +6715,6 @@ export default function App() {
 
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
-  }
-
-  function toggleOutfitFilterSection(key) {
-    setOutfitFilterSectionsOpen((current) => ({
-      ...current,
-      [key]: !current[key]
-    }));
   }
 
   async function refreshWeather(locationOverride = weatherLocationDraft) {
@@ -7743,12 +7660,10 @@ export default function App() {
     setActiveSlotActionsSlot((current) => current === slot ? null : slot);
   }
 
-  function setSelectorFilterValue(key, value) {
-    setSelectorFilters((current) => ({
-      ...current,
-      [key]: value ? [value] : [],
-      [getExcludedFilterKey(key)]: []
-    }));
+  function setSelectorFilterValue(key, value, shouldExclude = false) {
+    setSelectorFilters((current) => toggleMultiFilterValueState(
+      current, key, value, shouldExclude || getExcludedFilterValues(current, key).includes(value)
+    ));
   }
 
   function clearSelectorControls() {
@@ -7759,8 +7674,6 @@ export default function App() {
   }
 
   function closeUtilityWindows() {
-    setWeatherOpen(false);
-    setOutfitFiltersOpen(false);
   }
 
   function toggleWorkspacePanel(panel, event) {
@@ -7827,7 +7740,6 @@ export default function App() {
     closeWardrobePreview({ restoreFitpicPreview: false });
     setFitpicPreview(null);
     cancelEditFitpic();
-    setOutfitFiltersOpen(false);
     if (wardrobeSelectClickTimeoutRef.current !== null) {
       window.clearTimeout(wardrobeSelectClickTimeoutRef.current);
       wardrobeSelectClickTimeoutRef.current = null;
@@ -8255,36 +8167,36 @@ export default function App() {
           {selectorFiltersOpen ? (
             <div className="slot-picker-filter-panel">
               <div className="slot-picker-filter-grid">
-                <select
-                  value={selectorFilters.type[0] ?? ""}
-                  onChange={(event) => setSelectorFilterValue("type", event.target.value)}
-                  aria-label="Filter slot items by type"
-                >
-                  <option value="">All types</option>
-                  {selectorFilterOptions.type.map((type) => (
-                    <option key={type} value={type}>{type}</option>
-                  ))}
-                </select>
-                <select
-                  value={selectorFilters.status[0] ?? ""}
-                  onChange={(event) => setSelectorFilterValue("status", event.target.value)}
-                  aria-label="Filter slot items by status"
-                >
-                  <option value="">All statuses</option>
-                  {selectorFilterOptions.status.map((status) => (
-                    <option key={status} value={status}>{status}</option>
-                  ))}
-                </select>
-                <select
-                  value={selectorFilters.collections[0] ?? ""}
-                  onChange={(event) => setSelectorFilterValue("collections", event.target.value)}
-                  aria-label="Filter slot items by collection"
-                >
-                  <option value="">All collections</option>
-                  {selectorFilterOptions.collections.map((collection) => (
-                    <option key={collection} value={collection}>{collection}</option>
-                  ))}
-                </select>
+                {[
+                  ["status", "Status"],
+                  ["style", "Style"],
+                  ["climate", "Climate"],
+                  ["collections", "Collections"],
+                  ["type", "Type"]
+                ].map(([key, label]) => (
+                  <section key={key} className="slot-picker-filter-group" aria-label={`Filter slot items by ${label.toLowerCase()}`}>
+                    <strong>{label}</strong>
+                    <div className="outfit-filter-options">
+                      {selectorFilterOptions[key].map((option) => {
+                        const isIncluded = getIncludedFilterValues(selectorFilters, key).includes(option);
+                        const isExcluded = getExcludedFilterValues(selectorFilters, key).includes(option);
+                        return (
+                          <button
+                            key={option}
+                            type="button"
+                            className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
+                            onClick={(event) => setSelectorFilterValue(key, option, event.shiftKey)}
+                            aria-pressed={isIncluded || isExcluded}
+                            title={isExcluded ? "Excluded. Click to clear; Shift-click to toggle exclusion." : "Click to toggle; Shift-click to exclude."}
+                          >
+                            {option}
+                          </button>
+                        );
+                      })}
+                      {!selectorFilterOptions[key].length ? <span>No options</span> : null}
+                    </div>
+                  </section>
+                ))}
                 <button
                   type="button"
                   className={`ghost-button slot-picker-favorite-toggle ${selectorFilters.favorite === "yes" ? "is-active" : ""}`}
@@ -11466,18 +11378,7 @@ export default function App() {
           <div className="controls-window" aria-label="Outfit controls">
             <div className="controls-window-scroll">
               <div className="controls-group controls-group-top">
-                <div className={`controls-generation-settings ${generationSettingsOpen ? "is-open" : ""}`} aria-label="Generation settings">
-                <button
-                  type="button"
-                  className={`controls-generation-settings-toggle ${generationSettingsOpen ? "is-active" : ""}`}
-                  onClick={() => setGenerationSettingsOpen((current) => !current)}
-                  aria-expanded={generationSettingsOpen}
-                >
-                  <span>Generation</span>
-                  <span>{generationMode === "guided" ? "Guided" : "Random"}</span>
-                </button>
-
-                {generationSettingsOpen ? (
+                <div className="controls-generation-settings" aria-label="Generation settings">
                   <div className="controls-generation-settings-panel">
                     <button type="button" className={`controls-setting-row ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
                       <span>Layering</span>
@@ -11532,26 +11433,15 @@ export default function App() {
                       ) : null}
                     </div>
                   </div>
-                ) : null}
                 </div>
               </div>
 
               <div className="controls-group">
-                <div className={`controls-outfit-filters ${outfitFiltersOpen ? "is-open" : ""}`} aria-label="Outfit filters">
-                <button
-                  type="button"
-                  className={`controls-outfit-filters-toggle ${outfitFiltersOpen ? "is-active" : ""}`}
-                  onClick={() => setOutfitFiltersOpen((current) => !current)}
-                  aria-expanded={outfitFiltersOpen}
-                >
-                  <span>Outfit filters</span>
-                  <span>{outfitFiltersControlSummary}</span>
-                </button>
-
-                {outfitFiltersOpen ? (
+                <div className="controls-outfit-filters" aria-label="Outfit filters">
                   <div className="outfit-filters-panel">
                     <div className="outfit-filter-view-row">
                       <span className="eyebrow">view</span>
+                      <div className="outfit-filter-view-select">
                       <select
                         aria-label="Saved wardrobe view for outfit filters"
                         value={matchingOutfitFiltersSavedWardrobeViewId || "__custom__"}
@@ -11570,166 +11460,41 @@ export default function App() {
                         }}
                         disabled={!savedWardrobeViews.length}
                       >
-                        <option value="__custom__">
-                          {savedWardrobeViews.length
-                            ? (matchingOutfitFiltersSavedWardrobeView?.name ?? "Custom")
-                            : "No saved views"}
-                        </option>
+                        {!matchingOutfitFiltersSavedWardrobeViewId ? (
+                          <option value="__custom__" disabled>
+                            {savedWardrobeViews.length ? "Custom" : "No saved views"}
+                          </option>
+                        ) : null}
                         {savedWardrobeViews.map((view) => (
                           <option key={view.id} value={view.id}>
                             {view.name}
                           </option>
                         ))}
                       </select>
+                      <svg className="filter-multiselect-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                        <path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className={`ghost-button outfit-filters-advanced-toggle ${outfitFiltersAdvancedOpen ? "is-active" : ""}`}
-                      onClick={() => setOutfitFiltersAdvancedOpen((current) => !current)}
-                      aria-expanded={outfitFiltersAdvancedOpen}
-                    >
-                      {outfitFiltersAdvancedOpen ? "Hide Filters" : "More Filters"}
-                    </button>
-
-                    {outfitFiltersAdvancedOpen ? (
-                      <div className="outfit-filter-groups">
-                        {outfitFilterSections.map((section) => {
-                          const isOpen = Boolean(outfitFilterSectionsOpen[section.key]);
-
-                          return (
-                            <section key={section.key} className={`outfit-filter-section ${isOpen ? "is-open" : ""}`}>
-                              <button
-                                type="button"
-                                className="outfit-filter-section-toggle"
-                                onClick={() => toggleOutfitFilterSection(section.key)}
-                                aria-expanded={isOpen}
-                              >
-                                <span className="outfit-filter-section-copy">
-                                  <strong>{section.label}</strong>
-                                  <span className="outfit-filter-section-summary">{section.summary}</span>
-                                </span>
-                                <span className="outfit-filter-section-icon" aria-hidden="true">
-                                  {isOpen ? "⌄" : "›"}
-                                </span>
-                              </button>
-
-                              {isOpen ? (
-                                <div className="outfit-filter-options">
-                                  {section.key === "status"
-                                    ? section.options.map((list) => {
-                                      const isSelected = isGenerationListEnabled(list);
-                                      const isExcluded = isGenerationListExcluded(list);
-
-                                      return (
-                                        <button
-                                          key={list}
-                                          type="button"
-                                          className={`list-toggle ${isSelected ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => toggleGenerationListWithMode(list, event.shiftKey)}
-                                          aria-pressed={isSelected || isExcluded}
-                                        >
-                                          {list}
-                                        </button>
-                                      );
-                                    })
-                                    : section.options.map((option) => {
-                                      const isIncluded = getIncludedFilterValues(outfitFilters, section.key).includes(option);
-                                      const isExcluded = getExcludedFilterValues(outfitFilters, section.key).includes(option);
-                                      const isSelected = isIncluded || isExcluded;
-
-                                      return (
-                                        <button
-                                          key={option}
-                                          type="button"
-                                          className={`list-toggle ${isIncluded ? "is-active" : isExcluded ? "is-active is-excluded" : ""}`}
-                                          onMouseDown={(event) => event.preventDefault()}
-                                          onClick={(event) => toggleOutfitFilter(section.key, option, event.shiftKey)}
-                                          aria-pressed={isSelected}
-                                        >
-                                          {option}
-                                        </button>
-                                      );
-                                    })}
-                                </div>
-                              ) : null}
-                            </section>
-                          );
-                        })}
-
-                        <button type="button" className="ghost-button outfit-filters-clear-button" onClick={clearOutfitFilters}>
-                          Clear outfit filters
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-                </div>
-
-                <div className={`controls-weather ${weatherOpen ? "is-open" : ""}`} aria-label="Weather controls">
-                <button
-                  type="button"
-                  className={`controls-weather-toggle ${weatherOpen ? "is-active" : ""}`}
-                  onClick={() => setWeatherOpen((current) => !current)}
-                  aria-expanded={weatherOpen}
-                >
-                  <span>Weather</span>
-                  <span>
-                    {Number.isFinite(weatherData?.temperature)
-                      ? `${Math.round(weatherData.temperature)}°C`
-                      : compactWeatherLocationName
-                        ? compactWeatherLocationName
-                        : "Set location"}
-                  </span>
-                </button>
-
-                {weatherOpen ? (
-                  <div className="weather-window weather-window-controls" aria-label="Current weather">
-                    <form
-                      className="weather-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        refreshWeather();
-                      }}
-                    >
-                      <input
-                        aria-label="Location"
-                        value={weatherLocationDraft}
-                        onChange={(event) => setWeatherLocationDraft(event.target.value)}
-                        placeholder="Berlin"
+                    <div className="outfit-filter-dropdowns">
+                      <FilterMultiSelect
+                        label="Collections"
+                        options={collectionOptions}
+                        included={outfitFilters.collections}
+                        excluded={outfitFilters.collectionsExcluded}
+                        onToggle={(option, exclude) => toggleOutfitFilter("collections", option, exclude)}
+                        searchable
                       />
-                      <button type="submit" className="secondary-button" disabled={weatherLoading}>
-                        {weatherLoading ? "Loading..." : "Update"}
-                      </button>
-                    </form>
-
-                    {weatherData ? (
-                      <div className="weather-summary">
-                        <strong>{Math.round(weatherData.temperature)}°C</strong>
-                        <span>{weatherData.condition}</span>
-                        {compactWeatherLocationName ? <span>{compactWeatherLocationName}</span> : null}
-                        {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
-                          <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
-                        ) : null}
-                        {weatherData.suggestedFilters?.length ? (
-                          <span>{weatherData.suggestedFilters.join(" + ")}</span>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    {weatherError ? <p className="weather-error">{weatherError}</p> : null}
-
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={applyWeatherFilters}
-                      disabled={!weatherData?.suggestedFilters?.length}
-                    >
-                      Apply weather filter
-                    </button>
+                      <FilterMultiSelect
+                        label="Status"
+                        options={itemListOptions}
+                        included={includedGenerationLists}
+                        excluded={excludedGenerationLists}
+                        onToggle={toggleGenerationListWithMode}
+                      />
+                    </div>
                   </div>
-                ) : null}
                 </div>
 
                 <div className={`controls-advanced ${controlsAdvancedOpen ? "is-open" : ""}`} aria-label="Advanced controls">
@@ -11745,17 +11510,51 @@ export default function App() {
 
                 {controlsAdvancedOpen ? (
                   <div className="controls-advanced-panel">
-                    <div className="controls-metadata-row">
-                      <span>Style</span>
-                      <span>{currentOutfitStyleChip}</span>
-                    </div>
-                    <div className="controls-metadata-row">
-                      <span>Climate</span>
-                      <span>{currentOutfitClimateChip}</span>
-                    </div>
-                    <div className="controls-metadata-row">
-                      <span>Generate Count</span>
-                      <span>{generateCount}</span>
+                    <div className="controls-weather" aria-label="Weather controls">
+                      <div className="weather-window weather-window-controls" aria-label="Current weather">
+                        <form
+                          className="weather-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            refreshWeather();
+                          }}
+                        >
+                          <input
+                            aria-label="Location"
+                            value={weatherLocationDraft}
+                            onChange={(event) => setWeatherLocationDraft(event.target.value)}
+                            placeholder="Berlin"
+                          />
+                          <button type="submit" className="secondary-button" disabled={weatherLoading}>
+                            {weatherLoading ? "Loading..." : "Update"}
+                          </button>
+                        </form>
+
+                        {weatherData ? (
+                          <div className="weather-summary">
+                            <strong>{Math.round(weatherData.temperature)}°C</strong>
+                            <span>{weatherData.condition}</span>
+                            {compactWeatherLocationName ? <span>{compactWeatherLocationName}</span> : null}
+                            {Number.isFinite(weatherData.low) && Number.isFinite(weatherData.high) ? (
+                              <span>{Math.round(weatherData.low)}° / {Math.round(weatherData.high)}°</span>
+                            ) : null}
+                            {weatherData.suggestedFilters?.length ? (
+                              <span>{weatherData.suggestedFilters.join(" + ")}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+
+                        {weatherError ? <p className="weather-error">{weatherError}</p> : null}
+
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          onClick={applyWeatherFilters}
+                          disabled={!weatherData?.suggestedFilters?.length}
+                        >
+                          Apply weather filter
+                        </button>
+                      </div>
                     </div>
 
                     <div ref={outfitDebugRef} className="outfit-feedback-panel controls-advanced-debug">
@@ -11767,9 +11566,6 @@ export default function App() {
                           aria-expanded={outfitDebugOpen}
                         >
                           {outfitDebugOpen ? "Hide Debug" : "Debug"}
-                        </button>
-                        <button type="button" className="ghost-button controls-advanced-action" onClick={() => setGenerateCount(0)}>
-                          Reset
                         </button>
                       </div>
 
@@ -11860,6 +11656,88 @@ export default function App() {
 
                     <div className={`wardrobe-controls ${wardrobeFiltersOpen ? "is-open" : ""}`} aria-label="Wardrobe filters">
                       <div className="wardrobe-controls-body">
+                        <div className="wardrobe-view-picker outfit-filter-view-row">
+                          <span className="eyebrow">View</span>
+                          <div className="wardrobe-view-picker-row">
+                            <div className="outfit-filter-view-select">
+                              <select aria-label="Saved wardrobe view" value={matchingSavedWardrobeViewId || "__custom__"}
+                                disabled={!savedWardrobeViews.length}
+                                onChange={(event) => {
+                                  const view = savedWardrobeViews.find((entry) => entry.id === event.target.value);
+                                  if (view) applyWardrobeSavedView(view);
+                                }}>
+                                {!matchingSavedWardrobeViewId ? <option value="__custom__" disabled>{savedWardrobeViews.length ? "Custom" : "No saved views"}</option> : null}
+                                {savedWardrobeViews.map((view) => <option key={view.id} value={view.id}>{view.name}</option>)}
+                              </select>
+                              <svg className="filter-multiselect-chevron" viewBox="0 0 12 12" aria-hidden="true">
+                                <path d="m3 4.5 3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            </div>
+                            <button type="button" className="ghost-button wardrobe-view-save" onClick={handleSaveCurrentWardrobeView}>+ Save</button>
+                          </div>
+                        </div>
+                        <div className="wardrobe-primary-filters">
+                          {[
+                            ["collections", "Collections"], ["status", "Status"], ["brand", "Brand"],
+                            ["garmentType", "Garment"], ["type", "Type"]
+                          ].map(([key, label]) => (
+                            <FilterMultiSelect key={key} label={label}
+                              options={[...(["brand", "garmentType", "type"].includes(key) ? ["__none__"] : []), ...wardrobeFilterOptions[key]]}
+                              included={getIncludedFilterValues(wardrobeFilters, key)}
+                              excluded={getExcludedFilterValues(wardrobeFilters, key)}
+                              onToggle={(option, exclude) => toggleWardrobeFilterValueWithMode(key, option, exclude)}
+                              searchable
+                            />
+                          ))}
+                          <button type="button" className={`filter-multiselect-trigger wardrobe-favorites-toggle ${wardrobeFilters.favorite ? "is-active" : ""}`}
+                            aria-pressed={Boolean(wardrobeFilters.favorite)}
+                            title="Click for favorites only; Shift-click for not favorites"
+                            onClick={(event) => {
+                              const next = event.shiftKey ? "no" : "yes";
+                              setWardrobeToggleFilter("favorite", wardrobeFilters.favorite === next ? "" : next);
+                            }}>
+                            <span>{wardrobeFilters.favorite === "no" ? "Not favorites" : "Favorites only"}</span>
+                            <SlotActionIcon kind="favorite" active={wardrobeFilters.favorite === "yes"} />
+                          </button>
+                        </div>
+                        {wardrobeSearch || hasActiveWardrobeFilters ? (
+                          <div className="active-filter-summary" aria-label="Active filters">
+                            <div className="active-filter-chips wardrobe-active-filter-chips">
+                              {wardrobeSearch ? (
+                                <span className="active-filter-chip">
+                                  <span>Search</span>
+                                  {wardrobeSearch}
+                                  <button type="button" className="active-filter-chip-clear" aria-label="Remove search filter" title="Remove search filter" onClick={() => setWardrobeSearch("")}>×</button>
+                                </span>
+                              ) : null}
+                              {activeWardrobeFilterChips.map((filter) => (
+                                <span key={`${filter.label}-${filter.value}-${filter.excluded ? "excluded" : "included"}`} className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}>
+                                  <span>{filter.label}</span>
+                                  {filter.value}
+                                  <button type="button" className="active-filter-chip-clear"
+                                    aria-label={`Remove ${filter.label} filter ${filter.value}`}
+                                    title={`Remove ${filter.label} filter ${filter.value}`}
+                                    onClick={() => setWardrobeFilters((current) => {
+                                      const key = filter.excluded ? getExcludedFilterKey(filter.key) : filter.key;
+                                      return {
+                                        ...current,
+                                        [key]: Array.isArray(current[key]) ? current[key].filter((value) => value !== filter.rawValue) : ""
+                                      };
+                                    })}>×</button>
+                                </span>
+                              ))}
+                            </div>
+                            <button type="button" className="ghost-button wardrobe-active-filters-clear"
+                              onClick={() => {
+                                clearWardrobeFilters();
+                                setWardrobeSearch("");
+                              }}>
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
+                        <details className="wardrobe-more-filters">
+                          <summary>More filters</summary>
                         <div className="wardrobe-filter-search">
                           <input
                             type="search"
@@ -11868,72 +11746,7 @@ export default function App() {
                             placeholder="Search filter options"
                           />
                         </div>
-                        <section className="wardrobe-filter-group wardrobe-saved-views-group is-open">
-                          <div className="wardrobe-filter-group-toggle wardrobe-filter-group-toggle-static">
-                            <span className="wardrobe-filter-group-copy">
-                              <strong>Views</strong>
-                            </span>
-                            <button
-                              type="button"
-                              className="ghost-button saved-wardrobe-view-save-button"
-                              onClick={handleSaveCurrentWardrobeView}
-                            >
-                              + Save
-                            </button>
-                          </div>
-                          <div className="wardrobe-filter-options wardrobe-saved-views-list">
-                            {savedWardrobeViews.length ? savedWardrobeViews.map((view) => {
-                              const isCurrentView = view.id === matchingSavedWardrobeViewId;
-
-                              return (
-                                <div key={view.id} className={`saved-wardrobe-view-row ${isCurrentView ? "is-current" : ""}`}>
-                                  <button
-                                    type="button"
-                                    className="ghost-button saved-wardrobe-view-apply"
-                                    onClick={(event) => applyWardrobeSavedView(view, event)}
-                                  >
-                                    <span className="saved-wardrobe-view-label">
-                                      {view.pinned ? <span className="saved-wardrobe-view-pin" aria-hidden="true">📌</span> : null}
-                                      <span>{view.name}</span>
-                                    </span>
-                                  </button>
-                                  <div className="saved-wardrobe-view-actions">
-                                    <button
-                                      type="button"
-                                      className="ghost-button saved-wardrobe-view-action"
-                                      onClick={() => handleTogglePinnedSavedWardrobeView(view)}
-                                      aria-label={view.pinned ? `Unpin ${view.name}` : `Pin ${view.name}`}
-                                      title={view.pinned ? "Unpin" : "Pin"}
-                                    >
-                                      {view.pinned ? "📍" : "📌"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="ghost-button saved-wardrobe-view-action"
-                                      onClick={() => handleRenameSavedWardrobeView(view)}
-                                      aria-label={`Rename ${view.name}`}
-                                      title="Rename"
-                                    >
-                                      ✎
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="ghost-button saved-wardrobe-view-action danger"
-                                      onClick={() => handleDeleteSavedWardrobeView(view)}
-                                      aria-label={`Delete ${view.name}`}
-                                      title="Delete"
-                                    >
-                                      ×
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }) : (
-                              <p className="wardrobe-filter-empty">No saved views yet.</p>
-                            )}
-                          </div>
-                        </section>
-                        {wardrobeFilterPanelSections.map((section) => {
+                        {wardrobeFilterPanelSections.filter((section) => ["color", "style", "climate", "weight", "laundry"].includes(section.key)).map((section) => {
                           const selectedCount = section.kind === "multi"
                             ? getSelectedFilterValueCount(wardrobeFilters, section.key)
                             : wardrobeFilters[section.key]
@@ -12045,37 +11858,73 @@ export default function App() {
                             </section>
                           );
                         })}
-                      </div>
-                      <div className="wardrobe-controls-footer">
-                        {wardrobeSearch || hasActiveWardrobeFilters ? (
-                          <div className="active-filter-summary" aria-label="Active filters">
-                            <div className="active-filter-chips">
-                              {wardrobeSearch ? (
-                                <span className="active-filter-chip">
-                                  <span>Search</span>
-                                  {wardrobeSearch}
-                                </span>
-                              ) : null}
-                              {activeWardrobeFilterChips.map((filter) => (
-                                <span key={`${filter.label}-${filter.value}-${filter.excluded ? "excluded" : "included"}`} className={`active-filter-chip ${filter.excluded ? "is-excluded" : ""}`}>
-                                  <span>{filter.label}</span>
-                                  {filter.value}
-                                </span>
-                              ))}
-                            </div>
+                        </details>
+                        <details className="wardrobe-view-management">
+                          <summary>Manage views</summary>
+                          <div className="wardrobe-filter-group-toggle wardrobe-filter-group-toggle-static">
+                            <span className="wardrobe-filter-group-copy">
+                              <strong>Views</strong>
+                            </span>
+                            <button
+                              type="button"
+                              className="ghost-button saved-wardrobe-view-save-button"
+                              onClick={handleSaveCurrentWardrobeView}
+                            >
+                              + Save
+                            </button>
                           </div>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="ghost-button"
-                          onClick={() => {
-                            clearWardrobeFilters();
-                            setWardrobeSearch("");
-                          }}
-                          disabled={!wardrobeSearch && !hasActiveWardrobeFilters}
-                        >
-                          Clear search + filters
-                        </button>
+                          <div className="wardrobe-filter-options wardrobe-saved-views-list">
+                            {savedWardrobeViews.length ? savedWardrobeViews.map((view) => {
+                              const isCurrentView = view.id === matchingSavedWardrobeViewId;
+
+                              return (
+                                <div key={view.id} className={`saved-wardrobe-view-row ${isCurrentView ? "is-current" : ""}`}>
+                                  <button
+                                    type="button"
+                                    className="ghost-button saved-wardrobe-view-apply"
+                                    onClick={(event) => applyWardrobeSavedView(view, event)}
+                                  >
+                                    <span className="saved-wardrobe-view-label">
+                                      {view.pinned ? <span className="saved-wardrobe-view-pin" aria-hidden="true">📌</span> : null}
+                                      <span>{view.name}</span>
+                                    </span>
+                                  </button>
+                                  <div className="saved-wardrobe-view-actions">
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleTogglePinnedSavedWardrobeView(view)}
+                                      aria-label={view.pinned ? `Unpin ${view.name}` : `Pin ${view.name}`}
+                                      title={view.pinned ? "Unpin" : "Pin"}
+                                    >
+                                      {view.pinned ? "📍" : "📌"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action"
+                                      onClick={() => handleRenameSavedWardrobeView(view)}
+                                      aria-label={`Rename ${view.name}`}
+                                      title="Rename"
+                                    >
+                                      ✎
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost-button saved-wardrobe-view-action danger"
+                                      onClick={() => handleDeleteSavedWardrobeView(view)}
+                                      aria-label={`Delete ${view.name}`}
+                                      title="Delete"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            }) : (
+                              <p className="wardrobe-filter-empty">No saved views yet.</p>
+                            )}
+                          </div>
+                        </details>
                       </div>
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import {
+  defaultGenerationLists,
   emptyOutfitFilters,
   normalizeOutfitFilters
 } from "./generation.js";
@@ -7,6 +8,7 @@ import {
   normalizeWardrobeFilters,
   normalizeWardrobeSort
 } from "./wardrobeLibrary.js";
+import { defaultItemList, itemLists } from "./typeDefaults.js";
 
 export const emptySavedWardrobeViews = [];
 export const savedWardrobeViewScope = "wardrobe";
@@ -156,8 +158,32 @@ export function matchesCurrentWardrobeView(savedView, currentState) {
   return areSavedWardrobeViewsEquivalent(savedView, currentState);
 }
 
-export function matchesCurrentOutfitFiltersSavedWardrobeView(savedView, outfitFilters) {
-  return JSON.stringify(applySavedWardrobeViewToOutfitFilters(savedView)) === JSON.stringify(normalizeOutfitFilters(outfitFilters));
+export function applySavedWardrobeViewToGenerationLists(savedView, statusOptions = []) {
+  const { filters } = applySavedWardrobeView(savedView);
+  const statuses = new Set([...itemLists, ...statusOptions, ...filters.status, ...filters.statusExcluded]);
+
+  return Object.fromEntries([...statuses].map((status) => [
+    status,
+    filters.statusExcluded.includes(status)
+      ? "exclude"
+      : !filters.status.length || filters.status.includes(status)
+  ]));
+}
+
+export function matchesCurrentOutfitFiltersSavedWardrobeView(savedView, outfitFilters, generationLists = defaultGenerationLists, statusOptions = []) {
+  if (JSON.stringify(applySavedWardrobeViewToOutfitFilters(savedView)) !== JSON.stringify(normalizeOutfitFilters(outfitFilters))) {
+    return false;
+  }
+
+  const expectedLists = applySavedWardrobeViewToGenerationLists(savedView, [...statusOptions, ...Object.keys(generationLists)]);
+  return Object.entries(expectedLists).every(([status, expected]) => {
+    const actual = Object.hasOwn(generationLists, status)
+      ? generationLists[status]
+      : itemLists.includes(status)
+        ? status === defaultItemList
+        : generationLists[defaultItemList];
+    return actual === expected;
+  });
 }
 
 export function upsertSavedWardrobeView(savedViews, name, currentState, options = {}) {

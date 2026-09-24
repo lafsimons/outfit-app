@@ -1,4 +1,6 @@
 import { buildDisplayName, normalizeCollections } from "./itemModel.js";
+import { defaultGenerationLists, normalizeOutfitFilters, isEligibleForGeneration } from "./generation.js";
+import { getItemStatusOptions, styleTagOptions } from "./typeDefaults.js";
 import {
   emptyWardrobeFilters,
   filterWardrobeItems,
@@ -12,6 +14,17 @@ export function createEmptySelectorFilters() {
   return {
     ...emptyWardrobeFilters,
     laundry: ""
+  };
+}
+
+export function createSelectorFiltersFromControls(outfitFilters, generationLists = defaultGenerationLists, statuses = []) {
+  const options = getItemStatusOptions([...statuses, ...Object.keys(generationLists)]);
+  const included = options.filter((status) => isEligibleForGeneration({ status }, {}, generationLists));
+  return {
+    ...createEmptySelectorFilters(),
+    ...normalizeOutfitFilters(outfitFilters),
+    status: included.length === options.length ? [] : included,
+    statusExcluded: options.filter((status) => generationLists[status] === "exclude" || !included.length)
   };
 }
 
@@ -68,11 +81,13 @@ export function filterAndSortSelectorItems(
 }
 
 export function getSelectorFilterOptions(items = [], filters = {}, options = {}) {
-  const wardrobeOptions = getWardrobeFilterOptions(items, filters, options);
+  const wardrobeOptions = getWardrobeFilterOptions(items, filters, { styleTagOptions, ...options });
 
   return {
     type: wardrobeOptions.type,
     status: wardrobeOptions.status,
+    style: wardrobeOptions.style,
+    climate: wardrobeOptions.climate,
     collections: wardrobeOptions.collections
   };
 }
@@ -80,9 +95,8 @@ export function getSelectorFilterOptions(items = [], filters = {}, options = {})
 export function hasActiveSelectorControls({ search = "", filters = {}, sort = DEFAULT_SELECTOR_SORT } = {}) {
   return Boolean(
     search.trim()
-    || (filters.type ?? []).length
-    || (filters.status ?? []).length
-    || (filters.collections ?? []).length
+    || ["type", "status", "collections", "style", "climate"].some((key) =>
+      (filters[key] ?? []).length || (filters[`${key}Excluded`] ?? []).length)
     || filters.favorite
     || normalizeSelectorSort(sort) !== DEFAULT_SELECTOR_SORT
   );

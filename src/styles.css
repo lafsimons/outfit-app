@@ -518,7 +518,7 @@ button:disabled {
   gap: 8px;
 }
 
-.controls-generation-settings-toggle {
+.controls-generation-settings-heading {
   width: 100%;
   display: flex;
   align-items: center;
@@ -535,21 +535,6 @@ button:disabled {
   font-weight: 600;
 }
 
-.controls-generation-settings-toggle span:last-child {
-  min-width: 0;
-  color: var(--muted-strong);
-  text-transform: none;
-  letter-spacing: 0;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.controls-generation-settings-toggle.is-active {
-  border-color: var(--primary);
-}
-
 .controls-generation-settings-panel {
   display: grid;
   gap: 0;
@@ -564,11 +549,10 @@ button:disabled {
   padding: 6px 0;
   border: 0;
   border-radius: 0;
-  border-bottom: 1px solid var(--border-soft);
   background: transparent;
-  color: var(--text);
+  color: var(--muted-strong);
   font-size: 0.74rem;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0;
   text-transform: none;
   text-align: left;
@@ -576,7 +560,8 @@ button:disabled {
 }
 
 .controls-setting-row span:last-child {
-  color: var(--muted-strong);
+  color: var(--text);
+  font-weight: 600;
   text-align: right;
 }
 
@@ -597,7 +582,9 @@ button:disabled {
 .controls-actions-row {
   display: flex;
   align-items: center;
+  justify-content: space-around;
   gap: 8px;
+  margin-top: 8px;
 }
 
 .controls-action-icon {
@@ -700,7 +687,7 @@ button:disabled {
   gap: 8px;
 }
 
-.controls-outfit-filters-toggle {
+.controls-outfit-filters-heading {
   width: 100%;
   display: flex;
   align-items: center;
@@ -715,25 +702,6 @@ button:disabled {
   letter-spacing: 0.02em;
   font-size: 0.74rem;
   font-weight: 600;
-}
-
-.controls-outfit-filters-toggle span:last-child {
-  min-width: 0;
-  color: var(--muted-strong);
-  text-transform: none;
-  letter-spacing: 0;
-  text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.controls-outfit-filters-toggle.is-active {
-  border-color: var(--primary);
-}
-
-.controls-window .controls-outfit-filters-toggle.is-active {
-  border-color: var(--controls-active);
 }
 
 .controls-advanced-toggle {
@@ -819,16 +787,12 @@ button:disabled {
   color: var(--text);
 }
 
-.controls-window .controls-generation-settings-toggle.is-active {
-  border-color: var(--controls-active);
-}
-
 .controls-window .list-toggle,
 .controls-window .secondary-button,
 .controls-window .ghost-button,
 .controls-window .controls-weather-toggle,
- .controls-window .controls-outfit-filters-toggle,
- .controls-window .controls-generation-settings-toggle,
+ .controls-window .controls-outfit-filters-heading,
+ .controls-window .controls-generation-settings-heading,
  .controls-window .controls-advanced-toggle {
   padding-top: 4px;
   padding-bottom: 4px;
@@ -1477,12 +1441,13 @@ button:disabled {
 
 .slot-picker-filter-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
-.slot-picker-filter-grid select {
-  width: 100%;
+.slot-picker-filter-group {
+  display: grid;
+  gap: 6px;
 }
 
 .slot-picker-favorite-toggle {
@@ -6404,3 +6369,180 @@ label.ghost-button[aria-disabled="true"] {
     margin-top: 6px;
   }
 }
+
+.outfit-filter-dropdowns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+.filter-multiselect { position: relative; min-width: 0; }
+.filter-multiselect-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.25;
+}
+.filter-multiselect-trigger small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted-strong);
+  font-size: 0.58rem;
+  font-weight: 400;
+}
+.filter-multiselect-chevron { width: 12px; height: 12px; flex: 0 0 12px; color: var(--muted-strong); }
+.filter-multiselect-trigger[aria-expanded="true"] { border-color: var(--muted-strong); }
+.filter-multiselect-trigger[aria-expanded="true"] .filter-multiselect-chevron { transform: rotate(180deg); }
+.controls-window .controls-advanced-toggle {
+  padding: 2px 0 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-strong);
+  text-transform: none;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 0.68rem;
+}
+.controls-window .controls-setting-row {
+  padding: 5px 0;
+  font-weight: 400;
+  border-radius: 3px;
+}
+.controls-window .controls-setting-row > span:first-child { color: var(--muted-strong); }
+.controls-window .controls-setting-row:hover,
+.controls-window .controls-setting-row:focus-visible {
+  background: var(--border-soft);
+}
+.controls-window .outfit-filter-view-row .eyebrow { font-size: 0.6rem; letter-spacing: 0.06em; }
+.outfit-filter-view-select { position: relative; }
+.outfit-filter-view-select select {
+  appearance: none;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 5px 26px 5px 7px;
+  line-height: 1.25;
+}
+.outfit-filter-view-select > .filter-multiselect-chevron {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+ .filter-multiselect-menu {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  box-shadow: 0 5px 18px #0002;
+  pointer-events: auto;
+}
+.filter-multiselect-menu > input { flex-shrink: 0; }
+.filter-multiselect-menu input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  min-height: 0;
+  padding: 3px 6px;
+  margin-bottom: 4px;
+  font-size: 0.65rem;
+  line-height: 1.2;
+}
+.filter-multiselect-options { min-height: 0; max-height: 220px; overflow-y: auto; overscroll-behavior: contain; }
+.filter-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 5px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  text-align: left;
+}
+.filter-multiselect-option:hover, .filter-multiselect-option:focus-visible { background: var(--border-soft); }
+.filter-multiselect-option.is-excluded { color: #982525; }
+.filter-multiselect-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.wardrobe-view-picker-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.wardrobe-primary-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.wardrobe-primary-filters .filter-multiselect-trigger {
+  box-sizing: border-box;
+  height: 30px;
+  min-height: 30px;
+  font-size: 0.68rem;
+}
+.wardrobe-favorites-toggle svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+.wardrobe-view-picker-row .wardrobe-view-save {
+  height: 30px;
+  padding: 4px 8px;
+  background: transparent;
+  border-color: var(--border-soft);
+  color: var(--muted-strong);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+.wardrobe-favorites-toggle.is-active {
+  background: var(--border-soft);
+  border-color: var(--muted-strong);
+}
+.wardrobe-more-filters > summary,
+.wardrobe-view-management > summary {
+  cursor: pointer;
+  padding: 2px 0;
+  color: var(--muted-strong);
+  font-size: 0.7rem;
+}
+.wardrobe-more-filters[open] > summary,
+.wardrobe-view-management[open] > summary { margin-bottom: 8px; }
+.wardrobe-primary-filters + .active-filter-summary { margin: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .wardrobe-active-filter-chips .active-filter-chip-clear { opacity: 0; }
+  .wardrobe-active-filter-chips .active-filter-chip:hover .active-filter-chip-clear,
+  .wardrobe-active-filter-chips .active-filter-chip:focus-within .active-filter-chip-clear { opacity: 1; }
+}
+
+.wardrobe-active-filters-clear { align-self: flex-end; margin-left: auto; }

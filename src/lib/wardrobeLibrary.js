@@ -1,6 +1,6 @@
 import { climateTagOptions, getItemClimateTags, getItemStyleTags } from "./generation.js";
 import { getItemSortTimestamp, getNumericValue, normalizeCollections } from "./itemModel.js";
-import { getItemStatusOptions, isInactiveStatus, normalizeStatus, sortStatusOptions } from "./typeDefaults.js";
+import { getItemStatusOptions, getTypePresetKey, isInactiveStatus, normalizeStatus, normalizeType, sortStatusOptions } from "./typeDefaults.js";
 
 export const DEFAULT_WARDROBE_SORT = "newest";
 export const wardrobeMultiValueFilterKeys = ["brand", "type", "garmentType", "color", "style", "climate", "weight", "status", "collections"];
@@ -326,12 +326,31 @@ export function getVisibleWardrobeItems(
   return sortWardrobeItems(filtered, wardrobeSort);
 }
 
+function compareStrings(left, right) {
+  return left.localeCompare(right);
+}
+
+function getGarmentTypeSortKey(item) {
+  return item.garmentType || "";
+}
+
+function getTypeSortKey(item) {
+  return getTypePresetKey(item.type) || normalizeType(item.type) || "";
+}
+
 export function sortWardrobeItems(items, wardrobeSort) {
   return items
     .map((item, index) => ({ item, index }))
     .sort((a, b) => {
       if (wardrobeSort === "garmentType") {
-        return a.item.garmentType.localeCompare(b.item.garmentType) || a.index - b.index;
+        return (
+          compareStrings(getGarmentTypeSortKey(a.item), getGarmentTypeSortKey(b.item))
+          || compareStrings(getTypeSortKey(a.item), getTypeSortKey(b.item))
+          || compareStrings(a.item.type || "", b.item.type || "")
+          || compareStrings(a.item.brand || "", b.item.brand || "")
+          || compareStrings(a.item.name || "", b.item.name || "")
+          || a.index - b.index
+        );
       }
 
       if (wardrobeSort === "brand") {

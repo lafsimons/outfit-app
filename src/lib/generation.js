@@ -323,7 +323,7 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
 }
 
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}, generationLists = defaultGenerationLists) {
-  let pool = getSlotBasePool(items, slot, layering).filter((item) => isEligibleForGeneration(item, {}, generationLists));
+  let pool = getSlotBasePool(items, slot, layering).filter((item) => generationLists === null || isEligibleForGeneration(item, {}, generationLists));
 
   if (layering && (slot === "TopInner" || slot === "TopOuter")) {
     const otherTopSlot = getOtherTopSlot(slot);

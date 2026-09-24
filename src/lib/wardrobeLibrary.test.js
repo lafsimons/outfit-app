@@ -256,6 +256,39 @@ test("sortWardrobeItems keeps existing wardrobe sort semantics", () => {
   );
 });
 
+test("sortWardrobeItems groups canonical shirt types together within garment type buckets", () => {
+  const mixedStatusItems = [
+    {
+      id: "wardrobe-ss-shirt",
+      brand: "Brand A",
+      name: "Wardrobe SS Shirt",
+      type: "SS Shirt",
+      garmentType: "Top",
+      status: "Wardrobe"
+    },
+    {
+      id: "wardrobe-sweatshirt",
+      brand: "Brand B",
+      name: "Wardrobe Sweatshirt",
+      type: "Sweatshirt",
+      garmentType: "Top",
+      status: "Wardrobe"
+    },
+    {
+      id: "incoming-shirt",
+      brand: "Brand C",
+      name: "Incoming Shirt",
+      type: "Shirt",
+      garmentType: "Top",
+      status: "Incoming"
+    }
+  ];
+
+  const sortedIds = sortWardrobeItems(mixedStatusItems, "garmentType").map((item) => item.id);
+  assert.deepEqual(sortedIds.slice(0, 2).sort(), ["incoming-shirt", "wardrobe-ss-shirt"]);
+  assert.equal(sortedIds[2], "wardrobe-sweatshirt");
+});
+
 test("filterWardrobeItems hides inactive statuses by default but still exposes them through explicit status filters", () => {
   assert.deepEqual(
     filterWardrobeItems(items, {}, {}, "").map((item) => item.id),
