@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getFilterMenuPosition } from "../lib/filterMenuPosition.js";
 
-export default function FilterMultiSelect({ label, options, included, excluded, onToggle, searchable = false }) {
+export default function FilterMultiSelect({ label, options, included, excluded, onToggle, searchable = false, searchQuery = "" }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const root = useRef(null);
@@ -44,7 +44,11 @@ export default function FilterMultiSelect({ label, options, included, excluded, 
   }, [open]);
 
   const optionLabel = (option) => option === "__none__" ? `No ${label.toLowerCase()}` : option;
-  const visibleOptions = [...new Set([...options, ...included, ...excluded])].filter((option) => optionLabel(option).toLowerCase().includes(query.toLowerCase()));
+  const sharedQuery = searchQuery.trim().toLowerCase();
+  const visibleOptions = [...new Set([...options, ...included, ...excluded])].filter((option) =>
+    optionLabel(option).toLowerCase().includes(query.toLowerCase())
+    && (!sharedQuery || label.toLowerCase().includes(sharedQuery) || optionLabel(option).toLowerCase().includes(sharedQuery))
+  );
 
   return (
     <div className="filter-multiselect" ref={root}

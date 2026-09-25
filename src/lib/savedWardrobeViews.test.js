@@ -160,6 +160,7 @@ test("saved wardrobe views map to generation outfit filters by supported shared 
     applySavedWardrobeViewToOutfitFilters(savedView),
     {
       ...emptyOutfitFilters,
+      favorite: "yes",
       style: ["Casual"],
       styleExcluded: ["Formal"],
       climate: ["Warm", "Hot"],
@@ -170,6 +171,7 @@ test("saved wardrobe views map to generation outfit filters by supported shared 
   );
   assert.equal(
     matchesCurrentOutfitFiltersSavedWardrobeView(savedView, {
+      favorite: "yes",
       style: ["Casual"],
       styleExcluded: ["Formal"],
       climate: ["Warm", "Hot"],
@@ -302,4 +304,12 @@ test("rename delete and pin preserve view list behavior", () => {
     createdAt: "2024-06-01T00:00:00.000Z",
     updatedAt: pinned[0].updatedAt
   }]);
+});
+
+test("favorite-only saved views stay distinct from unrestricted views in controls", () => {
+  const view = { filters: { status: ["Wardrobe"], favorite: "yes" } };
+  const applied = applySavedWardrobeViewToOutfitFilters(view);
+  assert.equal(applied.favorite, "yes");
+  assert.equal(matchesCurrentOutfitFiltersSavedWardrobeView(view, applied, defaultGenerationLists), true);
+  assert.equal(matchesCurrentOutfitFiltersSavedWardrobeView(view, emptyOutfitFilters, defaultGenerationLists), false);
 });

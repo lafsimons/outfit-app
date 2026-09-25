@@ -1388,3 +1388,14 @@ test("type defaults include beanie light and new athletic types", () => {
   assert.equal(resolveTypeDefaults("mystery thing").weight, "");
   assert.deepEqual(resolveTypeDefaults("mystery thing").styleTags, []);
 });
+
+test("generation favorites filter restricts eligible items and clearing restores both", () => {
+  const items = [
+    { id: "favorite-cap", type: "Cap", garmentType: "Headwear", status: "Wardrobe", favorite: true },
+    { id: "other-cap", type: "Cap", garmentType: "Headwear", status: "Wardrobe", favorite: false }
+  ];
+  const poolFor = (favorite) => getEligibleSlotPool(items, "Headwear", {}, defaultGenerationLists, false, normalizeOutfitFilters({ favorite })).map((item) => item.id);
+  assert.deepEqual(poolFor("yes"), ["favorite-cap"]);
+  assert.deepEqual(poolFor("no"), ["other-cap"]);
+  assert.deepEqual(poolFor(""), ["favorite-cap", "other-cap"]);
+});

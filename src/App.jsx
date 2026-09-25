@@ -2970,6 +2970,8 @@ export default function App() {
     () => {
       const startedAt = getOaPerfNow();
       const nextItems = items.filter((item) => {
+      if (outfitFilters.favorite === "yes" && !item.favorite) return false;
+      if (outfitFilters.favorite === "no" && item.favorite) return false;
       const itemCollections = normalizeCollections(item.collections);
       const includedCollections = outfitFilters.collections ?? [];
       const excludedCollections = outfitFilters.collectionsExcluded ?? [];
@@ -2997,7 +2999,7 @@ export default function App() {
 
       return nextItems;
     },
-    [items, outfitFilters.collections, outfitFilters.collectionsExcluded]
+    [items, outfitFilters.collections, outfitFilters.collectionsExcluded, outfitFilters.favorite]
   );
 
   useEffect(() => {
@@ -6715,6 +6717,8 @@ export default function App() {
 
   function clearOutfitFilters() {
     setOutfitFilters(emptyOutfitFilters);
+    setGenerationLists(applySavedWardrobeViewToGenerationLists({ filters: {} }, itemListOptions));
+    setExcluded({});
   }
 
   async function refreshWeather(locationOverride = weatherLocationDraft) {
@@ -11494,6 +11498,14 @@ export default function App() {
                         onToggle={toggleGenerationListWithMode}
                       />
                     </div>
+                    <div className="controls-filter-utilities">
+                      <button type="button" className={`ghost-button ${outfitFilters.favorite ? "is-active" : ""}`}
+                        aria-pressed={Boolean(outfitFilters.favorite)}
+                        onClick={() => setOutfitFilters((current) => normalizeOutfitFilters({ ...current, favorite: current.favorite ? "" : "yes" }))}>
+                        {outfitFilters.favorite === "no" ? "Not favorites" : "Favorites only"}
+                      </button>
+                      <button type="button" className="ghost-button" onClick={clearOutfitFilters}>Clear filters</button>
+                    </div>
                   </div>
                 </div>
 
@@ -11676,6 +11688,9 @@ export default function App() {
                             <button type="button" className="ghost-button wardrobe-view-save" onClick={handleSaveCurrentWardrobeView}>+ Save</button>
                           </div>
                         </div>
+                        <input type="search" className="wardrobe-filter-search-input"
+                          value={wardrobeFilterSearch} onChange={(event) => setWardrobeFilterSearch(event.target.value)}
+                          placeholder="Search filter options" aria-label="Search filter options" />
                         <div className="wardrobe-primary-filters">
                           {[
                             ["collections", "Collections"], ["status", "Status"], ["brand", "Brand"],
@@ -11686,6 +11701,7 @@ export default function App() {
                               included={getIncludedFilterValues(wardrobeFilters, key)}
                               excluded={getExcludedFilterValues(wardrobeFilters, key)}
                               onToggle={(option, exclude) => toggleWardrobeFilterValueWithMode(key, option, exclude)}
+                              searchQuery={wardrobeFilterSearch}
                               searchable
                             />
                           ))}
@@ -11736,16 +11752,8 @@ export default function App() {
                             </button>
                           </div>
                         ) : null}
-                        <details className="wardrobe-more-filters">
+                        <details className="wardrobe-more-filters" open={normalizedWardrobeFilterSearch ? true : undefined}>
                           <summary>More filters</summary>
-                        <div className="wardrobe-filter-search">
-                          <input
-                            type="search"
-                            value={wardrobeFilterSearch}
-                            onChange={(event) => setWardrobeFilterSearch(event.target.value)}
-                            placeholder="Search filter options"
-                          />
-                        </div>
                         {wardrobeFilterPanelSections.filter((section) => ["color", "style", "climate", "weight", "laundry"].includes(section.key)).map((section) => {
                           const selectedCount = section.kind === "multi"
                             ? getSelectedFilterValueCount(wardrobeFilters, section.key)

@@ -141,6 +141,7 @@ export function applySavedWardrobeViewToOutfitFilters(savedView) {
 
   const { filters } = normalizedSavedView;
   return normalizeOutfitFilters({
+    favorite: filters.favorite,
     style: filters.style,
     styleExcluded: filters.styleExcluded,
     climate: filters.climate,

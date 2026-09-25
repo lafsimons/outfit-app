@@ -6546,3 +6546,7 @@ label.ghost-button[aria-disabled="true"] {
 }
 
 .wardrobe-active-filters-clear { align-self: flex-end; margin-left: auto; }
+
+.controls-filter-utilities { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.controls-filter-utilities .ghost-button { font-size: 0.62rem; text-transform: none; font-weight: 400; }
+.wardrobe-filter-search-input { width: 100%; min-width: 0; height: 28px; padding: 4px 7px; font-size: 0.68rem; }

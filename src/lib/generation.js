@@ -351,7 +351,10 @@ function getEligibleSlotPoolInternal(
   itemsById = {},
   ruleOptions = {}
 ) {
-  let pool = getPool(items, slot, excluded, generationLists, layering);
+  let pool = getPool(items, slot, excluded, generationLists, layering).filter((item) =>
+    outfitFilters?.favorite === "yes" ? Boolean(item.favorite)
+      : outfitFilters?.favorite === "no" ? !item.favorite : true
+  );
 
   if (layering && (slot === "TopInner" || slot === "TopOuter")) {
     const otherTopSlot = getOtherTopSlot(slot);
@@ -453,7 +456,7 @@ export function getItemClimateTags(item) {
 }
 
 export function hasActiveOutfitFilters(outfitFilters) {
-  return [
+  return ["yes", "no"].includes(outfitFilters?.favorite) || [
     ...Object.keys(outfitFilterOptions),
     "styleExcluded",
     "climateExcluded",
@@ -2141,6 +2144,7 @@ export function normalizeOutfitFilters(outfitFilters) {
   );
 
   return {
+    ...(["yes", "no"].includes(outfitFilters?.favorite) ? { favorite: outfitFilters.favorite } : {}),
     style: normalizeOptionGroup("style", styleTagOptions),
     styleExcluded: normalizeOptionGroup("styleExcluded", styleTagOptions),
     climate: normalizeOptionGroup("climate", climateTagOptions),
