@@ -22,7 +22,6 @@ import { exportLibraryCsv, loadAll as loadItems, remove as deleteItem, save as s
 import {
   defaultItemList,
   applyMappedStyleWeightDefaults,
-  defaultTypeSuggestions,
   emptyForm,
   getItemStatusOptions,
   getTypeMatchKeys,
@@ -1430,12 +1429,16 @@ function applyTypeDefaultsToDraft(current, nextType) {
   const nextDefaults = resolveTypeDefaults(nextType);
   const nextDraft = {
     ...current,
-    type: nextDefaults.type
+    type: nextType
   };
 
   typeDerivedFields.forEach((field) => {
     nextDraft[field] = areEditorValuesEqual(current[field], currentDefaults[field]) ? nextDefaults[field] : current[field];
   });
+
+  if (normalizeType(nextType).includes("sport")) {
+    nextDraft.styleTags = normalizeTagList([...nextDraft.styleTags, "Athleisure"], styleTagOptions);
+  }
 
   return applyGarmentRules(nextDraft, nextDefaults);
 }
@@ -3156,14 +3159,14 @@ export default function App() {
   }, [activeAccessorySlot, items, excluded, generationLists]);
   const typeSuggestions = useMemo(() => {
     const seen = new Set();
-    return [...defaultTypeSuggestions, ...items.map((item) => item.type).filter(Boolean)].filter((value) => {
+    return items.map((item) => (item.type ?? "").trim()).filter((value) => {
       const key = value.trim().toLowerCase();
       if (!key || seen.has(key)) {
         return false;
       }
       seen.add(key);
       return true;
-    });
+    }).sort((left, right) => left.localeCompare(right));
   }, [items]);
 
   function renderOutfitDebugPanel(panelClassName = "") {
@@ -8145,9 +8148,13 @@ export default function App() {
               />
             </div>
             <div className="wardrobe-sort-field slot-picker-sort-field">
-              <select value={selectorSort} onChange={(event) => setSelectorSort(event.target.value)}>
+              <select value={selectorSort} onChange={(event) => setSelectorSort(event.target.value)} aria-label="Sort slot items">
                 <option value="nameAz">A-Z</option>
                 <option value="nameZa">Z-A</option>
+                <option value="garmentType">Garment type</option>
+                <option value="brand">Brand A-Z</option>
+                <option value="type">Type A-Z</option>
+                <option value="color">Color</option>
                 <option value="newest">Recently added</option>
                 <option value="oldest">Oldest added</option>
               </select>

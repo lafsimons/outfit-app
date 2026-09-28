@@ -8,7 +8,7 @@ import {
   sortWardrobeItems
 } from "./wardrobeLibrary.js";
 
-export const DEFAULT_SELECTOR_SORT = "nameAz";
+export const DEFAULT_SELECTOR_SORT = "garmentType";
 
 export function createEmptySelectorFilters() {
   return {
@@ -29,7 +29,7 @@ export function createSelectorFiltersFromControls(outfitFilters, generationLists
 }
 
 export function normalizeSelectorSort(value) {
-  const allowed = [DEFAULT_SELECTOR_SORT, "nameZa", "newest", "oldest"];
+  const allowed = [DEFAULT_SELECTOR_SORT, "nameAz", "nameZa", "newest", "oldest", "brand", "type", "color"];
   return allowed.includes(value) ? value : DEFAULT_SELECTOR_SORT;
 }
 
@@ -63,7 +63,7 @@ export function filterAndSortSelectorItems(
   const filtered = filterWardrobeItems(items, filters, {}, search, searchTextById);
   const normalizedSort = normalizeSelectorSort(sort);
 
-  if (normalizedSort === "newest" || normalizedSort === "oldest") {
+  if (normalizedSort !== "nameAz" && normalizedSort !== "nameZa") {
     return sortWardrobeItems(filtered, normalizedSort);
   }
 
