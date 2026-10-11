@@ -1,3 +1,4 @@
+import { getItemLayerRoles } from "./typeDefaults.js";
 import { getImageFilename } from "./imagePresentation.js";
 
 export const LIBRARY_EXPORT_COLUMNS = [
@@ -7,6 +8,7 @@ export const LIBRARY_EXPORT_COLUMNS = [
   "brand",
   "garment",
   "layerType",
+  "layerRoles",
   "accessorySlot",
   "type",
   "color",
@@ -90,6 +92,7 @@ export function createLibraryExportRow(item = {}) {
     brand: normalizeCsvValue(item.brand),
     garment: normalizeCsvValue(item.garmentType),
     layerType: normalizeCsvValue(item.layerType),
+    layerRoles: joinTags(getItemLayerRoles(item)),
     accessorySlot: normalizeCsvValue(item.accessorySlot),
     type: normalizeCsvValue(item.type),
     color: normalizeCsvValue(item.color),

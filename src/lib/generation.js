@@ -1,6 +1,7 @@
 import {
   defaultItemList,
   getTypeMatchKeys,
+  getItemLayerRoles,
   itemLists,
   normalizeStatus,
   normalizeTagList,
@@ -306,23 +307,13 @@ function matchesSlotBaseValidity(item, slot, layering = true) {
   if (slot === "Bottom") return item.garmentType === "Bottom";
   if (slot === "Footwear") return item.garmentType === "Footwear";
 
-  if (slot === "TopInner") {
-    if (!layering) {
-      return item.garmentType === "Top" || item.garmentType === "Outerwear";
-    }
-
-    return item.garmentType === "Top" && (item.layerType === "Inner" || item.layerType === "Both");
-  }
-
-  if (slot === "TopMid") {
-    return layering === 3 && item.garmentType === "Top";
-  }
-
-  if (slot === "TopOuter") {
-    return (
-      (item.garmentType === "Top" || item.garmentType === "Outerwear") &&
-      (item.layerType === "Outer" || item.layerType === "Both")
-    );
+  if (topSlots.includes(slot)) {
+    if (!["Top", "Outerwear"].includes(item.garmentType)) return false;
+    if (slot === "TopInner" && !layering) return true;
+    const roles = getItemLayerRoles(item);
+    if (slot === "TopInner") return roles.includes("Base");
+    if (slot === "TopMid") return layering === 3 && roles.includes("Mid");
+    return roles.includes("Outer") || (layering !== 3 && roles.includes("Mid"));
   }
 
   if (accessorySlots.includes(slot)) {
@@ -342,14 +333,19 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
   return getSlotBasePool(items, slot, layering).filter((item) => isEligibleForGeneration(item, excluded, generationLists));
 }
 
+function isFlexibleBaseMidTop(item) {
+  const roles = getItemLayerRoles(item);
+  return roles.includes("Base") && roles.includes("Mid");
+}
+
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}, generationLists = defaultGenerationLists) {
   let pool = getSlotBasePool(items, slot, layering).filter((item) => generationLists === null || isEligibleForGeneration(item, {}, generationLists));
 
   if (layering && topSlots.includes(slot)) {
     const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
       .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
-    if (layering !== 3 && otherItems.some((item) => item.layerType === "Both")) {
-      pool = pool.filter((item) => item.layerType !== "Both");
+    if (layering !== 3 && otherItems.some(isFlexibleBaseMidTop)) {
+      pool = pool.filter((item) => !isFlexibleBaseMidTop(item));
     }
     const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
     pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);
@@ -378,8 +374,8 @@ function getEligibleSlotPoolInternal(
   if (layering && topSlots.includes(slot)) {
     const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
       .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
-    if (layering !== 3 && otherItems.some((item) => item.layerType === "Both")) {
-      pool = pool.filter((item) => item.layerType !== "Both");
+    if (layering !== 3 && otherItems.some(isFlexibleBaseMidTop)) {
+      pool = pool.filter((item) => !isFlexibleBaseMidTop(item));
     }
     const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
     pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);

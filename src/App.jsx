@@ -28,7 +28,8 @@ import {
   hasTypeDefaults,
   isActiveStatus,
   itemLists,
-  layerTypes,
+  layerRoleOptions,
+  getItemLayerRoles,
   normalizeStatus,
   normalizeItemType,
   normalizeTagList,
@@ -806,7 +807,7 @@ const advancedTrackedFields = [
   "climateTags",
   "favorite",
   "garmentType",
-  "layerType",
+  "layerRoles",
   "accessorySlot"
 ];
 const stylingEditorFields = ["styleTags", "climateTags"];
@@ -1408,11 +1409,7 @@ function getAdvancedOverrideFields(item, defaults) {
 function applyGarmentRules(nextDraft, defaults) {
   const resolvedDraft = { ...nextDraft };
 
-  if (resolvedDraft.garmentType !== "Top" && resolvedDraft.garmentType !== "Outerwear") {
-    resolvedDraft.layerType = "Both";
-  } else if (!layerTypes.includes(resolvedDraft.layerType)) {
-    resolvedDraft.layerType = defaults.layerType;
-  }
+  resolvedDraft.layerRoles = getItemLayerRoles(resolvedDraft);
 
   if (resolvedDraft.garmentType !== "Accessory") {
     resolvedDraft.accessorySlot = "";
@@ -4393,6 +4390,7 @@ export default function App() {
       const deduplicatedItems = resolveDuplicateItemUuids(effectiveItems).items;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
+          !areEditorValuesEqual(storedItems[index].layerRoles, item.layerRoles) ||
           itemNeedsRetailMigration(storedItems[index], item) ||
           itemNeedsImageFrameScaleMigration(storedItems[index], item) ||
           itemNeedsImageScaleMigration(storedItems[index], item) ||
@@ -5295,7 +5293,7 @@ export default function App() {
     if (!currentLayering && nextLayering) {
       const visibleTop = itemsById[nextOutfit.TopInner];
 
-      if (visibleTop?.layerType === "Outer") {
+      if (visibleTop && !getItemLayerRoles(visibleTop).includes("Base")) {
         nextOutfit.TopOuter = nextOutfit.TopOuter || nextOutfit.TopInner;
         nextOutfit.TopInner = null;
       }
@@ -6383,19 +6381,13 @@ export default function App() {
       return item.accessorySlot || null;
     }
 
-    if (item.garmentType === "Outerwear") {
-      return "TopOuter";
-    }
-
-    if (item.garmentType !== "Top") {
-      return null;
-    }
-
-    if (item.layerType === "Outer") {
-      return "TopOuter";
-    }
-
-    return "TopInner";
+    if (!["Top", "Outerwear"].includes(item.garmentType)) return null;
+    if (!layering) return "TopInner";
+    const roles = getItemLayerRoles(item);
+    if (roles.includes("Base")) return "TopInner";
+    if (layering === 3 && roles.includes("Mid")) return "TopMid";
+    if (roles.includes("Outer") || (layering !== 3 && roles.includes("Mid"))) return "TopOuter";
+    return null;
   }
 
   function startCreate(event) {
@@ -6852,7 +6844,7 @@ export default function App() {
         [field]: nextValue
       };
 
-      if (["garmentType", "layerType", "accessorySlot", "size"].includes(field)) {
+      if (["garmentType", "layerRoles", "accessorySlot", "size"].includes(field)) {
         return applyGarmentRules(nextDraft, resolvedTypeDefaults);
       }
 
@@ -10974,18 +10966,20 @@ export default function App() {
         <div className="editor-advanced-panel">
           {draft.garmentType === "Top" || draft.garmentType === "Outerwear" ? (
             <div className="editor-field">
-              {renderAdvancedLabel("Layer type", "layerType", "item-editor-layer-type")}
-              <select
-                id="item-editor-layer-type"
-                value={draft.layerType}
-                onChange={(event) => setAdvancedField("layerType", event.target.value)}
-              >
-                {layerTypes.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
+              {renderAdvancedLabel("Layers", "layerRoles")}
+              <div className="metadata-tag-options" role="group" aria-label="Layer eligibility">
+                {layerRoleOptions.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    className={`list-toggle ${getItemLayerRoles(draft).includes(role) ? "is-active" : ""}`}
+                    aria-pressed={getItemLayerRoles(draft).includes(role)}
+                    onClick={() => toggleDraftTag("layerRoles", role, layerRoleOptions)}
+                  >
+                    {role}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           ) : null}
 

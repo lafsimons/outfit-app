@@ -837,3 +837,12 @@ test("getWardrobePreviewMetadata returns basic display fields without empty plac
     ]
   );
 });
+
+
+test("normalization migrates Both to Base and Mid once and preserves manual overrides", () => {
+  const legacy = { id: "layer_migration", garmentType: "Top", type: "Sweatshirt", layerType: "Both" };
+  const migrated = normalizeItem(legacy);
+  assert.deepEqual(migrated.layerRoles, ["Base", "Mid"]);
+  assert.deepEqual(normalizeItem({ ...migrated, layerRoles: ["Mid", "Outer"] }).layerRoles, ["Mid", "Outer"]);
+  assert.deepEqual(normalizeItem({ ...migrated, layerRoles: [] }).layerRoles, []);
+});

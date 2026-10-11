@@ -1435,3 +1435,26 @@ test("legacy layering modes retain their keys and active slots", () => {
   assert.equal(getOutfitKey({}, true), JSON.stringify({ layering: true,
     slots: { Headwear: null, TopInner: null, TopOuter: null, Bottom: null, Footwear: null } }));
 });
+
+
+test("generation and manual selection use explicit layer roles in each mode", () => {
+  const items = [
+    { id: "base", garmentType: "Top", type: "T-Shirt", layerType: "Inner", layerRoles: ["Base"] },
+    { id: "mid", garmentType: "Top", type: "Sweatshirt", layerType: "Both", layerRoles: ["Mid"] },
+    { id: "outer", garmentType: "Outerwear", type: "Jacket", layerType: "Outer", layerRoles: ["Outer"] },
+    { id: "disabled", garmentType: "Top", type: "Knit", layerType: "Both", layerRoles: [] }
+  ];
+  const byId = Object.fromEntries(items.map((item) => [item.id, item]));
+  for (const [slot, mode, expected] of [
+    ["TopInner", 3, ["base"]], ["TopMid", 3, ["mid"]], ["TopOuter", 3, ["outer"]],
+    ["TopOuter", true, ["mid", "outer"]]
+  ]) {
+    assert.deepEqual(getEligibleSlotPool(items, slot, {}, defaultGenerationLists, mode).map((item) => item.id), expected);
+    assert.deepEqual(getManualSelectorSlotPool(items, slot, mode, {}, byId).map((item) => item.id), expected);
+  }
+  const generated = buildNextOutfit(items, {}, {}, 3, {}, defaultGenerationLists, { style: [], climate: [] }, null, "random");
+  assert.equal(generated.TopInner, "base");
+  assert.equal(generated.TopMid, "mid");
+  assert.equal(generated.TopOuter, "outer");
+  assert.deepEqual(getPool(items, "TopInner", {}, defaultGenerationLists, false).map((item) => item.id), items.map((item) => item.id));
+});

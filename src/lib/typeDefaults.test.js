@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 import {
   getItemStatusOptions,
+  getItemLayerRoles,
+  resolveTypeDefaults,
   getItemListOptions,
   isActiveStatus,
   isInactiveStatus,
@@ -82,4 +84,20 @@ test("matchesListFilter respects incoming and preserved unknown list values", ()
   assert.equal(matchesListFilter("ArchivedLater", "ArchivedLater"), true);
   assert.equal(matchesListFilter("ArchivedLater", "Incoming"), false);
   assert.equal(matchesListFilter("ArchivedLater", ""), true);
+});
+
+
+test("legacy layer types map to explicit roles without broadening Both to Outer", () => {
+  assert.deepEqual(getItemLayerRoles({ garmentType: "Top", layerType: "Both" }), ["Base", "Mid"]);
+  assert.deepEqual(getItemLayerRoles({ garmentType: "Top", layerType: "Inner" }), ["Base"]);
+  assert.deepEqual(getItemLayerRoles({ garmentType: "Outerwear", layerType: "Outer" }), ["Outer"]);
+  assert.deepEqual(getItemLayerRoles({ garmentType: "Bottom", layerType: "Both" }), []);
+  assert.deepEqual(resolveTypeDefaults("Sweatshirt").layerRoles, ["Base", "Mid"]);
+  assert.deepEqual(resolveTypeDefaults("T-Shirt").layerRoles, ["Base"]);
+  assert.deepEqual(resolveTypeDefaults("Jacket").layerRoles, ["Outer"]);
+});
+
+test("explicit layer selections override legacy metadata and retain an empty selection", () => {
+  assert.deepEqual(getItemLayerRoles({ layerType: "Both", layerRoles: ["Outer", "Mid", "Mid", "invalid"] }), ["Mid", "Outer"]);
+  assert.deepEqual(getItemLayerRoles({ layerType: "Both", layerRoles: [] }), []);
 });

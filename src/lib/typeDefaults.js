@@ -1,4 +1,16 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
+export const layerRoleOptions = ["Base", "Mid", "Outer"];
+
+export function getItemLayerRoles(item = {}) {
+  if (item.garmentType && !["Top", "Outerwear"].includes(item.garmentType)) return [];
+  if (Array.isArray(item.layerRoles)) {
+    return layerRoleOptions.filter((role) => item.layerRoles.includes(role));
+  }
+  const legacyType = item.layerType ?? resolveTypeDefaults(item.type).layerType;
+  if (legacyType === "Inner") return ["Base"];
+  if (legacyType === "Outer") return ["Outer"];
+  return ["Base", "Mid"];
+}
 export const weightOptions = ["Light", "Medium", "Heavy"];
 export const defaultItemStatus = "Wardrobe";
 export const activeItemStatuses = ["Interested", "Wishlist", "Incoming", "Wardrobe", "Selling"];
@@ -53,6 +65,7 @@ export const emptyForm = {
   favorite: false,
   garmentType: "Top",
   layerType: "Both",
+  layerRoles: ["Base", "Mid"],
   accessorySlot: "",
   color: "",
   weight: "",
@@ -64,7 +77,7 @@ export const emptyForm = {
   collections: []
 };
 
-export const typeDerivedFields = ["garmentType", "layerType", "accessorySlot", "weight", "size", "status", "list", "styleTags"];
+export const typeDerivedFields = ["garmentType", "layerType", "layerRoles", "accessorySlot", "weight", "size", "status", "list", "styleTags"];
 
 export const defaultTypeSuggestions = [
   "Bag",
@@ -457,6 +470,8 @@ export function resolveTypeDefaults(type) {
     ...emptyForm,
     type: normalizedItemTypeValue,
     ...defaults,
+    layerRoles: getItemLayerRoles({ garmentType: defaults.garmentType ?? emptyForm.garmentType,
+      layerType: defaults.layerType ?? emptyForm.layerType }),
     weight: normalizeWeight(defaults.weight),
     styleTags: normalizeTagList(defaults.styleTags, styleTagOptions)
   };

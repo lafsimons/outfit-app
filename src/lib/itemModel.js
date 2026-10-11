@@ -1,5 +1,6 @@
 import {
   normalizeItemType,
+  getItemLayerRoles,
   normalizeStatus,
   normalizeTagList,
   normalizeWeight,
@@ -794,6 +795,8 @@ export function normalizeItem(
     favorite: Boolean(item.favorite),
     quantity: Math.max(1, Math.round(Number(item.quantity) || 1)),
     garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }),
+    layerRoles: getItemLayerRoles({ ...item, ...correction,
+      garmentType: normalizeGarmentType({ ...emptyForm, ...item, ...correction }) }),
     weight: normalizeWeight(item.weight),
     styleTags: normalizeTagList(item.styleTags, styleTagOptions),
     climateTags: normalizeTagList(item.climateTags, editableClimateTagOptions),
