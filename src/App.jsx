@@ -1329,8 +1329,8 @@ const ManagedItemPresentationImage = memo(function ManagedItemPresentationImage(
           src={activeImageUrl}
           alt={alt}
           decoding="async"
-          loading="lazy"
-          fetchPriority="low"
+          loading={perfSlot ? "eager" : "lazy"}
+          fetchPriority={perfSlot ? "auto" : "low"}
           className="managed-image-content"
         />
       </span>
@@ -1363,8 +1363,8 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
         src={imageUrl}
         alt={alt}
         decoding="async"
-        loading="lazy"
-        fetchPriority="low"
+        loading={perfSlot ? "eager" : "lazy"}
+        fetchPriority={perfSlot ? "auto" : "low"}
         className={`managed-image managed-image-plain ${className}`.trim()}
         data-item-id={dataItemId || item?.id || ""}
       />
