@@ -1,5 +1,14 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import {
+  captureOutfitImageSnapshot,
+  describeImageSource,
+  getImageTraceReport,
+  isImageTraceEnabled,
+  recordImageTrace,
+  startImageTrace,
+  stopImageTrace
+} from "./lib/imageLoadingDiagnostics";
 import FilterMultiSelect from "./components/FilterMultiSelect";
 import ConfirmationDialog from "./components/ConfirmationDialog";
 import DismissibleBackdrop from "./components/DismissibleBackdrop";
@@ -611,6 +620,7 @@ function cacheImageMetrics(cacheKey, resolvedImageUrl, metrics) {
 function loadImageMetrics(resolvedImageUrl, context = null) {
   noteOaPerfCounter("loadImageMetricsCalls");
   const cacheKey = typeof context?.cacheKey === "string" ? context.cacheKey : "";
+  const traceContext = { source: describeImageSource(resolvedImageUrl || ""), slot: context?.slot ?? null, caller: context?.source ?? null };
 
   if (!resolvedImageUrl) {
     return Promise.resolve({ naturalWidth: 1, naturalHeight: 1 });
@@ -618,6 +628,7 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
 
   const cachedMetrics = getCachedImageMetrics(cacheKey, resolvedImageUrl);
   if (cachedMetrics) {
+    recordImageTrace("metrics-cache-hit", { ...traceContext, metrics: cachedMetrics });
     noteOaPerfCounter("imageMetricsCacheHits");
     if (context?.interactionId) {
       updateOaPerfInteraction(context.interactionId, (interaction) => {
@@ -629,6 +640,7 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
 
   const pendingLoad = (cacheKey && pendingImageMetricsLoads.get(cacheKey)) || pendingImageMetricsLoadsByUrl.get(resolvedImageUrl);
   if (pendingLoad) {
+    recordImageTrace("metrics-pending-reused", traceContext);
     return pendingLoad;
   }
 
@@ -640,10 +652,12 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
   }
 
   const metricsPromise = new Promise((resolve) => {
+    recordImageTrace("metrics-load-start", traceContext);
     const image = new Image();
     const startedAt = getOaPerfNow();
 
     const finalize = (metrics) => {
+      recordImageTrace("metrics-finalized", { ...traceContext, metrics });
       const durationMs = getOaPerfNow() - startedAt;
       cacheImageMetrics(cacheKey, resolvedImageUrl, metrics);
       if (cacheKey) {
@@ -661,13 +675,18 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
     };
 
     image.onload = () => {
+      recordImageTrace("preload-onload", { ...traceContext, width: image.naturalWidth, height: image.naturalHeight });
       const nextMetrics = {
         naturalWidth: Math.max(image.naturalWidth || 1, 1),
         naturalHeight: Math.max(image.naturalHeight || 1, 1)
       };
 
       if (typeof image.decode === "function") {
-        image.decode().catch(() => undefined).finally(() => finalize(nextMetrics));
+        recordImageTrace("preload-decode-start", traceContext);
+        image.decode().then(
+          () => recordImageTrace("preload-decode-resolved", traceContext),
+          (error) => recordImageTrace("preload-decode-rejected", { ...traceContext, error: error?.name || "Error" })
+        ).finally(() => finalize(nextMetrics));
         return;
       }
 
@@ -675,6 +694,7 @@ function loadImageMetrics(resolvedImageUrl, context = null) {
     };
 
     image.onerror = () => {
+      recordImageTrace("preload-error", traceContext);
       finalize({ naturalWidth: 1, naturalHeight: 1 });
     };
 
@@ -1242,6 +1262,19 @@ const ManagedItemPresentationImage = memo(function ManagedItemPresentationImage(
   const metrics = useImageMetrics(activeImageUrl, activeMetricsCacheKey, perfContext);
 
   useEffect(() => {
+    if (!perfSlot) return;
+    recordImageTrace("board-image-state", {
+      slot: perfSlot,
+      itemId: item?.id || "",
+      target: describeImageSource(targetImageUrl),
+      hasTargetMetrics,
+      isTargetReady,
+      placeholder: !activeImageUrl,
+      metrics
+    });
+  }, [perfSlot, item?.id, targetImageUrl, hasTargetMetrics, isTargetReady, activeImageUrl, metrics.naturalWidth, metrics.naturalHeight]);
+
+  useEffect(() => {
     if (!targetImageUrl) {
       setDisplayedImageUrl("");
       setDisplayedMetricsCacheKey("");
@@ -1328,10 +1361,14 @@ const ManagedItemPresentationImage = memo(function ManagedItemPresentationImage(
           ref={imageRef}
           src={activeImageUrl}
           alt={alt}
-          decoding="async"
+          decoding={perfSlot ? "sync" : "async"}
           loading={perfSlot ? "eager" : "lazy"}
           fetchPriority={perfSlot ? "auto" : "low"}
           className="managed-image-content"
+          onLoad={perfSlot ? (event) => recordImageTrace("board-img-load", {
+            slot: perfSlot, itemId: item?.id || "", width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight
+          }) : undefined}
+          onError={perfSlot ? () => recordImageTrace("board-img-error", { slot: perfSlot, itemId: item?.id || "" }) : undefined}
         />
       </span>
   );
@@ -1362,7 +1399,7 @@ const ManagedItemImage = memo(function ManagedItemImage({ item, alt = "", classN
         ref={imageRef}
         src={imageUrl}
         alt={alt}
-        decoding="async"
+        decoding={perfSlot ? "sync" : "async"}
         loading={perfSlot ? "eager" : "lazy"}
         fetchPriority={perfSlot ? "auto" : "low"}
         className={`managed-image managed-image-plain ${className}`.trim()}
@@ -2257,6 +2294,46 @@ export default function App() {
   const [weatherError, setWeatherError] = useState("");
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
   const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
+  const [imageTraceActive, setImageTraceActive] = useState(false);
+
+  useEffect(() => {
+    const captureInteraction = (event) => {
+      if (!isImageTraceEnabled() || !(event.target instanceof Element)) return;
+      const slot = event.target.closest(".outfit-slot");
+      if (!slot) return;
+      if (event.type === "pointerover" && event.relatedTarget instanceof Node && slot.contains(event.relatedTarget)) return;
+      // Capture before React click handlers can select/reroll/change the slot.
+      captureOutfitImageSnapshot(`before-${event.type}:${slot.className}`);
+    };
+    document.addEventListener("pointerover", captureInteraction, true);
+    document.addEventListener("pointerdown", captureInteraction, true);
+    return () => {
+      document.removeEventListener("pointerover", captureInteraction, true);
+      document.removeEventListener("pointerdown", captureInteraction, true);
+      stopImageTrace();
+    };
+  }, []);
+
+  function toggleImageTrace() {
+    if (imageTraceActive) {
+      stopImageTrace();
+    } else {
+      startImageTrace();
+      captureOutfitImageSnapshot("trace-start");
+    }
+    setImageTraceActive(!imageTraceActive);
+  }
+
+  function downloadImageTrace() {
+    captureOutfitImageSnapshot("export");
+    const blob = new Blob([JSON.stringify(getImageTraceReport(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `outfit-image-trace-${Date.now()}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
   const [canUseDebugPopout, setCanUseDebugPopout] = useState(getCanUseDebugPopout);
   const [hasHydratedAppState, setHasHydratedAppState] = useState(false);
   const wardrobeSelectClickTimeoutRef = useRef(null);
@@ -4970,6 +5047,7 @@ export default function App() {
     }
 
     generateInFlightRef.current = true;
+    recordImageTrace("generate-start", { layering, generationMode });
     generateAwaitingPaintRef.current = true;
     pendingGenerateRef.current = false;
 
@@ -5006,6 +5084,7 @@ export default function App() {
     }
 
     const nextOutfit = result.outfit;
+    recordImageTrace("generate-selection", { outfit: Object.fromEntries(visibleSlots.map(slot => [slot, nextOutfit[slot] ?? null])) });
     const nextGuidedDebugPayload = generationMode === "guided" ? result.guidedDebugPayload : [];
     const nextOutfitItemUuids = syncOutfitItemUuids(nextOutfit, outfitItemUuids, itemsById);
 
@@ -11593,6 +11672,12 @@ export default function App() {
                           aria-expanded={outfitDebugOpen}
                         >
                           {outfitDebugOpen ? "Hide Debug" : "Debug"}
+                        </button>
+                        <button type="button" className="ghost-button controls-advanced-action" onClick={toggleImageTrace} aria-pressed={imageTraceActive}>
+                          {imageTraceActive ? "Stop image trace" : "Start image trace"}
+                        </button>
+                        <button type="button" className="ghost-button controls-advanced-action" onClick={downloadImageTrace}>
+                          Download image trace
                         </button>
                       </div>
 
