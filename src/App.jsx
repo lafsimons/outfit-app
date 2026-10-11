@@ -69,6 +69,11 @@ import {
   getOtherTopSlot,
   getLayerCount,
   getActiveOutfitSlots,
+  normalizeOutfitStructure,
+  transitionOutfitLayeringWithMemory,
+  rerollOutfitSlot,
+  getGenerationDebugSignature,
+  getStructuralIssues,
   normalizeLayering,
   getManualSelectorSlotPool,
   getOutfitDominantStyle,
@@ -81,11 +86,8 @@ import {
   normalizeOutfitAffinity,
   normalizeOutfitFilters,
   normalizeRecentOutfits,
-  pickNextItemForGeneration,
   pickRandom,
   rememberRecentOutfit,
-  summarizeGuidedExplanation,
-  summarizeGuidedDebugPayload,
   visibleSlots
 } from "./lib/generation";
 import {
@@ -2172,6 +2174,9 @@ export default function App() {
   const [locked, setLocked] = useState({});
   const [excluded, setExcluded] = useState({});
   const [outfit, setOutfit] = useState({});
+  const outfitStateRef = useRef(outfit);
+  const upperLayerMemoryRef = useRef({});
+  outfitStateRef.current = outfit;
   const [outfitItemUuids, setOutfitItemUuids] = useState({});
   const [ignoredImportImages, setIgnoredImportImages] = useState([]);
   const [savedOutfits, setSavedOutfits] = useState([]);
@@ -2294,6 +2299,7 @@ export default function App() {
   const [weatherError, setWeatherError] = useState("");
   const [outfitDebugOpen, setOutfitDebugOpen] = useState(false);
   const [guidedDebugPayload, setGuidedDebugPayload] = useState([]);
+  const [guidedDebugSignature, setGuidedDebugSignature] = useState("");
   const [imageTraceActive, setImageTraceActive] = useState(false);
 
   useEffect(() => {
@@ -2956,7 +2962,8 @@ export default function App() {
   }, [outfit]);
 
   const currentOutfitItems = useMemo(() => {
-    const slots = accessoriesEnabled ? [...visibleSlots, ...accessorySlots] : visibleSlots;
+    const activeSlots = getActiveOutfitSlots(layering);
+    const slots = accessoriesEnabled ? [...activeSlots, ...accessorySlots] : activeSlots;
     const seen = new Set();
 
     return slots
@@ -2969,8 +2976,14 @@ export default function App() {
         seen.add(item.id);
         return true;
       });
-  }, [accessoriesEnabled, itemsById, outfit]);
+  }, [accessoriesEnabled, itemsById, outfit, layering]);
   const hasLockedOutfitSlots = visibleSlots.some((slot) => Boolean(locked[slot]));
+  useEffect(() => {
+    if (loading) return;
+    const normalized = normalizeOutfitStructure(outfit, locked, layering, itemsById);
+    if (JSON.stringify(normalized.outfit) !== JSON.stringify(outfit)) setOutfit(normalized.outfit);
+    if (JSON.stringify(normalized.locked) !== JSON.stringify(locked)) setLocked(normalized.locked);
+  }, [outfit, locked, layering, itemsById, loading]);
   const currentOutfitKey = useMemo(() => getOutfitKey(outfit, layering), [outfit, layering]);
   const isCurrentOutfitLiked = Boolean(likedOutfitKeys[currentOutfitKey]);
   const currentSavedOutfit = useMemo(
@@ -2978,73 +2991,6 @@ export default function App() {
     [savedOutfits, currentOutfitKey]
   );
   const isCurrentOutfitSaved = Boolean(currentSavedOutfit);
-  const explanationRecentOutfits = useMemo(
-    () =>
-      recentOutfits[0]?.key === currentOutfitKey
-        ? recentOutfits.slice(1)
-        : recentOutfits,
-    [recentOutfits, currentOutfitKey]
-  );
-  const guidedDebugPayloadMatchesOutfit = useMemo(
-    () =>
-      guidedDebugPayload.length > 0 &&
-      guidedDebugPayload.every((entry) => entry?.slot && outfit?.[entry.slot] === entry.itemId),
-    [guidedDebugPayload, outfit]
-  );
-  const currentOutfitStyleChip = useMemo(
-    () => getCurrentOutfitStyleChip(currentOutfitItems, outfitFilters.style ?? []),
-    [currentOutfitItems, outfitFilters.style]
-  );
-  const compactWeatherLocationName = useMemo(
-    () => getCompactWeatherLocationName(weatherSettings.locationName),
-    [weatherSettings.locationName]
-  );
-  const currentOutfitClimateChip = useMemo(
-    () =>
-      getCurrentOutfitClimateChip(
-        getActiveOutfitSlots(layering)
-          .map((slot) => {
-            const item = itemsById[outfit[slot]];
-            return item ? { slot, item } : null;
-          })
-          .filter(Boolean)
-      ),
-    [itemsById, outfit, layering]
-  );
-  const currentOutfitDominantStyle = useMemo(
-    () => getOutfitDominantStyle(outfit, itemsById),
-    [outfit, itemsById]
-  );
-  const currentOutfitStyleTarget = useMemo(
-    () => ((outfitFilters.style ?? []).length ? outfitFilters.style.join(", ") : currentOutfitStyleChip),
-    [currentOutfitStyleChip, outfitFilters.style]
-  );
-  const guidedDebugDetails = useMemo(
-    () => (generationMode === "guided" && guidedDebugPayloadMatchesOutfit ? guidedDebugPayload : []),
-    [generationMode, guidedDebugPayload, guidedDebugPayloadMatchesOutfit]
-  );
-  const showDebugPopout = outfitDebugOpen && canUseDebugPopout && !isMobileViewport;
-  const currentOutfitDebugReasons = useMemo(
-    () =>
-      generationMode === "guided"
-        ? guidedDebugPayloadMatchesOutfit
-          ? summarizeGuidedDebugPayload(guidedDebugPayload)
-          : summarizeGuidedExplanation(
-              outfit,
-              itemsById,
-              outfitFilters,
-              weatherData,
-              outfitAffinity,
-              explanationRecentOutfits,
-              layering
-            )
-        : [],
-    [outfit, itemsById, outfitFilters, weatherData, outfitAffinity, explanationRecentOutfits, layering, generationMode, guidedDebugPayload, guidedDebugPayloadMatchesOutfit]
-  );
-  const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
-    (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
-    0
-  );
   const generationSourceItems = useMemo(
     () => {
       const startedAt = getOaPerfNow();
@@ -3079,6 +3025,50 @@ export default function App() {
       return nextItems;
     },
     [items, outfitFilters.collections, outfitFilters.collectionsExcluded, outfitFilters.favorite]
+  );
+
+  function getCurrentGenerationSignature(nextOutfit = outfit, nextLocked = locked, nextRecent = recentOutfits) {
+    return getGenerationDebugSignature({ outfit: nextOutfit, locked: nextLocked, layering, itemsById, items: generationSourceItems, outfitFilters, generationLists, excluded, generationMode, outfitAffinity, recentOutfits: nextRecent });
+  }
+  const currentGenerationSignature = useMemo(() => getCurrentGenerationSignature(), [outfit, locked, layering, itemsById, generationSourceItems, outfitFilters, generationLists, excluded, generationMode, outfitAffinity, recentOutfits]);
+  const guidedDebugPayloadMatchesOutfit = Boolean(guidedDebugSignature && guidedDebugSignature === currentGenerationSignature);
+  const structuralIssues = getStructuralIssues(outfit, locked, layering, itemsById);
+  const currentOutfitStyleChip = useMemo(
+    () => getCurrentOutfitStyleChip(currentOutfitItems, outfitFilters.style ?? []),
+    [currentOutfitItems, outfitFilters.style]
+  );
+  const compactWeatherLocationName = useMemo(
+    () => getCompactWeatherLocationName(weatherSettings.locationName),
+    [weatherSettings.locationName]
+  );
+  const currentOutfitClimateChip = useMemo(
+    () =>
+      getCurrentOutfitClimateChip(
+        getActiveOutfitSlots(layering)
+          .map((slot) => {
+            const item = itemsById[outfit[slot]];
+            return item ? { slot, item } : null;
+          })
+          .filter(Boolean)
+      ),
+    [itemsById, outfit, layering]
+  );
+  const currentOutfitDominantStyle = useMemo(
+    () => getOutfitDominantStyle(outfit, itemsById, [], layering),
+    [outfit, itemsById, layering]
+  );
+  const currentOutfitStyleTarget = useMemo(
+    () => ((outfitFilters.style ?? []).length ? outfitFilters.style.join(", ") : "Off"),
+    [currentOutfitStyleChip, outfitFilters.style]
+  );
+  const guidedDebugDetails = useMemo(
+    () => (generationMode === "guided" && guidedDebugPayloadMatchesOutfit ? guidedDebugPayload : []),
+    [generationMode, guidedDebugPayload, guidedDebugPayloadMatchesOutfit]
+  );
+  const showDebugPopout = outfitDebugOpen && canUseDebugPopout && !isMobileViewport;
+  const activeOutfitFilterCount = Object.values(outfitFilters).reduce(
+    (sum, values) => sum + (Array.isArray(values) ? values.length : 0),
+    0
   );
 
   useEffect(() => {
@@ -3258,48 +3248,60 @@ export default function App() {
                 <strong>Guided</strong>
               </div>
               <div className="outfit-debug-row">
-                <span>Style target</span>
+                <span>Style guidance</span>
                 <strong>{currentOutfitStyleTarget || "Unspecified"}</strong>
               </div>
               <div className="outfit-debug-row">
-                <span>Climate</span>
+                <span>Style exclusions</span><strong>{outfitFilters.styleExcluded?.join(", ") || "None"}</strong>
+              </div>
+              <div className="outfit-debug-row">
+                <span>Climate guidance</span><strong>{outfitFilters.climate?.join(", ") || "Off"}</strong>
+              </div>
+              <div className="outfit-debug-row">
+                <span>Climate exclusions</span><strong>{outfitFilters.climateExcluded?.join(", ") || "None"}</strong>
+              </div>
+              <div className="outfit-debug-row">
+                <span>Outfit climate (descriptive)</span>
                 <strong>{currentOutfitClimateChip}</strong>
               </div>
               {currentOutfitDominantStyle ? (
                 <div className="outfit-debug-row">
-                  <span>Dominant style</span>
+                  <span>Dominant style (descriptive)</span>
                   <strong>{currentOutfitDominantStyle}</strong>
                 </div>
               ) : null}
             </div>
 
+            {structuralIssues.map(issue => <p key={issue} className="outfit-debug-note">{issue}</p>)}
+            <p className="outfit-debug-note">Selection weights determine probability, not outfit ratings.</p>
             {guidedDebugDetails.length ? (
               <div className="outfit-debug-slot-grid">
                 {guidedDebugDetails.map((entry) => {
                   const selectedItem = itemsById[entry.itemId];
-                  const reasons = getGuidedBreakdownDisplayEntries(entry.breakdown, 3);
+                  const reasons = getGuidedBreakdownDisplayEntries(entry.breakdown, Infinity);
                   const topCandidates = (entry.topCandidates ?? []).slice(0, 5);
 
                   return (
                     <section key={entry.slot} className="outfit-debug-slot">
                       <h4 className="outfit-debug-slot-title">{entry.slot}</h4>
                       <div className="outfit-debug-slot-block">
-                        <span className="outfit-debug-label">Selected</span>
+                        <span className="outfit-debug-label">Selected · Selection weight</span>
                         <div className="outfit-debug-value-list">
                           <div className="outfit-debug-value-row">
-                            <span>{selectedItem?.name ?? entry.itemId}</span>
-                            <strong>{entry.score.toFixed(1)}</strong>
+                            <span>{selectedItem?.name ?? entry.itemId ?? "Empty slot"}</span>
+                            <strong>{entry.score == null ? "—" : entry.score.toFixed(2)}</strong>
                           </div>
                         </div>
                       </div>
 
+                      {entry.reason ? <p className="outfit-debug-note">{entry.reason}</p> : null}
                       <div className="outfit-debug-slot-block">
-                        <span className="outfit-debug-label">Reasons</span>
+                        <span className="outfit-debug-label">Contributions</span>
                         <div className="outfit-debug-value-list">
                           {reasons.map((reason) => (
                             <div key={`${entry.slot}-${reason.key}`} className="outfit-debug-value-row">
                               <span>{reason.label}</span>
-                              <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
+                              <strong>{reason.value > 0 ? `+${reason.value.toFixed(2)}` : reason.value.toFixed(2)}</strong>
                             </div>
                           ))}
                         </div>
@@ -3320,20 +3322,8 @@ export default function App() {
                   );
                 })}
               </div>
-            ) : currentOutfitDebugReasons.length ? (
-              <>
-                <p className="outfit-debug-note">
-                  Detailed slot rankings are only available for the exact generated outfit. This view is showing a fallback summary.
-                </p>
-                {currentOutfitDebugReasons.map((reason) => (
-                  <div key={reason.key} className="outfit-debug-row">
-                    <span>{reason.label}</span>
-                    <strong>{reason.value > 0 ? `+${reason.value.toFixed(1)}` : reason.value.toFixed(1)}</strong>
-                  </div>
-                ))}
-              </>
             ) : (
-              <p className="outfit-debug-empty">No guided scoring reasons available.</p>
+              <p className="outfit-debug-empty">Generate or reroll to see current selection weights.</p>
             )}
           </>
         ) : (
@@ -3994,7 +3984,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, { itemsById });
       });
 
       return nextExcluded;
@@ -4725,7 +4715,7 @@ export default function App() {
         }
       });
 
-      const nextOutfit = buildNextOutfit(generationSourceItems, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+      const nextOutfit = buildNextOutfit(generationSourceItems, sanitized, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, { itemsById });
       setGuidedDebugPayload([]);
       return nextOutfit;
     });
@@ -5062,6 +5052,7 @@ export default function App() {
     }
 
     const scoringStartedAt = getOaPerfNow();
+    upperLayerMemoryRef.current = {};
     const result = buildNextOutfitWithDebug(
       generationSourceItems,
       outfit,
@@ -5073,7 +5064,8 @@ export default function App() {
       weatherData,
       generationMode,
       outfitAffinity,
-      recentOutfits
+      recentOutfits,
+      { itemsById }
     );
     const scoringDurationMs = getOaPerfNow() - scoringStartedAt;
     if (perfInteractionId) {
@@ -5086,6 +5078,9 @@ export default function App() {
     const nextOutfit = result.outfit;
     recordImageTrace("generate-selection", { outfit: Object.fromEntries(visibleSlots.map(slot => [slot, nextOutfit[slot] ?? null])) });
     const nextGuidedDebugPayload = generationMode === "guided" ? result.guidedDebugPayload : [];
+    const nextRecent = generationMode === "guided" ? rememberRecentOutfit(recentOutfits, nextOutfit, layering, { preserveLiked: true }) : recentOutfits;
+    setLocked(result.locked);
+    setGuidedDebugSignature(getCurrentGenerationSignature(nextOutfit, result.locked, nextRecent));
     const nextOutfitItemUuids = syncOutfitItemUuids(nextOutfit, outfitItemUuids, itemsById);
 
     setActivePanel(null);
@@ -5107,9 +5102,7 @@ export default function App() {
     ));
     setOutfit(nextOutfit);
     if (generationMode === "guided") {
-      setRecentOutfits((currentRecentOutfits) =>
-        rememberRecentOutfit(currentRecentOutfits, nextOutfit, layering, { preserveLiked: true })
-      );
+      setRecentOutfits(nextRecent);
     }
     setGenerateCount((current) => current + 1);
   }
@@ -5230,177 +5223,111 @@ export default function App() {
 
     pendingSlotActionQueueRef.current.clear();
 
-    setOutfit((current) => {
-      let nextOutfit = current;
+    let nextOutfit = outfitStateRef.current;
+    let nextDebug = [];
+    let nextLocked = locked;
 
-      queuedEntries.forEach(([slot, entry]) => {
-        if (locked[slot]) {
-          return;
-        }
+    queuedEntries.forEach(([slot, entry]) => {
+      if (locked[slot]) {
+        return;
+      }
 
-        const interactionId = entry.interactionId;
-        const rerollCount = Math.max(0, Math.trunc(entry.rerollCount || 0));
-        const cycleDelta = Math.trunc(entry.cycleDelta || 0);
-        const cycleDirection = cycleDelta === 0 ? 0 : cycleDelta > 0 ? 1 : -1;
-        const cycleSteps = Math.abs(cycleDelta);
+      const interactionId = entry.interactionId;
+      const rerollCount = Math.max(0, Math.trunc(entry.rerollCount || 0));
+      const cycleDelta = Math.trunc(entry.cycleDelta || 0);
+      const cycleDirection = cycleDelta === 0 ? 0 : cycleDelta > 0 ? 1 : -1;
+      const cycleSteps = Math.abs(cycleDelta);
 
+      if (interactionId) {
+        updateOaPerfInteraction(interactionId, (interaction) => {
+          interaction.poolSourceItems = generationSourceItems.length;
+        });
+      }
+
+      for (let index = 0; index < rerollCount; index += 1) {
+        const poolStartedAt = getOaPerfNow();
+        const result = rerollOutfitSlot(generationSourceItems, nextOutfit, nextLocked, slot, layering, {
+          itemsById, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits
+        });
+        nextOutfit = result.outfit;
+        nextLocked = result.locked;
+        nextDebug = result.guidedDebugPayload;
+        if (interactionId) updateOaPerfInteraction(interactionId, interaction => {
+          interaction.poolMs += getOaPerfNow() - poolStartedAt;
+          interaction.poolCalls += 1;
+        });
+      }
+
+      for (let index = 0; index < cycleSteps; index += 1) {
+        nextDebug = [];
+        const poolStartedAt = getOaPerfNow();
+        const options = getEligibleSlotPool(
+          generationSourceItems,
+          slot,
+          excluded,
+          generationLists,
+          layering,
+          outfitFilters,
+          weatherData,
+          { ...nextOutfit, [slot]: null },
+          itemsById
+        );
+        const poolDurationMs = getOaPerfNow() - poolStartedAt;
         if (interactionId) {
           updateOaPerfInteraction(interactionId, (interaction) => {
-            interaction.poolSourceItems = generationSourceItems.length;
+            interaction.poolMs += poolDurationMs;
+            interaction.poolCalls += 1;
+            interaction.poolSizes.push(options.length);
           });
         }
 
-        for (let index = 0; index < rerollCount; index += 1) {
-          const poolStartedAt = getOaPerfNow();
-          const pool = getEligibleSlotPool(
-            generationSourceItems,
-            slot,
-            excluded,
-            generationLists,
-            layering,
-            outfitFilters,
-            weatherData,
-            nextOutfit,
-            itemsById
-          ).filter((item) => item.id !== nextOutfit[slot]);
-          const poolDurationMs = getOaPerfNow() - poolStartedAt;
-          if (interactionId) {
-            updateOaPerfInteraction(interactionId, (interaction) => {
-              interaction.poolMs += poolDurationMs;
-              interaction.poolCalls += 1;
-              interaction.poolSizes.push(pool.length);
-            });
-          }
-
-          const scoreStartedAt = getOaPerfNow();
-          const nextItem = pickNextItemForGeneration(
-            pool,
-            slot,
-            nextOutfit,
-            itemsById,
-            outfitFilters,
-            weatherData,
-            generationMode,
-            outfitAffinity,
-            recentOutfits,
-            layering
-          );
-          const scoreDurationMs = getOaPerfNow() - scoreStartedAt;
-          if (interactionId) {
-            updateOaPerfInteraction(interactionId, (interaction) => {
-              interaction.scoreMs += scoreDurationMs;
-            });
-          }
-
+        if (!options.length) {
           nextOutfit = {
             ...nextOutfit,
-            [slot]: nextItem?.id ?? null
+            [slot]: null
           };
+          break;
         }
 
-        for (let index = 0; index < cycleSteps; index += 1) {
-          const poolStartedAt = getOaPerfNow();
-          const options = getEligibleSlotPool(
-            generationSourceItems,
-            slot,
-            excluded,
-            generationLists,
-            layering,
-            outfitFilters,
-            weatherData,
-            nextOutfit,
-            itemsById
-          );
-          const poolDurationMs = getOaPerfNow() - poolStartedAt;
-          if (interactionId) {
-            updateOaPerfInteraction(interactionId, (interaction) => {
-              interaction.poolMs += poolDurationMs;
-              interaction.poolCalls += 1;
-              interaction.poolSizes.push(options.length);
-            });
-          }
+        const currentIndex = options.findIndex((item) => item.id === nextOutfit[slot]);
+        const fallbackIndex = cycleDirection > 0 ? -1 : 0;
+        const nextIndex = (
+          currentIndex === -1
+            ? fallbackIndex + cycleDirection + options.length
+            : currentIndex + cycleDirection + options.length
+        ) % options.length;
 
-          if (!options.length) {
-            nextOutfit = {
-              ...nextOutfit,
-              [slot]: null
-            };
-            break;
-          }
-
-          const currentIndex = options.findIndex((item) => item.id === nextOutfit[slot]);
-          const fallbackIndex = cycleDirection > 0 ? -1 : 0;
-          const nextIndex = (
-            currentIndex === -1
-              ? fallbackIndex + cycleDirection + options.length
-              : currentIndex + cycleDirection + options.length
-          ) % options.length;
-
-          nextOutfit = {
-            ...nextOutfit,
-            [slot]: options[nextIndex].id
-          };
-        }
-      });
-
-      return nextOutfit;
+        nextOutfit = {
+          ...nextOutfit,
+          [slot]: options[nextIndex].id
+        };
+      }
     });
+
+    outfitStateRef.current = nextOutfit;
+    setOutfit(nextOutfit);
+    setLocked(nextLocked);
+    setGuidedDebugPayload(nextDebug);
+    setGuidedDebugSignature(nextDebug.length ? getCurrentGenerationSignature(nextOutfit, nextLocked) : "");
   }
 
   function toggleLayering() {
-    setLayering((current) => {
-      const nextValue = current === 3 ? false : current ? 3 : true;
-
-      setOutfit((previous) => transitionLayering(previous, current, nextValue));
-
-      return nextValue;
+    const nextLayering = layering === 3 ? false : layering ? 3 : true;
+    const result = transitionOutfitLayeringWithMemory(outfit, locked, layering, nextLayering, generationSourceItems, upperLayerMemoryRef.current, {
+      itemsById, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits
     });
-  }
-
-  function transitionLayering(previous, currentLayering, nextLayering) {
-    const nextOutfit = { ...previous };
+    upperLayerMemoryRef.current = result.memory;
     setActiveOutfitSlot(null);
     setPickerAnchorSlot(null);
-    if (nextLayering === 3) {
-      nextOutfit.TopMid = pickRandom(getEligibleSlotPool(
-        generationSourceItems, "TopMid", excluded, generationLists, 3,
-        outfitFilters, weatherData, nextOutfit, itemsById
-      ))?.id ?? null;
-    } else {
-      delete nextOutfit.TopMid;
-    }
-
-    if (!currentLayering && nextLayering) {
-      const visibleTop = itemsById[nextOutfit.TopInner];
-
-      if (visibleTop && !getItemLayerRoles(visibleTop).includes("Base")) {
-        nextOutfit.TopOuter = nextOutfit.TopOuter || nextOutfit.TopInner;
-        nextOutfit.TopInner = null;
-      }
-
-      if (nextOutfit.TopInner && nextOutfit.TopOuter === nextOutfit.TopInner) {
-        nextOutfit.TopOuter = null;
-      }
-
-      if (!nextOutfit.TopInner) {
-        nextOutfit.TopInner = pickRandom(getSlotOptionsForOutfit("TopInner", nextOutfit))?.id ?? null;
-      }
-
-      if (!nextOutfit.TopOuter) {
-        nextOutfit.TopOuter = pickRandom(getSlotOptionsForOutfit("TopOuter", nextOutfit))?.id ?? null;
-      }
-
-      return nextOutfit;
-    }
-
-    if (currentLayering && !nextLayering && !nextOutfit.TopInner && nextOutfit.TopOuter) {
-      nextOutfit.TopInner = nextOutfit.TopOuter;
-    }
-
-    return nextOutfit;
+    setGuidedDebugPayload([]);
+    setGuidedDebugSignature("");
+    setOutfit(result.outfit);
+    setLocked(result.locked);
+    setLayering(nextLayering);
   }
 
   async function applyLoadedData(nextItems, hydratedAppState) {
+    upperLayerMemoryRef.current = {};
     const runtimeFitpics = await materializeFitpicsForRuntime(hydratedAppState.fitpics);
 
     setItems(nextItems);
@@ -5891,11 +5818,6 @@ export default function App() {
     } else {
       window.alert("No item crops needed resetting.");
     }
-  }
-
-  function getSlotOptionsForOutfit(slot, nextOutfit) {
-    return getEligibleSlotPool(generationSourceItems, slot, excluded, generationLists, true, outfitFilters, weatherData, nextOutfit, itemsById)
-      .filter((item) => item.id !== nextOutfit[getOtherTopSlot(slot)]);
   }
 
   function toggleAccessories() {
@@ -6579,7 +6501,7 @@ export default function App() {
           ])
         );
 
-        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits);
+        return buildNextOutfit(generationSourceItems, sanitized, locked, layering, nextExcluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, { itemsById });
       });
 
       return nextExcluded;
@@ -7488,7 +7410,7 @@ export default function App() {
     });
 
     setOutfitAffinity((current) =>
-      applyOutfitAffinityDelta(current, outfitToToggle, isLiked ? -1 : 1)
+      applyOutfitAffinityDelta(current, outfitToToggle, isLiked ? -1 : 1, outfitLayering)
     );
     setRecentOutfits((current) => rememberRecentOutfit(current, outfitToToggle, outfitLayering, { liked: !isLiked }));
   }
@@ -7502,6 +7424,7 @@ export default function App() {
   }
 
   function loadSavedOutfit(savedOutfit) {
+    upperLayerMemoryRef.current = {};
     const sanitizedOutfit = sanitizeOutfitForExistingItems(savedOutfit.outfit, itemsById);
 
     setLayering(normalizeLayering(savedOutfit.layering));

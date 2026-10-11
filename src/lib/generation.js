@@ -13,6 +13,7 @@ import {
 } from "./typeDefaults.js";
 
 export const visibleSlots = ["Headwear", "TopInner", "TopMid", "TopOuter", "Bottom", "Footwear"];
+export const generationOrder = ["Bottom", "TopOuter", "Footwear", "TopMid", "TopInner", "Headwear"];
 export const topSlots = ["TopInner", "TopMid", "TopOuter"];
 
 // Preserve the persisted boolean modes and their existing outfit keys.
@@ -28,6 +29,168 @@ export function getActiveOutfitSlots(layering) {
   return visibleSlots.filter((slot) =>
     (slot !== "TopMid" || layering === 3) && (slot !== "TopOuter" || Boolean(layering))
   );
+}
+
+export function getActiveOutfit(outfit = {}, layering = true) {
+  const result = { ...outfit };
+  if (layering !== 3) delete result.TopMid;
+  if (!layering) result.TopOuter = null;
+  return result;
+}
+
+export function normalizeOutfitStructure(outfit, locked, layering, itemsById) {
+  const next = getActiveOutfit(outfit, layering);
+  const nextLocked = { ...locked };
+  const active = getActiveOutfitSlots(layering);
+  for (const slot of visibleSlots) {
+    if (!active.includes(slot)) {
+      delete nextLocked[slot];
+      continue;
+    }
+    const item = itemsById[next[slot]];
+    if (!item || !matchesSlotBaseValidity(item, slot, layering)) {
+      next[slot] = null;
+      delete nextLocked[slot];
+    }
+  }
+  return { outfit: next, locked: nextLocked };
+}
+
+export function getStructuralIssues(outfit, locked, layering, itemsById) {
+  const active = getActiveOutfit(outfit, layering);
+  const issues = [];
+  for (const slot of getActiveOutfitSlots(layering)) {
+    const item = itemsById[active[slot]];
+    if (!item || !locked[slot]) continue;
+    const otherLocked = Object.fromEntries(Object.entries(active).filter(([other]) => other !== slot && locked[other]));
+    if (!filterPoolForLayeringRules([item], slot, otherLocked, itemsById).length
+        || !filterPoolForCompatibilityRules([item], slot, otherLocked, itemsById).length) {
+      issues.push(`${slot}: incompatible locked garments; unlock one to resolve the conflict.`);
+    }
+  }
+  return issues;
+}
+
+export function getGenerationDebugSignature({ outfit, locked, layering, itemsById, items, outfitFilters, generationLists, excluded, generationMode, outfitAffinity, recentOutfits }) {
+  return JSON.stringify({
+    outfit: getActiveOutfit(outfit, layering),
+    locked: Object.fromEntries(getActiveOutfitSlots(layering).map(slot => [slot, Boolean(locked?.[slot])])),
+    layering, outfitFilters: normalizeOutfitFilters(outfitFilters), generationLists: generationLists ?? defaultGenerationLists, excluded: excluded ?? {}, generationMode: normalizeGenerationMode(generationMode),
+    outfitAffinity: normalizeOutfitAffinity(outfitAffinity), recentOutfits: normalizeRecentOutfits(recentOutfits),
+    source: items.map(item => item.id).sort(),
+    metadata: Object.values(itemsById).map(item => [item.id, item.type, item.garmentType, getItemLayerRoles(item), item.weight, item.styleTags, item.climateTags, item.favorite, item.status, item.list, item.collections]).sort((a, b) => a[0].localeCompare(b[0]))
+  });
+}
+
+function recordSelectionContext(payload, context, finalOutfit, rememberGeneration = false) {
+  if (!payload.length) return payload;
+  payload[0].selectionContext = {
+    ...JSON.parse(getGenerationDebugSignature(context)),
+    expectedPostActionRecentHistory: rememberGeneration
+      ? rememberRecentOutfit(context.recentOutfits, finalOutfit, context.layering, { preserveLiked: true })
+      : normalizeRecentOutfits(context.recentOutfits)
+  };
+  return payload;
+}
+
+export function transitionOutfitLayering(previous, locked, nextLayering, items, options = {}) {
+  const itemsById = options.itemsById ?? Object.fromEntries(items.map(item => [item.id, item]));
+  const result = normalizeOutfitStructure(previous, locked, nextLayering, itemsById);
+  const next = result.outfit;
+  const nextLocked = result.locked;
+  for (const slot of topSlots) { delete next[slot]; delete nextLocked[slot]; }
+  const activeTops = topSlots.filter(slot => getActiveOutfitSlots(nextLayering).includes(slot));
+  if (!nextLayering) {
+    const candidates = ["TopOuter", "TopMid", "TopInner"].filter(slot => {
+      const item = itemsById[previous[slot]];
+      return item && matchesSlotBaseValidity(item, "TopInner", nextLayering);
+    });
+    const retained = candidates.find(slot => locked[slot]) ?? candidates[0];
+    if (retained) {
+      next.TopInner = previous[retained];
+      if (locked[retained]) nextLocked.TopInner = true;
+    }
+  } else {
+    // Keep valid placements before moving garments whose role no longer fits.
+    const retained = new Set();
+    for (const slot of activeTops) {
+      const item = itemsById[previous[slot]];
+      if (item && matchesSlotBaseValidity(item, slot, nextLayering) && !retained.has(item.id)) {
+        next[slot] = item.id;
+        retained.add(item.id);
+        if (locked[slot]) nextLocked[slot] = true;
+      }
+    }
+    const displaced = topSlots.filter(slot => previous[slot] && !retained.has(previous[slot]))
+      .sort((a, b) => Number(Boolean(locked[b])) - Number(Boolean(locked[a])));
+    for (const oldSlot of displaced) {
+      const item = itemsById[previous[oldSlot]];
+      if (!item || retained.has(item.id)) continue;
+      const target = activeTops.find(slot => !next[slot] && matchesSlotBaseValidity(item, slot, nextLayering)
+        && filterPoolForLayeringRules([item], slot, next, itemsById).length
+        && filterPoolForCompatibilityRules([item], slot, next, itemsById).length);
+      if (target) {
+        next[target] = item.id;
+        retained.add(item.id);
+        if (locked[oldSlot]) nextLocked[target] = true;
+      }
+    }
+  }
+  for (const slot of generationOrder.filter(slot => activeTops.includes(slot))) {
+    if (next[slot]) continue;
+    const pool = getEligibleSlotPool(items, slot, options.excluded, options.generationLists, nextLayering, options.outfitFilters ?? emptyOutfitFilters, options.weatherData, next, itemsById);
+    next[slot] = selectNextItemForGeneration(pool, slot, next, itemsById, options.outfitFilters ?? emptyOutfitFilters, options.weatherData, options.generationMode, options.outfitAffinity, options.recentOutfits, nextLayering)?.item.id ?? null;
+  }
+  return { outfit: getActiveOutfit(next, nextLayering), locked: nextLocked };
+}
+
+// Hidden garments live outside the active outfit, so they cannot influence selection
+// or likes. Any edit to the active outfit starts a new transition history.
+export function transitionOutfitLayeringWithMemory(previous, locked, previousLayering, nextLayering, items, memory = {}, options = {}) {
+  const stateKey = (outfit, locks, layering) => JSON.stringify([
+    getOutfitKey(outfit, layering),
+    getActiveOutfitSlots(layering).map(slot => Boolean(locks[slot]))
+  ]);
+  const unchanged = memory.current === stateKey(previous, locked, previousLayering);
+  const snapshots = unchanged ? { ...memory.snapshots } : {};
+  snapshots[getLayerCount(previousLayering)] = { outfit: { ...previous }, locked: { ...locked } };
+  const remembered = snapshots[getLayerCount(nextLayering)]
+    ?? (nextLayering ? snapshots[3] ?? snapshots[2] : null);
+  let source = previous;
+  let sourceLocks = locked;
+  if (remembered) {
+    source = { ...previous };
+    sourceLocks = { ...locked };
+    for (const slot of topSlots) {
+      source[slot] = remembered.outfit[slot] ?? null;
+      delete sourceLocks[slot];
+      if (remembered.locked[slot]) sourceLocks[slot] = true;
+    }
+  }
+  const result = transitionOutfitLayering(source, sourceLocks, nextLayering, items, options);
+  return {
+    ...result,
+    memory: { snapshots, current: stateKey(result.outfit, result.locked, nextLayering) }
+  };
+}
+
+export function rerollOutfitSlot(items, outfit, locked, slot, layering, options = {}) {
+  const itemsById = options.itemsById ?? Object.fromEntries(items.map(item => [item.id, item]));
+  const normalized = normalizeOutfitStructure(outfit, locked, layering, itemsById);
+  if (normalized.locked[slot] || !getActiveOutfitSlots(layering).includes(slot)) return { ...normalized, guidedDebugPayload: [] };
+  const context = { ...normalized.outfit, [slot]: null };
+  const pool = getEligibleSlotPool(items, slot, options.excluded, options.generationLists, layering, options.outfitFilters ?? emptyOutfitFilters, options.weatherData, context, itemsById)
+    .filter(item => item.id !== outfit[slot]);
+  const selection = selectNextItemForGeneration(pool, slot, context, itemsById, options.outfitFilters ?? emptyOutfitFilters, options.weatherData, options.generationMode, options.outfitAffinity, options.recentOutfits, layering);
+  return {
+    ...normalized,
+    outfit: { ...context, [slot]: selection?.item.id ?? null },
+    guidedDebugPayload: normalizeGenerationMode(options.generationMode) === "guided" ? recordSelectionContext(
+      [{ slot, itemId: selection?.item.id ?? null, score: selection?.score ?? null, breakdown: selection?.breakdown ?? {}, topCandidates: selection?.topCandidates ?? [], reason: !selection ? "No eligible replacement candidates." : null, selectionOutfit: context }],
+      { ...options, outfit: context, locked: normalized.locked, layering, itemsById, items },
+      { ...context, [slot]: selection?.item.id ?? null }
+    ) : []
+  };
 }
 export const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt"];
 export const defaultGenerationLists = {
@@ -60,18 +223,11 @@ export const emptyOutfitFilters = {
 export const generationModes = ["guided", "random"];
 export const defaultGenerationMode = "guided";
 export const RECENT_OUTFIT_WINDOW = 8;
-export const noFilterStyleWeights = {
-  Casual: 0.35,
-  "Smart Casual": 0.3,
-  Athleisure: 0.2,
-  Formal: 0.15
-};
 const GUIDED_BASE_SCORE = 0.8;
 const GUIDED_SCORE_FLOOR = 0.3;
 const GUIDED_DEBUG_TOP_CANDIDATE_LIMIT = 5;
 const MAX_RECENT_ITEM_PENALTY = -0.8;
 const MAX_RECENT_EXACT_PENALTY = -0.5;
-const MAX_STYLE_STREAK_PENALTY = -0.5;
 const MAX_AFFINITY_BOOST = 0.5;
 const recentItemPenaltySteps = [0.22, 0.11, 0.04, 0.02, 0.01];
 const recentSlotPenaltySteps = [0.08, 0.04, 0.01, 0.005, 0.005];
@@ -82,11 +238,8 @@ const guidedScoreNormalizers = {
   styleCoherence: { scale: 0.28, min: -3, max: 2.5 },
   styleCompletion: { scale: 0.4, min: 0, max: 2.5 },
   dominance: { scale: 0.6, min: -2, max: 0 },
-  weightContrast: { scale: 0.6, min: -1, max: 0 },
   styleConflict: { scale: 0.65, min: -1.5, max: 0 },
   hotOuterwear: { scale: 0.65, min: -1.5, max: 0 },
-  lonelyExtremes: { scale: 0.6, min: -0.8, max: 0 },
-  baseline: { scale: 0.7, min: 0, max: 1 },
   earlyAnchor: { scale: 0.55, min: 0, max: 1.2 },
   selectedStyleBonus: { scale: 0.45, min: 0, max: 1.4 },
   favorite: { scale: 0.6, min: 0, max: 0.3 },
@@ -95,10 +248,6 @@ const guidedScoreNormalizers = {
   recentExactPenalty: { scale: 1, min: MAX_RECENT_EXACT_PENALTY, max: 0 },
   recentLikedBoost: { scale: 1, min: 0, max: 0.35 },
   coldOuterwear: { scale: 0.45, min: -1.2, max: 1 },
-  noFilterVariety: { scale: 0.14, min: -0.4, max: 1 },
-  coldLightTopPenalty: { scale: 0.28, min: -1.2, max: 0 },
-  mismatchedSeasonality: { scale: 0.32, min: -1.8, max: 0 },
-  styleStreakPenalty: { scale: 1, min: MAX_STYLE_STREAK_PENALTY, max: 0 }
 };
 
 const nonStackableTopTypes = new Set(["sweatshirt", "jacket"]);
@@ -106,18 +255,18 @@ const affinityRelationships = [
   ["TopInner", "Bottom"],
   ["Bottom", "Footwear"],
   ["TopOuter", "TopInner"],
-  ["TopOuter", "Bottom"]
+  ["TopOuter", "Bottom"],
+  ["TopOuter", "TopMid"],
+  ["TopMid", "TopInner"],
+  ["TopMid", "Bottom"]
 ];
 const guidedExplanationLabels = {
   climate: "Climate suitability",
   styleCoherence: "Style match",
   styleCompletion: "Style completion",
   dominance: "Style consistency",
-  weightContrast: "Extreme weight mix penalty",
   styleConflict: "Cross-style conflict penalty",
   hotOuterwear: "Outerwear adjusted for heat",
-  lonelyExtremes: "Lonely extremes penalty",
-  baseline: "Clean baseline outfit",
   earlyAnchor: "Early style anchoring",
   selectedStyleBonus: "Selected style bonus",
   favorite: "Favorite item boost",
@@ -126,10 +275,8 @@ const guidedExplanationLabels = {
   recentExactPenalty: "Exact outfit repetition penalty",
   recentLikedBoost: "Recent like combo boost",
   coldOuterwear: "Outerwear added for cold",
-  noFilterVariety: "No-filter style variety",
-  coldLightTopPenalty: "Cold light-top penalty",
-  mismatchedSeasonality: "Mixed-season penalty",
-  styleStreakPenalty: "Style streak penalty"
+  startingWeight: "Starting weight",
+  minimumWeightAdjustment: "Minimum weight adjustment",
 };
 
 function normalizeBooleanLookup(value) {
@@ -184,7 +331,7 @@ function pickWeightedRandom(entries) {
 export function getOutfitKey(outfit, layering) {
   return JSON.stringify({
     layering: normalizeLayering(layering),
-    slots: Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, outfit?.[slot] ?? null]))
+    slots: Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, getActiveOutfitSlots(layering).includes(slot) ? outfit?.[slot] ?? null : null]))
   });
 }
 
@@ -196,7 +343,8 @@ function buildAffinityItemKey(slot, itemId) {
   return ["item", slot, itemId].join("|");
 }
 
-function getAffinityUpdatesForOutfit(outfit) {
+function getAffinityUpdatesForOutfit(outfit, layering) {
+  outfit = getActiveOutfit(outfit, layering);
   const updates = {};
 
   affinityRelationships.forEach(([sourceSlot, targetSlot]) => {
@@ -211,7 +359,7 @@ function getAffinityUpdatesForOutfit(outfit) {
     updates[pairKey] = (updates[pairKey] ?? 0) + 1;
   });
 
-  visibleSlots.forEach((slot) => {
+  generationOrder.filter(slot => getActiveOutfitSlots(layering).includes(slot)).forEach((slot) => {
     const itemId = outfit?.[slot];
 
     if (!itemId) {
@@ -225,9 +373,9 @@ function getAffinityUpdatesForOutfit(outfit) {
   return updates;
 }
 
-export function applyOutfitAffinityDelta(currentAffinity, outfit, delta) {
+export function applyOutfitAffinityDelta(currentAffinity, outfit, delta, layering = true) {
   const nextAffinity = { ...normalizeAffinityMap(currentAffinity) };
-  const updates = getAffinityUpdatesForOutfit(outfit);
+  const updates = getAffinityUpdatesForOutfit(outfit, layering);
 
   Object.entries(updates).forEach(([key, count]) => {
     const nextCount = Math.max(0, (nextAffinity[key] ?? 0) + count * delta);
@@ -243,7 +391,7 @@ export function applyOutfitAffinityDelta(currentAffinity, outfit, delta) {
 }
 
 function sanitizeRecentOutfitSlots(outfit, layering) {
-  return Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, outfit?.[slot] ?? null]));
+  return Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, getActiveOutfitSlots(layering).includes(slot) ? outfit?.[slot] ?? null : null]));
 }
 
 function normalizeRecentOutfitEntry(entry) {
@@ -251,7 +399,7 @@ function normalizeRecentOutfitEntry(entry) {
   const outfit = sanitizeRecentOutfitSlots(entry?.outfit, layering);
 
   return {
-    key: typeof entry?.key === "string" ? entry.key : getOutfitKey(outfit, layering),
+    key: getOutfitKey(outfit, layering),
     outfit,
     layering,
     liked: Boolean(entry?.liked)
@@ -259,7 +407,14 @@ function normalizeRecentOutfitEntry(entry) {
 }
 
 export function normalizeRecentOutfits(value) {
-  return Array.isArray(value) ? value.map(normalizeRecentOutfitEntry).slice(0, RECENT_OUTFIT_WINDOW) : [];
+  const result = [];
+  for (const raw of Array.isArray(value) ? value : []) {
+    const entry = normalizeRecentOutfitEntry(raw);
+    const existing = result.find(current => current.key === entry.key);
+    if (existing) existing.liked ||= entry.liked;
+    else result.push(entry);
+  }
+  return result.slice(0, RECENT_OUTFIT_WINDOW);
 }
 
 export function rememberRecentOutfit(currentRecentOutfits, outfit, layering, options = {}) {
@@ -303,7 +458,7 @@ export function isEligibleForGeneration(item, excluded = {}, generationLists = d
   return true;
 }
 
-function matchesSlotBaseValidity(item, slot, layering = true) {
+export function matchesSlotBaseValidity(item, slot, layering = true) {
   if (slot === "Headwear") return item.garmentType === "Headwear";
   if (slot === "Bottom") return item.garmentType === "Bottom";
   if (slot === "Footwear") return item.garmentType === "Footwear";
@@ -335,6 +490,7 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
 }
 
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}, generationLists = defaultGenerationLists) {
+  outfit = getActiveOutfit(outfit, layering);
   let pool = getSlotBasePool(items, slot, layering).filter((item) => generationLists === null || isEligibleForGeneration(item, {}, generationLists));
 
   if (layering && topSlots.includes(slot)) {
@@ -357,6 +513,8 @@ function getEligibleSlotPoolInternal(
   itemsById = {},
   ruleOptions = {}
 ) {
+  outfit = getActiveOutfit(outfit, layering);
+  if (!getActiveOutfitSlots(layering).includes(slot)) return [];
   let pool = getPool(items, slot, excluded, generationLists, layering).filter((item) =>
     outfitFilters?.favorite === "yes" ? Boolean(item.favorite)
       : outfitFilters?.favorite === "no" ? !item.favorite : true
@@ -688,23 +846,6 @@ export function getCurrentOutfitClimateChip(items) {
   return ranked[0][0];
 }
 
-function getDominantStyleTags(items) {
-  const counts = new Map();
-
-  items.forEach((item) => {
-    getItemStyleTags(item).forEach((style) => {
-      counts.set(style, (counts.get(style) ?? 0) + 1);
-    });
-  });
-
-  const maxCount = Math.max(0, ...counts.values());
-  return new Set(
-    [...counts.entries()]
-      .filter(([, count]) => count === maxCount && count > 0)
-      .map(([style]) => style)
-  );
-}
-
 function getDominantStyleCounts(items) {
   const counts = new Map();
 
@@ -740,20 +881,6 @@ function resolveDominantStyleFromCounts(counts, selectedStyles = []) {
   return selectedMatch ?? tiedStyles[0];
 }
 
-function styleToMode(style) {
-  if (style === "Formal") return "formal";
-  if (style === "Smart Casual") return "smart-casual";
-  if (style === "Athleisure") return "athleisure";
-  return "casual";
-}
-
-function modeToStyle(styleMode) {
-  if (styleMode === "formal" || styleMode === "formal-bridge") return "Formal";
-  if (styleMode === "smart-casual") return "Smart Casual";
-  if (styleMode === "athleisure") return "Athleisure";
-  return "Casual";
-}
-
 function clampScore(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -778,14 +905,8 @@ export function classifyOutfitStyle(items, selectedStyles = []) {
   return resolveDominantStyleFromCounts(getDominantStyleCounts(items), selectedStyles);
 }
 
-export function getOutfitDominantStyle(outfit, itemsById, selectedStyles = []) {
-  return classifyOutfitStyle(getPickedOutfitItems(outfit, itemsById), selectedStyles);
-}
-
-function getRecentDominantStyles(recentOutfits, itemsById, selectedStyles = []) {
-  return normalizeRecentOutfits(recentOutfits)
-    .map((entry) => classifyOutfitStyle(getPickedOutfitItems(entry.outfit, itemsById), selectedStyles))
-    .filter(Boolean);
+export function getOutfitDominantStyle(outfit, itemsById, selectedStyles = [], layering = true) {
+  return classifyOutfitStyle(getPickedOutfitItems(getActiveOutfit(outfit, layering), itemsById), selectedStyles);
 }
 
 export function getCurrentOutfitStyleChip(items, selectedStyles) {
@@ -793,6 +914,7 @@ export function getCurrentOutfitStyleChip(items, selectedStyles) {
 }
 
 function getClimateScore(item, slot, climatePreferences) {
+  if (slot === "TopMid") slot = "TopInner";
   if (!climatePreferences.length) return 0;
 
   const typeMatches = getTypeMatchKeys(item.type);
@@ -892,7 +1014,7 @@ function isStrongFormalAnchor(item, slot) {
   const typeMatches = getTypeMatchKeys(item.type);
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
 
-  if (slot === "TopInner") {
+  if (slot === "TopInner" || slot === "TopMid") {
     return hasType("shirt");
   }
 
@@ -988,14 +1110,16 @@ function passesFormalStructureRules(item, currentOutfit, slot, itemsById, contex
     ...currentOutfit,
     [slot]: item.id
   };
-  const topInner = itemsById[nextOutfit.TopInner];
   const bottom = itemsById[nextOutfit.Bottom];
   const footwear = itemsById[nextOutfit.Footwear];
   const counts = countFormalStructure(nextOutfit, itemsById, layering);
   const remainingSlots = getFormalCoreSlots(layering).filter((coreSlot) => !nextOutfit[coreSlot]);
   const potentialFormalAnchors = remainingSlots.filter((coreSlot) => hasPotentialFormalAnchorForSlot(coreSlot, nextOutfit, itemsById, context)).length;
   const forcedBridgeSlots = remainingSlots.filter((coreSlot) => !hasPotentialNonBridgeForSlot(coreSlot, nextOutfit, itemsById, context)).length;
-  const topInnerNeedsFormalAnchor = !topInner ? hasPotentialFormalAnchorForSlot("TopInner", nextOutfit, itemsById, context) : isStrongFormalAnchor(topInner, "TopInner");
+  const topInnerNeedsFormalAnchor = ["TopInner", ...(layering === 3 ? ["TopMid"] : [])].some(upperSlot => {
+    const upper = itemsById[nextOutfit[upperSlot]];
+    return upper ? isStrongFormalAnchor(upper, upperSlot) : hasPotentialFormalAnchorForSlot(upperSlot, nextOutfit, itemsById, context);
+  });
   const bottomNeedsFormalAnchor = !bottom ? hasPotentialFormalAnchorForSlot("Bottom", nextOutfit, itemsById, context) : isStrongFormalAnchor(bottom, "Bottom");
 
   if (counts.bridge > 2) {
@@ -1056,7 +1180,6 @@ function resolveSelectedStyleMode(selectedStyles) {
 function getStyleBlockProfile(styleMode) {
   return {
     styleMode,
-    blockNoFilterSportCap: styleMode === "no-filter",
     blockFormalSet: styleMode === "formal",
     blockFormalBridgeSet: styleMode === "formal-bridge",
     blockSmartCasualSet: styleMode === "smart-casual",
@@ -1064,33 +1187,10 @@ function getStyleBlockProfile(styleMode) {
   };
 }
 
-function getAnchoredStyle(outfit, itemsById, selectedStyles = []) {
-  const pickedItems = getPickedOutfitItems(outfit, itemsById);
-  if (
-    !(selectedStyles ?? []).length &&
-    pickedItems.some((item) => {
-      const typeMatches = getTypeMatchKeys(item.type);
-      return typeMatches.has("sport cap") || typeMatches.has("sport t-shirt") || typeMatches.has("sport ls t-shirt") || typeMatches.has("sport shorts");
-    })
-  ) {
-    return "Athleisure";
-  }
-
-  if (pickedItems.length < 2) return null;
-
-  const counts = getDominantStyleCounts(pickedItems);
-  const ranked = rankStyleCounts(counts);
-  const dominantEntry = ranked[0];
-
-  if (!dominantEntry || dominantEntry[1] < 2) return null;
-
-  return dominantEntry[0];
-}
-
 function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, itemsById = {}, context = {}) {
   const styleMode = resolveSelectedStyleMode(selectedStyles);
   const profile = getStyleBlockProfile(styleMode);
-  const anchoredStyle = getAnchoredStyle(outfit, itemsById, selectedStyles);
+  if (!selectedStyles.length) return true;
 
   const typeMatches = getTypeMatchKeys(item.type);
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
@@ -1108,10 +1208,6 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
     "sweatshirt",
     "sport t-shirt"
   );
-
-  if (profile.blockNoFilterSportCap && hasType("sport cap") && anchoredStyle && anchoredStyle !== "Athleisure") {
-    return false;
-  }
 
   if (profile.blockFormalSet) {
     if (hasType("shorts", "slides", "sandals", "sport cap", "beanie", "fleece jacket", "shell jacket", "hoodie", "sweatshirt", "sport t-shirt", "fleece sweater")) {
@@ -1161,21 +1257,6 @@ function passesSelectedStyleRules(item, slot, selectedStyles, outfit = {}, items
     }
   }
 
-  if (anchoredStyle === "Smart Casual" || anchoredStyle === "Formal") {
-    if (hasType("sport cap", "sport t-shirt", "sport ls t-shirt", "sport shorts")) {
-      return false;
-    }
-    if (isAthleisureOnly) {
-      return false;
-    }
-  }
-
-  if (anchoredStyle === "Athleisure") {
-    if (hasType("derby", "jacket", "jeans", "boots") || isFormalOnly) {
-      return false;
-    }
-  }
-
   return true;
 }
 
@@ -1188,21 +1269,6 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
   const itemStyles = getItemStyleTags(item);
   const itemClimateTags = getItemClimateTags(item);
-  const existingTopInner = itemsById[outfit.TopInner];
-  const existingTopOuter = itemsById[outfit.TopOuter];
-  const existingBottom = itemsById[outfit.Bottom];
-  const existingTopInnerMatches = existingTopInner ? getTypeMatchKeys(existingTopInner.type) : new Set();
-  const existingTopOuterWeight = normalizeWeight(existingTopOuter?.weight);
-  const hasLightOrSportTop =
-    existingTopInner &&
-    normalizeWeight(existingTopInner.weight) === "Light" &&
-    ["t-shirt", "ls t-shirt", "sport t-shirt", "sport ls t-shirt"].some((type) => existingTopInnerMatches.has(type));
-  const hasSmartShirtTop =
-    existingTopInner &&
-    existingTopInner.garmentType === "Top" &&
-    existingTopInnerMatches.has("shirt") &&
-    getItemStyleTags(existingTopInner).some((style) => style === "Smart Casual" || style === "Formal");
-
   if (excludedStyles.length && itemStyles.some((style) => excludedStyles.includes(style))) {
     return false;
   }
@@ -1223,23 +1289,12 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
 
   if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
     if (hasType("shorts", "slides", "sandals")) return false;
-    if (slot === "TopInner" && hasType("sport t-shirt", "sport ls t-shirt")) return false;
-    if (hasLightOrSportTop && ((slot === "TopOuter" && item.garmentType === "Outerwear" && normalizeWeight(item.weight) === "Heavy") || (slot === "Footwear" && hasType("boots")))) {
-      return false;
-    }
+    if (["TopInner", "TopMid"].includes(slot) && hasType("sport t-shirt", "sport ls t-shirt")) return false;
+
   }
 
   if (climatePreferences.includes("Rain")) {
     if (hasType("slides", "sandals")) return false;
-  }
-
-  if (
-    hasSmartShirtTop &&
-    ((slot === "Bottom" && hasType("shorts")) ||
-      (slot === "TopOuter" && item.garmentType === "Outerwear" && ["Medium", "Heavy"].includes(normalizeWeight(item.weight)) && existingBottom && getTypeMatchKeys(existingBottom.type).has("shorts")) ||
-      (slot === "Bottom" && hasType("shorts") && existingTopOuter && existingTopOuter.garmentType === "Outerwear" && ["Medium", "Heavy"].includes(existingTopOuterWeight)))
-  ) {
-    return false;
   }
 
   return passesSelectedStyleRules(item, slot, selectedStyles, outfit, itemsById, {
@@ -1251,158 +1306,11 @@ function passesHardContextRules(item, slot, outfitFilters, weatherData, outfit =
 
 export function applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit = {}, itemsById = {}, context = {}) {
   const filtered = pool.filter((item) => passesHardContextRules(item, slot, outfitFilters, weatherData, outfit, itemsById, context));
-  return filtered.length ? filtered : pool;
-}
-
-function getDominantStyleMode(selectedStyles, pickedItems, noFilterData = null) {
-  const selectedStyleMode = resolveSelectedStyleMode(selectedStyles);
-  const counts = getDominantStyleCounts(pickedItems);
-
-  if (pickedItems.length < 2) {
-    return selectedStyleMode === "no-filter" ? noFilterData?.targetMode ?? "casual" : selectedStyleMode;
-  }
-
-  const dominantEntry = rankStyleCounts(counts)[0];
-  if (!dominantEntry || dominantEntry[1] < 2) return selectedStyleMode;
-
-  return styleToMode(dominantEntry[0]);
-}
-
-function getPoolStyleSupport(pool) {
-  const counts = {};
-  let total = 0;
-
-  pool.forEach((item) => {
-    getItemStyleTags(item).forEach((style) => {
-      counts[style] = (counts[style] ?? 0) + 1;
-      total += 1;
-    });
-  });
-
-  return Object.fromEntries(
-    Object.entries(noFilterStyleWeights).map(([style, weight]) => [
-      style,
-      total ? (counts[style] ?? 0) / total : weight
-    ])
-  );
-}
-
-function getAdjustedNoFilterWeights(recentStyles, support, anchoredStyle = null) {
-  if (anchoredStyle) {
-    return Object.fromEntries(
-      Object.keys(noFilterStyleWeights).map((style) => [style, style === anchoredStyle ? 1 : 0.1])
-    );
-  }
-
-  const recentWindow = Math.max(recentStyles.length, 4);
-  const recentCounts = Object.fromEntries(Object.keys(noFilterStyleWeights).map((style) => [style, 0]));
-
-  recentStyles.forEach((style) => {
-    if (recentCounts[style] !== undefined) recentCounts[style] += 1;
-  });
-
-  const streakStyle = recentStyles[0] && recentStyles[0] === recentStyles[1] ? recentStyles[0] : null;
-  const lastStyle = recentStyles[0] ?? null;
-
-  return Object.fromEntries(
-    Object.entries(noFilterStyleWeights).map(([style, baseWeight]) => {
-      const recentShare = recentCounts[style] / recentWindow;
-      const absenceBoost = recentCounts[style] === 0 ? (style === "Athleisure" ? 0.24 : 0.16) : recentCounts[style] === 1 ? (style === "Athleisure" ? 0.1 : 0.06) : 0;
-      const oversharePenalty = Math.max(0, recentShare - baseWeight) * 1.8;
-      const streakPenalty = streakStyle === style ? 1.05 : lastStyle === style ? 0.24 : 0;
-      const supportMultiplier = Math.max(0.2, Math.min(style === "Formal" ? 1.08 : 1.15, (support?.[style] ?? 0.25) * 1.6));
-      const styleBias = style === "Smart Casual" ? 1.1 : style === "Formal" ? 0.82 : 1;
-      return [style, Math.max(0.02, (baseWeight + absenceBoost - oversharePenalty - streakPenalty) * supportMultiplier * styleBias)];
-    })
-  );
-}
-
-function pickWeightedStyle(weights) {
-  const entries = Object.entries(weights).filter(([, weight]) => weight > 0);
-  const totalWeight = entries.reduce((sum, [, weight]) => sum + weight, 0);
-  if (!totalWeight) return "Casual";
-
-  let remaining = Math.random() * totalWeight;
-  for (const [style, weight] of entries) {
-    remaining -= weight;
-    if (remaining <= 0) return style;
-  }
-
-  return entries.at(-1)?.[0] ?? "Casual";
-}
-
-function getEligibleStyleSupport(items, excluded, generationLists) {
-  return getPoolStyleSupport(
-    items.filter((item) => isEligibleForGeneration(item, excluded, generationLists) && visibleSlots.some((slot) => getPool([item], slot, {}, generationLists).length))
-  );
-}
-
-function buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById) {
-  const support = getEligibleStyleSupport(items, excluded, generationLists);
-  const recentStyles = getRecentDominantStyles(recentOutfits, itemsById);
-  const weights = getAdjustedNoFilterWeights(recentStyles, support, null);
-  const repeatedRecentStyle = recentStyles[0] && recentStyles[0] === recentStyles[1] ? recentStyles[0] : null;
-  const targetCandidates = repeatedRecentStyle
-    ? Object.fromEntries(
-        Object.entries(weights).map(([style, weight]) => [
-          style,
-          style === repeatedRecentStyle && Object.entries(weights).some(([otherStyle, otherWeight]) => otherStyle !== style && otherWeight > 0.08)
-            ? 0
-            : weight
-        ])
-      )
-    : weights;
-  const targetStyle = pickWeightedStyle(targetCandidates);
-
-  return {
-    support,
-    weights,
-    targetStyle,
-    targetMode: styleToMode(targetStyle),
-    avoidStyle: repeatedRecentStyle
-  };
-}
-
-function getNoFilterPreference(item, noFilterData) {
-  const itemStyles = getItemStyleTags(item);
-  if (!noFilterData || !itemStyles.length) return 0;
-
-  const styleWeight = itemStyles.reduce((sum, style) => sum + (noFilterData.weights[style] ?? 0), 0) / itemStyles.length;
-  const supportWeight = itemStyles.reduce((sum, style) => sum + (noFilterData.support[style] ?? 0.25), 0) / itemStyles.length;
-  const anchoredStyle = noFilterData.anchoredStyle;
-  const isFormalOnly = isFormalOnlyItem(item);
-  const isAthleisureOnly = isAthleisureOnlyItem(item);
-
-  let score = styleWeight * 4.4 + supportWeight * 1.2;
-  const targetStyle = noFilterData.targetStyle;
-  const avoidStyle = noFilterData.avoidStyle;
-
-  if (anchoredStyle) {
-    if (itemStyles.includes(anchoredStyle)) score += anchoredStyle === "Formal" ? 3.2 : 2.4;
-    else if (anchoredStyle === "Formal" && itemStyles.includes("Athleisure")) score -= 4;
-    else if (anchoredStyle === "Smart Casual" && isAthleisureOnly) score -= 3.5;
-    else if (anchoredStyle === "Athleisure" && isFormalOnly) score -= 4;
-  } else {
-    if (itemStyles.includes("Smart Casual")) score += 0.85;
-    if (isFormalOnly && (noFilterData.weights.Formal ?? 0) < 0.14) score -= 0.7;
-    if (isFormalOnly) score -= 0.15;
-    if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) < 0.22) score -= 1.2;
-    if (isAthleisureOnly && (noFilterData.weights.Athleisure ?? 0) >= 0.22) score += 1.4;
-    if (targetStyle && itemStyles.includes(targetStyle)) {
-      score += targetStyle === "Formal" ? 2.9 : 1.8;
-    }
-    if (targetStyle === "Formal" && itemStyles.includes("Smart Casual")) {
-      score += 1.1;
-    }
-    if (avoidStyle && itemStyles.includes(avoidStyle)) {
-      score -= itemStyles.length === 1 ? 4.4 : 3.4;
-    }
-  }
-
-  return score;
+  return filtered;
 }
 
 function getStyleCompletionScore(item, slot, styleMode) {
+  if (slot === "TopMid") slot = "TopInner";
   const typeMatches = getTypeMatchKeys(item.type);
   const hasType = (...types) => types.some((type) => typeMatches.has(type));
   let score = 0;
@@ -1450,10 +1358,11 @@ function getStyleCompletionScore(item, slot, styleMode) {
   return score;
 }
 
-function getDominancePenaltyScore(item, pickedItems, styleMode) {
+function getDominancePenaltyScore(item, pickedItems, styleMode, selectedStyles) {
   if (pickedItems.length < 2) return 0;
 
-  const counts = getDominantStyleCounts(pickedItems);
+  const counts = new Map();
+  pickedItems.forEach(picked => getItemStyleTags(picked).filter(style => selectedStyles.includes(style)).forEach(style => counts.set(style, (counts.get(style) ?? 0) + 1)));
   const dominantEntry = [...counts.entries()].sort((left, right) => right[1] - left[1])[0];
   if (!dominantEntry || dominantEntry[1] < 2) return 0;
 
@@ -1466,17 +1375,6 @@ function getDominancePenaltyScore(item, pickedItems, styleMode) {
   }
   if (dominantStyle === "Athleisure" && itemStyles.includes("Formal")) return -3.5;
   if (dominantStyle === "Smart Casual" && isAthleisureOnlyItem(item)) return -2.5;
-  return styleMode === "minimal" || styleMode === "minimal-bridge" ? 0 : 0;
-}
-
-function getWeightContrastScore(item, pickedItems) {
-  const itemWeight = normalizeWeight(item.weight);
-  if (!pickedItems.length) return 0;
-
-  const hasHeavyPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Heavy");
-  const hasLightPickedItem = pickedItems.some((pickedItem) => normalizeWeight(pickedItem.weight) === "Light");
-
-  if ((itemWeight === "Heavy" && hasLightPickedItem) || (itemWeight === "Light" && hasHeavyPickedItem)) return -1.5;
   return 0;
 }
 
@@ -1485,8 +1383,8 @@ function getCrossStyleConflictScore(item, pickedItems, selectedStyles) {
   const selectedStyleSet = new Set(selectedStyles ?? []);
 
   if (!selectedStyleSet.has("Formal") || !selectedStyleSet.has("Athleisure")) {
-    const pickedHasFormal = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).includes("Formal"));
-    const pickedHasAthleisure = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).includes("Athleisure"));
+    const pickedHasFormal = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).some(style => style === "Formal" && selectedStyleSet.has(style)));
+    const pickedHasAthleisure = pickedItems.some((pickedItem) => getItemStyleTags(pickedItem).some(style => style === "Athleisure" && selectedStyleSet.has(style)));
     const itemIsFormal = itemStyles.includes("Formal");
     const itemIsAthleisure = itemStyles.includes("Athleisure");
 
@@ -1503,53 +1401,26 @@ function getHotOuterwearScore(item, slot, climatePreferences) {
   return 0;
 }
 
-function getLonelyExtremesScore(item, slot, outfit, itemsById) {
-  if (!["TopInner", "TopOuter", "Bottom", "Footwear"].includes(slot)) return 0;
-
-  const nextItems = getPickedOutfitItems({ ...outfit, [slot]: item.id }, itemsById);
-  const heavyCount = nextItems.filter((candidate) => normalizeWeight(candidate.weight) === "Heavy").length;
-  const lightCount = nextItems.filter((candidate) => normalizeWeight(candidate.weight) === "Light").length;
-
-  if (heavyCount === 1 && lightCount >= 2) return -1.15;
-  if (lightCount === 1 && heavyCount >= 2) return -1;
-  return 0;
-}
-
-function getBaselineOutfitScore(item, slot) {
-  const typeMatches = getTypeMatchKeys(item.type);
-  const hasType = (...types) => types.some((type) => typeMatches.has(type));
-
-  if (slot === "TopInner" && hasType("t-shirt", "shirt")) return hasType("shirt") ? 0.9 : 0.8;
-  if (slot === "Bottom" && hasType("jeans", "trousers", "light trousers")) return 1.2;
-  if (slot === "Footwear" && hasType("sneakers", "leather sneakers")) return 1.2;
-  return 0;
-}
-
-function getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles, noFilterData) {
-  if (pickedItems.length >= 2 || slot === "Headwear") return 0;
-
-  const typeMatches = getTypeMatchKeys(item.type);
-  const hasType = (...types) => types.some((type) => typeMatches.has(type));
-  const selectedStyleSet = new Set(selectedStyles ?? []);
-  const noFilterWeights = noFilterData?.weights ?? noFilterStyleWeights;
-  const isNoFilter = !selectedStyleSet.size;
-
-  if (hasType("shirt")) return selectedStyleSet.has("Formal") || selectedStyleSet.has("Smart Casual") ? 2.2 : isNoFilter ? 1.2 + noFilterWeights["Smart Casual"] * 1.8 : 1.3;
-  if (hasType("hoodie", "sport t-shirt", "sport ls t-shirt", "sweatshirt")) return selectedStyleSet.has("Athleisure") ? 2.2 : isNoFilter ? 1.25 + noFilterWeights.Athleisure * 2.6 : 1.3;
-  if (hasType("trousers", "light trousers", "derby")) return selectedStyleSet.has("Formal") || selectedStyleSet.has("Smart Casual") ? 1.4 : isNoFilter ? 0.8 + (noFilterWeights["Smart Casual"] + noFilterWeights.Formal) * 1.1 : 0.8;
-  if (hasType("sport shorts", "shell jacket", "fleece jacket")) return selectedStyleSet.has("Athleisure") ? 1.4 : isNoFilter ? 0.9 + noFilterWeights.Athleisure * 1.8 : 0.8;
+function getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles) {
+  if (pickedItems.length >= 2 || slot === "Headwear" || !selectedStyles.length) return 0;
+  const types = getTypeMatchKeys(item.type);
+  const hasType = (...values) => values.some(value => types.has(value));
+  const smart = selectedStyles.includes("Formal") || selectedStyles.includes("Smart Casual");
+  if (hasType("shirt")) return smart ? 2.2 : 1.3;
+  if (hasType("hoodie", "sport t-shirt", "sport ls t-shirt", "sweatshirt")) return selectedStyles.includes("Athleisure") ? 2.2 : 1.3;
+  if (hasType("trousers", "light trousers", "derby")) return smart ? 1.4 : 0.8;
+  if (hasType("sport shorts", "shell jacket", "fleece jacket")) return selectedStyles.includes("Athleisure") ? 1.4 : 0.8;
   return 0;
 }
 
 function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, itemsById) {
   const normalizedRecentOutfits = normalizeRecentOutfits(recentOutfits);
-  const scores = { recentItemPenalty: 0, recentExactPenalty: 0, recentLikedBoost: 0, styleStreakPenalty: 0 };
+  const scores = { recentItemPenalty: 0, recentExactPenalty: 0, recentLikedBoost: 0 };
 
   if (!normalizedRecentOutfits.length) return scores;
 
   const completedOutfit = { ...outfit, [slot]: item.id };
   const isComplete = getActiveOutfitSlots(layering).every((visibleSlot) => completedOutfit[visibleSlot]);
-  const completedStyle = isComplete ? getOutfitDominantStyle(completedOutfit, itemsById) : null;
 
   normalizedRecentOutfits.forEach((recentOutfit, index) => {
     const itemPenalty = recentItemPenaltySteps[index] ?? 0;
@@ -1565,10 +1436,11 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
     }
 
     affinityRelationships.forEach(([sourceSlot, targetSlot]) => {
-      if (targetSlot !== slot || !recentOutfit.liked) return;
-      const sourceItemId = outfit?.[sourceSlot];
-      if (!sourceItemId) return;
-      if (recentOutfit.outfit?.[sourceSlot] === sourceItemId && recentOutfit.outfit?.[targetSlot] === item.id) {
+      if (!recentOutfit.liked || ![sourceSlot, targetSlot].includes(slot)) return;
+      const otherSlot = sourceSlot === slot ? targetSlot : sourceSlot;
+      const otherId = outfit?.[otherSlot];
+      if (!otherId) return;
+      if (recentOutfit.outfit?.[otherSlot] === otherId && recentOutfit.outfit?.[slot] === item.id) {
         scores.recentLikedBoost += likedBoost;
       }
     });
@@ -1578,67 +1450,13 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
     }
   });
 
-  if (completedStyle && normalizedRecentOutfits.length >= 2) {
-    const recentStyles = getRecentDominantStyles(normalizedRecentOutfits, itemsById);
-    if (recentStyles[0] === completedStyle && recentStyles[1] === completedStyle) {
-      scores.styleStreakPenalty -= 0.5;
-    } else if (recentStyles[0] === completedStyle) {
-      scores.styleStreakPenalty -= 0.2;
-    }
-  }
-
   scores.recentItemPenalty = clampScore(scores.recentItemPenalty, MAX_RECENT_ITEM_PENALTY, 0);
   scores.recentExactPenalty = clampScore(scores.recentExactPenalty, MAX_RECENT_EXACT_PENALTY, 0);
-  scores.styleStreakPenalty = clampScore(scores.styleStreakPenalty, MAX_STYLE_STREAK_PENALTY, 0);
 
   return scores;
 }
 
-function getColdLightTopPenalty(item, slot, outfit, itemsById, climatePreferences) {
-  if (!climatePreferences.some((climate) => climate === "Cold" || climate === "Snow")) return 0;
-  if (!["TopInner", "TopOuter", "Footwear"].includes(slot)) return 0;
-
-  const nextItems = getPickedOutfitItems({ ...outfit, [slot]: item.id }, itemsById);
-  const hasHeavyOuterwear = nextItems.some((candidate) => candidate.garmentType === "Outerwear" && normalizeWeight(candidate.weight) === "Heavy");
-  const hasBoots = nextItems.some((candidate) => getTypeMatchKeys(candidate.type).has("boots"));
-  const lightOrSportTop = nextItems.some((candidate) => {
-    const typeMatches = getTypeMatchKeys(candidate.type);
-    const hasType = (...types) => types.some((type) => typeMatches.has(type));
-    if (candidate.garmentType !== "Top" && candidate.garmentType !== "Outerwear") return false;
-    return normalizeWeight(candidate.weight) === "Light" && hasType("t-shirt", "ls t-shirt", "sport t-shirt", "sport ls t-shirt");
-  });
-
-  if (!lightOrSportTop) return 0;
-  if (hasHeavyOuterwear && hasBoots) return -4.2;
-  if (hasHeavyOuterwear || hasBoots) return -2.6;
-  return 0;
-}
-
-function getMismatchedSeasonalityScore(item, slot, outfit, itemsById) {
-  const nextItems = getPickedOutfitItems({ ...outfit, [slot]: item.id }, itemsById);
-  const hasSmartInner = nextItems.some((candidate) => {
-    const typeMatches = getTypeMatchKeys(candidate.type);
-    return candidate.garmentType === "Top" && typeMatches.has("shirt") && getItemStyleTags(candidate).some((style) => style === "Smart Casual" || style === "Formal");
-  });
-  const hasShorts = nextItems.some((candidate) => candidate.garmentType === "Bottom" && getTypeMatchKeys(candidate.type).has("shorts"));
-  const hasMediumOuterwear = nextItems.some((candidate) => candidate.garmentType === "Outerwear" && ["Medium", "Heavy"].includes(normalizeWeight(candidate.weight)));
-
-  if (hasSmartInner && hasShorts && hasMediumOuterwear) return -5.5;
-  return 0;
-}
-
-function getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selectedStyles, climatePreferences) {
-  return {
-    weightContrast: getWeightContrastScore(item, pickedItems),
-    styleConflict: getCrossStyleConflictScore(item, pickedItems, selectedStyles),
-    hotOuterwear: getHotOuterwearScore(item, slot, climatePreferences),
-    lonelyExtremes: getLonelyExtremesScore(item, slot, outfit, itemsById),
-    coldLightTopPenalty: getColdLightTopPenalty(item, slot, outfit, itemsById, climatePreferences),
-    mismatchedSeasonality: getMismatchedSeasonalityScore(item, slot, outfit, itemsById)
-  };
-}
-
-function getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles, noFilterData) {
+function getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles) {
   const itemStyles = getItemStyleTags(item);
   const isAthleisureOnly = itemStyles.length === 1 && itemStyles[0] === "Athleisure";
   const isFormalOnly = isFormalOnlyItem(item);
@@ -1695,108 +1513,56 @@ function getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles, noF
     }
   }
 
-  if (styleMode === "no-filter") {
-    score += getNoFilterPreference(item, noFilterData) * 0.4;
-  }
-
   return score;
 }
 
 function getAffinityScore(item, slot, outfit, outfitAffinity) {
   const affinity = normalizeAffinityMap(outfitAffinity);
   let score = 0;
-
   affinityRelationships.forEach(([sourceSlot, targetSlot]) => {
-    if (targetSlot !== slot) return;
-
-    const sourceItemId = outfit?.[sourceSlot];
-    if (!sourceItemId) return;
-
-    const pairCount = affinity[buildAffinityPairKey(sourceSlot, targetSlot, sourceItemId, item.id)] ?? 0;
-    score += Math.min(pairCount * 0.14, 0.35);
+    if (![sourceSlot, targetSlot].includes(slot)) return;
+    const sourceId = sourceSlot === slot ? item.id : outfit[sourceSlot];
+    const targetId = targetSlot === slot ? item.id : outfit[targetSlot];
+    if (!sourceId || !targetId) return;
+    const count = affinity[buildAffinityPairKey(sourceSlot, targetSlot, sourceId, targetId)] ?? 0;
+    score += Math.min(count * 0.14, 0.35);
   });
-
-  const itemCount = affinity[buildAffinityItemKey(slot, item.id)] ?? 0;
-  score += Math.min(itemCount * 0.05, 0.2);
-
+  score += Math.min((affinity[buildAffinityItemKey(slot, item.id)] ?? 0) * 0.05, 0.2);
   return Math.min(score, MAX_AFFINITY_BOOST);
 }
 
-function buildNoFilterData(pool, outfit, itemsById, recentOutfits, generationContext = null) {
-  const support = getPoolStyleSupport(pool);
-  const anchoredStyle = getAnchoredStyle(outfit, itemsById);
-  const baseWeights = generationContext?.weights ?? getAdjustedNoFilterWeights(getRecentDominantStyles(recentOutfits, itemsById), support, anchoredStyle);
-  const targetStyle = anchoredStyle ?? generationContext?.targetStyle ?? pickWeightedStyle(baseWeights);
-  return {
-    support,
-    anchoredStyle,
-    weights: anchoredStyle ? getAdjustedNoFilterWeights(getRecentDominantStyles(recentOutfits, itemsById), support, anchoredStyle) : baseWeights,
-    targetStyle,
-    targetMode: styleToMode(targetStyle)
-  };
-}
-
-export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool = [], generationContext = null) {
-  const pickedItems = getPickedOutfitItems(outfit, itemsById);
+export function getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool = []) {
+  outfit = getActiveOutfit({ ...outfit, [slot]: null }, layering);
+  const pickedItems = getPickedOutfitItems({ ...outfit, Headwear: null }, itemsById);
   const selectedStyles = outfitFilters.style ?? [];
-  const climatePreferences = getGenerationClimatePreferences(outfitFilters, weatherData);
-  const preferredStyles = getDominantStyleTags(pickedItems);
-  const noFilterData = !selectedStyles.length ? buildNoFilterData(pool, outfit, itemsById, recentOutfits, generationContext) : null;
-  const styleMode = getDominantStyleMode(selectedStyles, pickedItems, noFilterData);
+  const climate = getGenerationClimatePreferences(outfitFilters, weatherData);
+  const styleMode = resolveSelectedStyleMode(selectedStyles);
   const breakdown = {
-    climate: getClimateScore(item, slot, climatePreferences),
-    styleCoherence: getStyleCoherenceScore(item, slot, selectedStyles, preferredStyles, noFilterData),
-    styleCompletion: getStyleCompletionScore(item, slot, styleMode),
-    dominance: getDominancePenaltyScore(item, pickedItems, styleMode),
-    ...getSoftBalanceScore(item, slot, outfit, itemsById, pickedItems, selectedStyles, climatePreferences),
-    baseline: getBaselineOutfitScore(item, slot),
-    earlyAnchor: getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles, noFilterData),
-    selectedStyleBonus: 0,
     favorite: item.favorite ? 0.5 : 0,
     affinity: getAffinityScore(item, slot, outfit, outfitAffinity),
-    recentItemPenalty: 0,
-    recentExactPenalty: 0,
-    recentLikedBoost: 0,
-    coldOuterwear: 0,
-    noFilterVariety: 0,
-    styleStreakPenalty: 0
+    ...getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, itemsById)
   };
-
-  if (slot === "TopOuter") {
-    if (climatePreferences.includes("Cold") || climatePreferences.includes("Snow")) {
-      breakdown.coldOuterwear += item.garmentType === "Outerwear" ? 3 : -4;
+  if (selectedStyles.length) {
+    breakdown.styleCoherence = getStyleCoherenceScore(item, slot, selectedStyles, new Set(selectedStyles));
+    breakdown.styleCompletion = getStyleCompletionScore(item, slot, styleMode);
+    breakdown.dominance = getDominancePenaltyScore(item, pickedItems, styleMode, selectedStyles);
+    breakdown.styleConflict = getCrossStyleConflictScore(item, pickedItems, selectedStyles);
+    breakdown.earlyAnchor = getEarlyStyleAnchorScore(item, slot, pickedItems, selectedStyles);
+    const bonus = styleMode === "formal" ? 2.8 : styleMode === "athleisure" ? 2.6 : styleMode === "smart-casual" ? 2.2 : 1.2;
+    breakdown.selectedStyleBonus = ["TopInner", "TopMid", "TopOuter", "Bottom", "Footwear"].includes(slot) && getItemStyleTags(item).some(style => selectedStyles.includes(style)) ? bonus : 0;
+  }
+  if (climate.length) {
+    breakdown.climate = getClimateScore(item, slot, climate);
+    breakdown.hotOuterwear = getHotOuterwearScore(item, slot, climate);
+    if (slot === "TopOuter") {
+      if (climate.includes("Cold") || climate.includes("Snow")) breakdown.coldOuterwear = item.garmentType === "Outerwear" ? 3 : -4;
+      if (climate.includes("Hot") && item.garmentType === "Outerwear") breakdown.hotOuterwear -= 3;
     }
-
-    if (climatePreferences.includes("Hot")) {
-      breakdown.hotOuterwear += item.garmentType === "Outerwear" ? -3 : 0;
-    }
   }
-
-  if ((slot === "TopInner" || slot === "Bottom" || slot === "Footwear" || slot === "TopOuter") && selectedStyles.length) {
-    const styleModeBonus = styleMode === "formal" ? 2.8 : styleMode === "athleisure" ? 2.6 : styleMode === "smart-casual" ? 2.2 : 1.2;
-    breakdown.selectedStyleBonus += getItemStyleTags(item).some((style) => selectedStyles.includes(style)) ? styleModeBonus : 0;
-  }
-
-  if (!selectedStyles.length) {
-    breakdown.noFilterVariety += getNoFilterPreference(item, noFilterData) * 0.65;
-  }
-
-  const recentScores = getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, itemsById);
-  breakdown.recentItemPenalty += recentScores.recentItemPenalty;
-  breakdown.recentExactPenalty += recentScores.recentExactPenalty;
-  breakdown.recentLikedBoost += recentScores.recentLikedBoost;
-  breakdown.styleStreakPenalty += recentScores.styleStreakPenalty;
-
-  const normalizedBreakdown = normalizeGuidedBreakdown(breakdown);
-  const score = GUIDED_BASE_SCORE + Object.values(normalizedBreakdown).reduce((sum, value) => sum + value, 0);
-  return {
-    score: Math.max(GUIDED_SCORE_FLOOR, score),
-    breakdown: normalizedBreakdown
-  };
-}
-
-function scoreCandidateForGuidedGeneration(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool, generationContext) {
-  return getGuidedScoreBreakdown(item, slot, outfit, itemsById, outfitFilters, weatherData, outfitAffinity, recentOutfits, layering, pool, generationContext).score;
+  const normalized = normalizeGuidedBreakdown(breakdown);
+  const rawScore = GUIDED_BASE_SCORE + Object.values(normalized).reduce((sum, value) => sum + value, 0);
+  const score = Math.max(GUIDED_SCORE_FLOOR, rawScore);
+  return { score, breakdown: { startingWeight: GUIDED_BASE_SCORE, ...normalized, ...(score > rawScore ? { minimumWeightAdjustment: score - rawScore } : {}) } };
 }
 
 function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext = null) {
@@ -1806,21 +1572,7 @@ function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilter
     return item ? { item, score: null, breakdown: null } : null;
   }
 
-  let candidatePool = pool;
-  const selectedStyles = outfitFilters.style ?? [];
-
-  if (!selectedStyles.length) {
-    const recentStyles = getRecentDominantStyles(recentOutfits, itemsById);
-    const repeatedRecentStyle = recentStyles[0] && recentStyles[0] === recentStyles[1] ? recentStyles[0] : null;
-    const completesOutfit = getActiveOutfitSlots(layering).every((visibleSlot) => visibleSlot === slot || Boolean(outfit[visibleSlot]));
-
-    if (repeatedRecentStyle && completesOutfit) {
-      const streakSafePool = pool.filter((item) => getOutfitDominantStyle({ ...outfit, [slot]: item.id }, itemsById) !== repeatedRecentStyle);
-      if (streakSafePool.length) {
-        candidatePool = streakSafePool;
-      }
-    }
-  }
+  const candidatePool = pool;
 
   const weightedCandidates = candidatePool.map((item) => {
     const result = getGuidedScoreBreakdown(
@@ -1850,20 +1602,9 @@ function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilter
   }
 
   const selectedEntry = weightedCandidates.find((entry) => entry.item.id === pickedItem.id) ?? null;
-  const topCandidates = selectedEntry
-    ? [
-        selectedEntry,
-        ...weightedCandidates
-          .filter((entry) => entry.item.id !== selectedEntry.item.id)
-          .sort((left, right) => right.score - left.score)
-          .slice(0, GUIDED_DEBUG_TOP_CANDIDATE_LIMIT - 1)
-      ]
-        .sort((left, right) => right.score - left.score)
-        .map((entry) => ({
-          itemId: entry.item.id,
-          score: entry.score
-        }))
-    : [];
+  const topCandidates = weightedCandidates.filter(entry => entry.item.id !== pickedItem.id)
+    .sort((left, right) => right.score - left.score).slice(0, GUIDED_DEBUG_TOP_CANDIDATE_LIMIT)
+    .map(entry => ({ itemId: entry.item.id, score: entry.score }));
   return selectedEntry
     ? {
         ...selectedEntry,
@@ -1962,7 +1703,7 @@ function isOutfitCompatible(outfit, itemsById) {
 }
 
 export function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
-  if (!pool.length || !["TopOuter", "Bottom", "Footwear"].includes(slot)) return pool;
+  if (!pool.length) return pool;
 
   const filtered = pool.filter((item) =>
     isOutfitCompatible(
@@ -1974,7 +1715,7 @@ export function filterPoolForCompatibilityRules(pool, slot, outfit, itemsById) {
     )
   );
 
-  return filtered.length ? filtered : pool;
+  return filtered;
 }
 
 function buildNextOutfitResult(
@@ -1991,18 +1732,17 @@ function buildNextOutfitResult(
   recentOutfits = [],
   options = {}
 ) {
-  const nextOutfit = { ...currentOutfit };
+  const itemsById = options.itemsById ?? Object.fromEntries(items.map(item => [item.id, item]));
+  const normalized = normalizeOutfitStructure(currentOutfit, locked, layering, itemsById);
+  const nextOutfit = { ...normalized.outfit };
+  locked = normalized.locked;
   const guidedDebugPayload = [];
-  const itemsById = Object.fromEntries(items.map((item) => [item.id, item]));
-  const generationContext = !(outfitFilters.style ?? []).length
-    ? buildNoFilterGenerationContext(items, excluded, generationLists, recentOutfits, itemsById)
-    : null;
 
   visibleSlots.forEach((slot) => {
     if (!locked[slot]) nextOutfit[slot] = null;
   });
 
-  visibleSlots.forEach((slot) => {
+  generationOrder.forEach((slot) => {
     if (slot === "TopMid" && layering !== 3) {
       delete nextOutfit.TopMid;
       return;
@@ -2017,24 +1757,26 @@ function buildNextOutfitResult(
     }
 
     const pool = getEligibleSlotPool(items, slot, excluded, generationLists, layering, outfitFilters, weatherData, nextOutfit, itemsById);
-    const selection = selectNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering, generationContext);
+    const selectionOutfit = { ...nextOutfit };
+    const selection = selectNextItemForGeneration(pool, slot, nextOutfit, itemsById, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, layering);
     nextOutfit[slot] = selection?.item?.id ?? null;
 
     if (options.includeGuidedDebug && normalizeGenerationMode(generationMode) === "guided" && selection?.item && selection?.breakdown) {
       guidedDebugPayload.push({
         slot,
+        selectionOutfit,
         itemId: selection.item.id,
         breakdown: selection.breakdown,
         score: selection.score,
         topCandidates: selection.topCandidates ?? []
       });
+    } else if (options.includeGuidedDebug && normalizeGenerationMode(generationMode) === "guided") {
+      guidedDebugPayload.push({ slot, selectionOutfit, itemId: null, score: null, breakdown: {}, topCandidates: [], reason: "No eligible candidates under current filters and structural compatibility." });
     }
   });
 
-  return {
-    outfit: nextOutfit,
-    guidedDebugPayload
-  };
+  recordSelectionContext(guidedDebugPayload, { outfit: normalized.outfit, locked, layering, itemsById, items, outfitFilters, generationLists, excluded, generationMode, outfitAffinity, recentOutfits }, nextOutfit, true);
+  return { outfit: nextOutfit, locked, guidedDebugPayload, issues: getStructuralIssues(nextOutfit, locked, layering, itemsById) };
 }
 
 export function buildNextOutfit(
@@ -2048,9 +1790,10 @@ export function buildNextOutfit(
   weatherData = null,
   generationMode = defaultGenerationMode,
   outfitAffinity = {},
-  recentOutfits = []
+  recentOutfits = [],
+  options = {}
 ) {
-  return buildNextOutfitResult(items, currentOutfit, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits).outfit;
+  return buildNextOutfitResult(items, currentOutfit, locked, layering, excluded, generationLists, outfitFilters, weatherData, generationMode, outfitAffinity, recentOutfits, options).outfit;
 }
 
 export function buildNextOutfitWithDebug(
@@ -2064,7 +1807,8 @@ export function buildNextOutfitWithDebug(
   weatherData = null,
   generationMode = defaultGenerationMode,
   outfitAffinity = {},
-  recentOutfits = []
+  recentOutfits = [],
+  options = {}
 ) {
   return buildNextOutfitResult(
     items,
@@ -2079,6 +1823,7 @@ export function buildNextOutfitWithDebug(
     outfitAffinity,
     recentOutfits,
     {
+      ...options,
       includeGuidedDebug: true
     }
   );
@@ -2088,7 +1833,7 @@ export function summarizeGuidedExplanation(outfit, itemsById, outfitFilters, wea
   const contextOutfit = {};
   const breakdownEntries = [];
 
-  visibleSlots.forEach((slot) => {
+  generationOrder.filter(slot => getActiveOutfitSlots(layering).includes(slot)).forEach((slot) => {
     const itemId = outfit?.[slot];
     const item = itemId ? itemsById[itemId] : null;
     if (!item) return;
@@ -2141,7 +1886,16 @@ export function normalizeOutfitFilters(outfitFilters) {
 }
 
 export function normalizeLikedOutfitKeys(value) {
-  return normalizeBooleanLookup(value);
+  const result = {};
+  for (const key of Object.keys(normalizeBooleanLookup(value))) {
+    let canonical = key;
+    try {
+      const parsed = JSON.parse(key);
+      if (parsed && typeof parsed.slots === "object" && parsed.slots && Object.hasOwn(parsed, "layering")) canonical = getOutfitKey(parsed.slots, normalizeLayering(parsed.layering));
+    } catch { /* Keep unknown legacy keys intact. */ }
+    result[canonical] = true;
+  }
+  return result;
 }
 
 export function normalizeOutfitAffinity(value) {
