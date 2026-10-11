@@ -6556,14 +6556,11 @@ label.ghost-button[aria-disabled="true"] {
 .controls-filter-utilities .ghost-button { font-size: 0.62rem; text-transform: none; font-weight: 400; }
 .wardrobe-filter-search-input { width: 100%; min-width: 0; height: 28px; padding: 4px 7px; font-size: 0.68rem; }
 
-/* Three upper-body layers retain the centered outfit axis. */
-.top-layer-row.has-three-layers .outfit-slot-wrap {
-  flex: 0 1 160px;
-  min-width: 0;
-}
-.top-layer-row.has-three-layers .outfit-slot {
-  width: 160px;
-  max-width: 100%;
+/* Keep the same image frame in both layered layouts. */
+@media (max-width: 700px) {
+  .top-layer-row.has-three-layers .outfit-slot-wrap + .outfit-slot-wrap {
+    margin-left: min(0px, calc((100vw / 0.66 - 720px) / 2));
+  }
 }
 .saved-preview.is-three-layered {
   grid-template-columns: repeat(3, minmax(0, 1fr));
