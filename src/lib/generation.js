@@ -2,6 +2,7 @@ import {
   defaultItemList,
   getTypeMatchKeys,
   getItemLayerRoles,
+  isShirtLayeringType,
   itemLists,
   normalizeStatus,
   normalizeTagList,
@@ -333,20 +334,10 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
   return getSlotBasePool(items, slot, layering).filter((item) => isEligibleForGeneration(item, excluded, generationLists));
 }
 
-function isFlexibleBaseMidTop(item) {
-  const roles = getItemLayerRoles(item);
-  return roles.includes("Base") && roles.includes("Mid");
-}
-
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}, generationLists = defaultGenerationLists) {
   let pool = getSlotBasePool(items, slot, layering).filter((item) => generationLists === null || isEligibleForGeneration(item, {}, generationLists));
 
   if (layering && topSlots.includes(slot)) {
-    const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
-      .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
-    if (layering !== 3 && otherItems.some(isFlexibleBaseMidTop)) {
-      pool = pool.filter((item) => !isFlexibleBaseMidTop(item));
-    }
     const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
     pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);
   }
@@ -372,11 +363,6 @@ function getEligibleSlotPoolInternal(
   );
 
   if (layering && topSlots.includes(slot)) {
-    const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
-      .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
-    if (layering !== 3 && otherItems.some(isFlexibleBaseMidTop)) {
-      pool = pool.filter((item) => !isFlexibleBaseMidTop(item));
-    }
     const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
     pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);
   }
@@ -1935,15 +1921,6 @@ function summarizeGuidedReasonEntries(entries = []) {
 
 export function isNonStackableTopType(item) {
   return (item.garmentType === "Top" || item.garmentType === "Outerwear") && nonStackableTopTypes.has(normalizeType(item.type));
-}
-
-function isShirtLayeringType(item) {
-  if (!item || (item.garmentType !== "Top" && item.garmentType !== "Outerwear")) {
-    return false;
-  }
-
-  const typeMatches = getTypeMatchKeys(item.type);
-  return ["shirt", "casual shirt", "wool shirt", "overshirt"].some((type) => typeMatches.has(type));
 }
 
 export function getOtherTopSlot(slot) {

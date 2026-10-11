@@ -1,11 +1,33 @@
 export const layerTypes = ["Outer", "Inner", "Both"];
 export const layerRoleOptions = ["Base", "Mid", "Outer"];
 
+export function isShirtLayeringType(item) {
+  if (!item || !["Top", "Outerwear"].includes(item.garmentType)) return false;
+  const matches = getTypeMatchKeys(item.type);
+  const normalized = normalizeType(item.type);
+  if (/\b(t[ -]?shirts?|tees?|sweatshirts?)\b/.test(normalized)
+    || [...matches].some((type) => type.includes("t-shirt") || type.startsWith("sweatshirt"))) return false;
+  return ["shirt", "casual shirt", "wool shirt", "overshirt"].some((type) => matches.has(type));
+}
+
+const SHIRT_LAYER_ROLES_MIGRATION_VERSION = 1;
+
+export function migrateShirtLayerRoles(item) {
+  if (!isShirtLayeringType(item)
+    || (item.shirtLayerRolesMigrationVersion ?? 0) >= SHIRT_LAYER_ROLES_MIGRATION_VERSION) return item;
+  return {
+    ...item,
+    layerRoles: ["Base", "Mid"],
+    shirtLayerRolesMigrationVersion: SHIRT_LAYER_ROLES_MIGRATION_VERSION
+  };
+}
+
 export function getItemLayerRoles(item = {}) {
   if (item.garmentType && !["Top", "Outerwear"].includes(item.garmentType)) return [];
   if (Array.isArray(item.layerRoles)) {
     return layerRoleOptions.filter((role) => item.layerRoles.includes(role));
   }
+  if (isShirtLayeringType(item)) return ["Base", "Mid"];
   const legacyType = item.layerType ?? resolveTypeDefaults(item.type).layerType;
   if (legacyType === "Inner") return ["Base"];
   if (legacyType === "Outer") return ["Outer"];
@@ -470,8 +492,8 @@ export function resolveTypeDefaults(type) {
     ...emptyForm,
     type: normalizedItemTypeValue,
     ...defaults,
-    layerRoles: getItemLayerRoles({ garmentType: defaults.garmentType ?? emptyForm.garmentType,
-      layerType: defaults.layerType ?? emptyForm.layerType }),
+    layerRoles: getItemLayerRoles({ type: normalizedItemTypeValue,
+      garmentType: defaults.garmentType ?? emptyForm.garmentType, layerType: defaults.layerType ?? emptyForm.layerType }),
     weight: normalizeWeight(defaults.weight),
     styleTags: normalizeTagList(defaults.styleTags, styleTagOptions)
   };

@@ -4390,6 +4390,7 @@ export default function App() {
       const deduplicatedItems = resolveDuplicateItemUuids(effectiveItems).items;
       const migratedItems = effectiveItems.filter(
         (item, index) =>
+          storedItems[index].shirtLayerRolesMigrationVersion !== item.shirtLayerRolesMigrationVersion ||
           !areEditorValuesEqual(storedItems[index].layerRoles, item.layerRoles) ||
           itemNeedsRetailMigration(storedItems[index], item) ||
           itemNeedsImageFrameScaleMigration(storedItems[index], item) ||

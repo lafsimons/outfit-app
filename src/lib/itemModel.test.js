@@ -846,3 +846,18 @@ test("normalization migrates Both to Base and Mid once and preserves manual over
   assert.deepEqual(normalizeItem({ ...migrated, layerRoles: ["Mid", "Outer"] }).layerRoles, ["Mid", "Outer"]);
   assert.deepEqual(normalizeItem({ ...migrated, layerRoles: [] }).layerRoles, []);
 });
+
+
+test("all existing shirts migrate once to Base and Mid, including previously explicit roles", () => {
+  for (const type of ["Shirt", "Casual Shirt", "Wool Shirt", "Overshirt"]) {
+    const item = normalizeItem({ id: "shirt_role_migration", garmentType: "Top", type,
+      layerType: "Inner", layerRoles: ["Base"] });
+    assert.deepEqual(item.layerRoles, ["Base", "Mid"], type);
+    assert.equal(item.shirtLayerRolesMigrationVersion, 1);
+    assert.deepEqual(normalizeItem(item).layerRoles, ["Base", "Mid"]);
+    assert.deepEqual(normalizeItem({ ...item, layerRoles: ["Mid"] }).layerRoles, ["Mid"]);
+  }
+  const tee = normalizeItem({ id: "unchanged_tee", garmentType: "Top", type: "T-Shirt", layerType: "Inner" });
+  assert.deepEqual(tee.layerRoles, ["Base"]);
+  assert.equal(tee.shirtLayerRolesMigrationVersion, undefined);
+});

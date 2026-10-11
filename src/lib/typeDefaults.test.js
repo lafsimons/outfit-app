@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   getItemStatusOptions,
   getItemLayerRoles,
+  isShirtLayeringType,
   resolveTypeDefaults,
   getItemListOptions,
   isActiveStatus,
@@ -100,4 +101,19 @@ test("legacy layer types map to explicit roles without broadening Both to Outer"
 test("explicit layer selections override legacy metadata and retain an empty selection", () => {
   assert.deepEqual(getItemLayerRoles({ layerType: "Both", layerRoles: ["Outer", "Mid", "Mid", "invalid"] }), ["Mid", "Outer"]);
   assert.deepEqual(getItemLayerRoles({ layerType: "Both", layerRoles: [] }), []);
+});
+
+
+test("shirts default to Base and Mid while tees and sweatshirts retain their own classification", () => {
+  for (const type of ["Shirt", "Casual Shirt", "Wool Shirt", "Shirt (heavier cotton, wool)", "Overshirt", "Work Shirt"]) {
+    assert.deepEqual(resolveTypeDefaults(type).layerRoles, ["Base", "Mid"], type);
+    assert.equal(isShirtLayeringType({ garmentType: "Top", type }), true, type);
+  }
+  for (const type of ["T-Shirt", "LS T-Shirt", "Sport T-Shirt", "Sport LS T-Shirt"]) {
+    assert.deepEqual(resolveTypeDefaults(type).layerRoles, ["Base"], type);
+    assert.equal(isShirtLayeringType({ garmentType: "Top", type }), false, type);
+  }
+  for (const type of ["Sweatshirt", "Sweatshirt (thin)", "Cotton Sweatshirt"]) {
+    assert.equal(isShirtLayeringType({ garmentType: "Top", type }), false, type);
+  }
 });

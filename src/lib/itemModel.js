@@ -1,6 +1,7 @@
 import {
   normalizeItemType,
   getItemLayerRoles,
+  migrateShirtLayerRoles,
   normalizeStatus,
   normalizeTagList,
   normalizeWeight,
@@ -811,7 +812,7 @@ export function normalizeItem(
     updatedAt
   });
 
-  return normalizedItem;
+  return migrateShirtLayerRoles(normalizedItem);
 }
 
 export function itemNeedsImageContractMigration(originalItem, normalizedItem) {

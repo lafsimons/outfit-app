@@ -9,6 +9,7 @@ import {
   getCurrentOutfitClimateChip,
   getOutfitKey,
   getLayerCount,
+  topSlots,
   getActiveOutfitSlots,
   normalizeLayering,
   getEligibleSlotPool,
@@ -1457,4 +1458,34 @@ test("generation and manual selection use explicit layer roles in each mode", ()
   assert.equal(generated.TopMid, "mid");
   assert.equal(generated.TopOuter, "outer");
   assert.deepEqual(getPool(items, "TopInner", {}, defaultGenerationLists, false).map((item) => item.id), items.map((item) => item.id));
+});
+
+
+test("shirt-on-shirt is blocked between every pair of upper-body slots", () => {
+  const shirts = ["Shirt", "Casual Shirt", "Wool Shirt", "Overshirt", "Shirt (heavier cotton, wool)"].map((type, index) => ({
+    id: `shirt_${index}`, type, garmentType: "Top", layerRoles: ["Base", "Mid", "Outer"]
+  }));
+  const tee = { id: "tee", type: "T-Shirt", garmentType: "Top", layerRoles: ["Base"] };
+  const sweater = { id: "sweater", type: "Sweatshirt", garmentType: "Top", layerRoles: ["Base", "Mid"] };
+  const items = [...shirts, tee, sweater];
+  const byId = Object.fromEntries(items.map((item) => [item.id, item]));
+  for (const occupiedSlot of topSlots) {
+    for (const targetSlot of topSlots.filter((slot) => slot !== occupiedSlot)) {
+      for (const shirt of shirts) {
+        const outfit = { [occupiedSlot]: shirt.id };
+        const pool = getEligibleSlotPool(items, targetSlot, {}, defaultGenerationLists, 3,
+          { style: [], climate: [] }, null, outfit, byId);
+        const manualPool = getManualSelectorSlotPool(items, targetSlot, 3, outfit, byId);
+        assert.equal(pool.some((item) => item.id.startsWith("shirt_")), false);
+        assert.equal(manualPool.some((item) => item.id.startsWith("shirt_")), false);
+      }
+    }
+  }
+  const twoLayerPool = getEligibleSlotPool(items, "TopOuter", {}, defaultGenerationLists, true,
+    { style: [], climate: [] }, null, { TopInner: shirts[0].id }, byId);
+  assert.ok(twoLayerPool.some((item) => item.id === "sweater"));
+  assert.equal(twoLayerPool.some((item) => item.id.startsWith("shirt_")), false);
+  const teeUnderShirt = getEligibleSlotPool(items, "TopInner", {}, defaultGenerationLists, 3,
+    { style: [], climate: [] }, null, { TopMid: shirts[0].id }, byId);
+  assert.ok(teeUnderShirt.some((item) => item.id === "tee"));
 });
