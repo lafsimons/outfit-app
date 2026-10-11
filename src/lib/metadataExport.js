@@ -1,3 +1,4 @@
+import { normalizeLayering } from "./generation.js";
 import { buildDisplayName } from "./itemModel.js";
 import { getFitpicImages, getPrimaryFitpicImage } from "./fitpics.js";
 import { resolveFitpicLinkedItems } from "./fitpicEditorModel.js";
@@ -5,6 +6,7 @@ import { resolveFitpicLinkedItems } from "./fitpicEditorModel.js";
 const savedOutfitSlotOrder = [
   "Headwear",
   "TopInner",
+  "TopMid",
   "TopOuter",
   "Bottom",
   "Footwear",
@@ -211,7 +213,7 @@ export function createSavedOutfitExportRecord(savedOutfit = {}, items = []) {
     createdAt: savedOutfit?.createdAt ?? "",
     updatedAt: savedOutfit?.updatedAt ?? "",
     favorite: Boolean(savedOutfit?.favorite),
-    layering: Boolean(savedOutfit?.layering),
+    layering: normalizeLayering(savedOutfit?.layering),
     generationMode: "",
     weather: "",
     season: "",

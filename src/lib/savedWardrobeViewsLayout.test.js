@@ -24,7 +24,7 @@ test("controls panel uses compact generation rows and icon utilities instead of 
   assert.match(appSource, /aria-label="Generation settings"/);
   assert.doesNotMatch(appSource, /generationSettingsOpen|outfitFiltersOpen/);
   assert.match(appSource, /className=\{`controls-setting-row \$\{layering \? "is-active" : ""\}`\}/);
-  assert.match(appSource, /<span>Layering<\/span>[\s\S]*<span>\{layering \? "On" : "Off"\}<\/span>/);
+  assert.match(appSource, /<span>Layering<\/span>[\s\S]*<span>\{getLayerCount\(layering\)\}<\/span>/);
   assert.match(appSource, /<span>Accessories<\/span>[\s\S]*<span>\{accessoriesEnabled \? "On" : "Off"\}<\/span>/);
   assert.match(appSource, /<span>Mode<\/span>[\s\S]*generationMode === "guided" \? "Guided" : "Random"/);
   assert.match(appSource, /className="controls-actions-row" aria-label="Outfit actions"/);

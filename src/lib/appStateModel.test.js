@@ -673,3 +673,15 @@ test("normalizeOutfitItemUuids keeps only string uuids and nulls invalid values"
     }
   );
 });
+
+
+test("saved and hydrated outfits retain the third upper-body layer", () => {
+  const saved = normalizeSavedOutfit({ id: "three", layering: 3,
+    outfit: { TopInner: "base", TopMid: "mid", TopOuter: "outer" } });
+  assert.equal(saved.layering, 3);
+  assert.equal(saved.outfit.TopMid, "mid");
+  const hydrated = normalizeHydratedAppState({ layering: 3, outfit: saved.outfit,
+    savedOutfits: [saved] }, { fallbackOutfit: {}, normalizeWeatherSettings: (value) => value });
+  assert.equal(hydrated.layering, 3);
+  assert.equal(hydrated.savedOutfits[0].outfit.TopMid, "mid");
+});

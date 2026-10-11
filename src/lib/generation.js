@@ -10,7 +10,23 @@ import {
   styleTagOptions
 } from "./typeDefaults.js";
 
-export const visibleSlots = ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"];
+export const visibleSlots = ["Headwear", "TopInner", "TopMid", "TopOuter", "Bottom", "Footwear"];
+export const topSlots = ["TopInner", "TopMid", "TopOuter"];
+
+// Preserve the persisted boolean modes and their existing outfit keys.
+export function normalizeLayering(value) {
+  return value === 3 ? 3 : Boolean(value);
+}
+
+export function getLayerCount(layering) {
+  return layering === 3 ? 3 : layering ? 2 : 1;
+}
+
+export function getActiveOutfitSlots(layering) {
+  return visibleSlots.filter((slot) =>
+    (slot !== "TopMid" || layering === 3) && (slot !== "TopOuter" || Boolean(layering))
+  );
+}
 export const accessorySlots = ["Glasses", "Neck", "LeftHand", "RightHand", "Bag", "Belt"];
 export const defaultGenerationLists = {
   Interested: false,
@@ -165,8 +181,8 @@ function pickWeightedRandom(entries) {
 
 export function getOutfitKey(outfit, layering) {
   return JSON.stringify({
-    layering: Boolean(layering),
-    slots: Object.fromEntries(visibleSlots.map((slot) => [slot, outfit?.[slot] ?? null]))
+    layering: normalizeLayering(layering),
+    slots: Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, outfit?.[slot] ?? null]))
   });
 }
 
@@ -224,13 +240,13 @@ export function applyOutfitAffinityDelta(currentAffinity, outfit, delta) {
   return nextAffinity;
 }
 
-function sanitizeRecentOutfitSlots(outfit) {
-  return Object.fromEntries(visibleSlots.map((slot) => [slot, outfit?.[slot] ?? null]));
+function sanitizeRecentOutfitSlots(outfit, layering) {
+  return Object.fromEntries(visibleSlots.filter((slot) => slot !== "TopMid" || layering === 3).map((slot) => [slot, outfit?.[slot] ?? null]));
 }
 
 function normalizeRecentOutfitEntry(entry) {
-  const outfit = sanitizeRecentOutfitSlots(entry?.outfit);
-  const layering = Boolean(entry?.layering);
+  const layering = normalizeLayering(entry?.layering);
+  const outfit = sanitizeRecentOutfitSlots(entry?.outfit, layering);
 
   return {
     key: typeof entry?.key === "string" ? entry.key : getOutfitKey(outfit, layering),
@@ -298,6 +314,10 @@ function matchesSlotBaseValidity(item, slot, layering = true) {
     return item.garmentType === "Top" && (item.layerType === "Inner" || item.layerType === "Both");
   }
 
+  if (slot === "TopMid") {
+    return layering === 3 && item.garmentType === "Top";
+  }
+
   if (slot === "TopOuter") {
     return (
       (item.garmentType === "Top" || item.garmentType === "Outerwear") &&
@@ -325,15 +345,14 @@ export function getPool(items, slot, excluded = {}, generationLists = defaultGen
 export function getManualSelectorSlotPool(items, slot, layering = true, outfit = {}, itemsById = {}, generationLists = defaultGenerationLists) {
   let pool = getSlotBasePool(items, slot, layering).filter((item) => generationLists === null || isEligibleForGeneration(item, {}, generationLists));
 
-  if (layering && (slot === "TopInner" || slot === "TopOuter")) {
-    const otherTopSlot = getOtherTopSlot(slot);
-    const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-    if (otherItem?.layerType === "Both") {
+  if (layering && topSlots.includes(slot)) {
+    const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
+      .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
+    if (layering !== 3 && otherItems.some((item) => item.layerType === "Both")) {
       pool = pool.filter((item) => item.layerType !== "Both");
     }
-
-    pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
+    const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
+    pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);
   }
 
   return filterPoolForCompatibilityRules(pool, slot, outfit, itemsById);
@@ -356,15 +375,14 @@ function getEligibleSlotPoolInternal(
       : outfitFilters?.favorite === "no" ? !item.favorite : true
   );
 
-  if (layering && (slot === "TopInner" || slot === "TopOuter")) {
-    const otherTopSlot = getOtherTopSlot(slot);
-    const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-    if (otherItem?.layerType === "Both") {
+  if (layering && topSlots.includes(slot)) {
+    const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot && (otherSlot !== "TopMid" || layering === 3))
+      .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
+    if (layering !== 3 && otherItems.some((item) => item.layerType === "Both")) {
       pool = pool.filter((item) => item.layerType !== "Both");
     }
-
-    pool = filterPoolForLayeringRules(pool, slot, outfit, itemsById);
+    const activeOutfit = layering === 3 ? outfit : { ...outfit, TopMid: null };
+    pool = filterPoolForLayeringRules(pool, slot, activeOutfit, itemsById);
   }
 
   pool = applyContextValidityRulesToPool(pool, slot, outfitFilters, weatherData, outfit, itemsById, {
@@ -883,7 +901,7 @@ function isAthleisureSneaker(item) {
 }
 
 function getFormalCoreSlots(layering) {
-  return layering ? ["TopInner", "Bottom", "Footwear", "TopOuter"] : ["TopInner", "Bottom", "Footwear"];
+  return getActiveOutfitSlots(layering).filter((slot) => slot !== "Headwear");
 }
 
 function isStrongFormalAnchor(item, slot) {
@@ -1548,7 +1566,7 @@ function getRecentMemoryScore(item, slot, outfit, recentOutfits, layering, items
   if (!normalizedRecentOutfits.length) return scores;
 
   const completedOutfit = { ...outfit, [slot]: item.id };
-  const isComplete = visibleSlots.every((visibleSlot) => completedOutfit[visibleSlot]);
+  const isComplete = getActiveOutfitSlots(layering).every((visibleSlot) => completedOutfit[visibleSlot]);
   const completedStyle = isComplete ? getOutfitDominantStyle(completedOutfit, itemsById) : null;
 
   normalizedRecentOutfits.forEach((recentOutfit, index) => {
@@ -1812,7 +1830,7 @@ function selectNextItemForGeneration(pool, slot, outfit, itemsById, outfitFilter
   if (!selectedStyles.length) {
     const recentStyles = getRecentDominantStyles(recentOutfits, itemsById);
     const repeatedRecentStyle = recentStyles[0] && recentStyles[0] === recentStyles[1] ? recentStyles[0] : null;
-    const completesOutfit = visibleSlots.every((visibleSlot) => visibleSlot === slot || Boolean(outfit[visibleSlot]));
+    const completesOutfit = getActiveOutfitSlots(layering).every((visibleSlot) => visibleSlot === slot || Boolean(outfit[visibleSlot]));
 
     if (repeatedRecentStyle && completesOutfit) {
       const streakSafePool = pool.filter((item) => getOutfitDominantStyle({ ...outfit, [slot]: item.id }, itemsById) !== repeatedRecentStyle);
@@ -1939,24 +1957,15 @@ export function getOtherTopSlot(slot) {
 }
 
 export function filterPoolForLayeringRules(pool, slot, outfit, itemsById) {
-  if (slot !== "TopInner" && slot !== "TopOuter") return pool;
-
-  const otherTopSlot = getOtherTopSlot(slot);
-  const otherItem = otherTopSlot ? itemsById[outfit[otherTopSlot]] : null;
-
-  if (!otherItem) return pool;
-
-  return pool.filter((item) => {
-    if (isNonStackableTopType(otherItem) && normalizeType(item.type) === normalizeType(otherItem.type)) {
-      return false;
-    }
-
-    if (isShirtLayeringType(otherItem) && isShirtLayeringType(item)) {
-      return false;
-    }
-
+  if (!topSlots.includes(slot)) return pool;
+  const otherItems = topSlots.filter((otherSlot) => otherSlot !== slot)
+    .map((otherSlot) => itemsById[outfit[otherSlot]]).filter(Boolean);
+  return pool.filter((item) => otherItems.every((otherItem) => {
+    if (otherItem.id === item.id) return false;
+    if (isNonStackableTopType(otherItem) && normalizeType(item.type) === normalizeType(otherItem.type)) return false;
+    if (isShirtLayeringType(otherItem) && isShirtLayeringType(item)) return false;
     return true;
-  });
+  }));
 }
 
 function isHeavyOuterwear(item) {
@@ -2021,6 +2030,10 @@ function buildNextOutfitResult(
   });
 
   visibleSlots.forEach((slot) => {
+    if (slot === "TopMid" && layering !== 3) {
+      delete nextOutfit.TopMid;
+      return;
+    }
     if (locked[slot]) {
       return;
     }

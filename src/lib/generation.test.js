@@ -7,6 +7,10 @@ import {
   buildNextOutfitWithDebug,
   defaultGenerationLists,
   getCurrentOutfitClimateChip,
+  getOutfitKey,
+  getLayerCount,
+  getActiveOutfitSlots,
+  normalizeLayering,
   getEligibleSlotPool,
   getGuidedScoreBreakdown,
   getManualSelectorSlotPool,
@@ -1398,4 +1402,36 @@ test("generation favorites filter restricts eligible items and clearing restores
   assert.deepEqual(poolFor("yes"), ["favorite-cap"]);
   assert.deepEqual(poolFor("no"), ["other-cap"]);
   assert.deepEqual(poolFor(""), ["favorite-cap", "other-cap"]);
+});
+
+
+test("three layers generate distinct tops and preserve the mode in recent outfits", () => {
+  const items = [
+    { id: "base", garmentType: "Top", layerType: "Inner", type: "T-Shirt" },
+    { id: "mid", garmentType: "Top", layerType: "Both", type: "Sweatshirt" },
+    { id: "outer", garmentType: "Outerwear", layerType: "Outer", type: "Jacket" }
+  ];
+  const byId = Object.fromEntries(items.map((item) => [item.id, item]));
+  const outfit = buildNextOutfit(items, { TopInner: "base", TopOuter: "outer" },
+    { TopInner: true, TopOuter: true }, 3, {}, defaultGenerationLists,
+    { style: [], climate: [] }, null, "random");
+  assert.equal(outfit.TopMid, "mid");
+  assert.deepEqual(getManualSelectorSlotPool(items, "TopMid", 3, outfit, byId).map((item) => item.id), ["mid"]);
+  const recent = rememberRecentOutfit([], outfit, 3);
+  assert.equal(recent[0].layering, 3);
+  assert.equal(recent[0].outfit.TopMid, "mid");
+  assert.notEqual(getOutfitKey(outfit, 3), getOutfitKey({ ...outfit, TopMid: null }, 3));
+  const twoLayers = buildNextOutfit(items, outfit, { TopInner: true, TopMid: true, TopOuter: true }, true);
+  assert.equal(twoLayers.TopMid, undefined);
+});
+
+test("legacy layering modes retain their keys and active slots", () => {
+  assert.equal(normalizeLayering(false), false);
+  assert.equal(normalizeLayering(true), true);
+  assert.equal(normalizeLayering(3), 3);
+  assert.deepEqual([false, true, 3].map(getLayerCount), [1, 2, 3]);
+  assert.deepEqual(getActiveOutfitSlots(false), ["Headwear", "TopInner", "Bottom", "Footwear"]);
+  assert.deepEqual(getActiveOutfitSlots(true), ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"]);
+  assert.equal(getOutfitKey({}, true), JSON.stringify({ layering: true,
+    slots: { Headwear: null, TopInner: null, TopOuter: null, Bottom: null, Footwear: null } }));
 });

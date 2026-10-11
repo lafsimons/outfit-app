@@ -1710,6 +1710,7 @@ button:disabled {
   min-height: 72px;
 }
 
+.outfit-slot-topmid,
 .outfit-slot-topinner,
 .outfit-slot-topouter {
   min-height: 188px;
@@ -1959,6 +1960,7 @@ button:disabled {
   max-height: calc(72px * var(--managed-frame-scale, 1));
 }
 
+.outfit-slot-topmid .item-figure .managed-image,
 .outfit-slot-topinner .item-figure .managed-image,
 .outfit-slot-topouter .item-figure .managed-image {
   width: min(
@@ -1974,6 +1976,7 @@ button:disabled {
   max-height: calc(188px * var(--managed-frame-scale, 1));
 }
 
+.top-layer-row .outfit-slot-topmid .item-figure .managed-image,
 .top-layer-row .outfit-slot-topinner .item-figure .managed-image,
 .top-layer-row .outfit-slot-topouter .item-figure .managed-image {
   width: min(
@@ -3254,6 +3257,7 @@ button:disabled {
   max-height: min(34px, calc(34px * var(--managed-frame-scale, 1)));
 }
 
+.saved-preview-topmid .managed-image,
 .saved-preview-topinner .managed-image,
 .saved-preview-topouter .managed-image {
   max-width: min(132px, calc(132px * var(--managed-frame-scale, 1)));
@@ -6336,7 +6340,8 @@ label.ghost-button[aria-disabled="true"] {
     padding: 8px 6px 4px;
   }
 
-  .saved-preview-topinner .managed-image,
+  .saved-preview-topmid .managed-image,
+.saved-preview-topinner .managed-image,
   .saved-preview-topouter .managed-image {
     max-width: min(92px, calc(92px * var(--managed-frame-scale, 1)));
     max-height: min(52px, calc(52px * var(--managed-frame-scale, 1)));
@@ -6550,3 +6555,24 @@ label.ghost-button[aria-disabled="true"] {
 .controls-filter-utilities { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .controls-filter-utilities .ghost-button { font-size: 0.62rem; text-transform: none; font-weight: 400; }
 .wardrobe-filter-search-input { width: 100%; min-width: 0; height: 28px; padding: 4px 7px; font-size: 0.68rem; }
+
+/* Three upper-body layers retain the centered outfit axis. */
+.top-layer-row.has-three-layers .outfit-slot-wrap {
+  flex: 0 1 160px;
+  min-width: 0;
+}
+.top-layer-row.has-three-layers .outfit-slot {
+  width: 160px;
+  max-width: 100%;
+}
+.saved-preview.is-three-layered {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-areas:
+    "headwear headwear headwear"
+    "topinner topmid topouter"
+    "bottom bottom bottom"
+    "footwear footwear footwear";
+}
+.saved-preview.is-three-layered .saved-preview-topmid {
+  grid-area: topmid;
+}

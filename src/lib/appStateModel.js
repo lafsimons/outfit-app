@@ -2,6 +2,7 @@ import {
   defaultGenerationLists,
   getOutfitKey,
   normalizeGenerationMode,
+  normalizeLayering,
   normalizeLikedOutfitKeys,
   normalizeOutfitAffinity,
   normalizeOutfitFilters,
@@ -129,7 +130,7 @@ export function normalizeSavedOutfit(savedOutfit, { createOutfitUuid: createUuid
     updatedAt,
     outfit: savedOutfit.outfit ?? {},
     outfitItemUuids: normalizeOutfitItemUuids(savedOutfit.outfitItemUuids),
-    layering: Boolean(savedOutfit.layering)
+    layering: normalizeLayering(savedOutfit.layering)
   };
 }
 
@@ -161,7 +162,7 @@ export function normalizeHydratedAppState(
   const outfit = appStateLike?.outfit ?? fallbackOutfit;
 
   return {
-    layering: Boolean(appStateLike?.layering),
+    layering: normalizeLayering(appStateLike?.layering),
     accessoriesEnabled: appStateLike?.accessoriesEnabled ?? true,
     locked: appStateLike?.locked ?? {},
     excluded: appStateLike?.excluded ?? {},

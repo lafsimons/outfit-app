@@ -57,6 +57,9 @@ import {
   getCurrentOutfitStyleChip,
   getEligibleSlotPool,
   getOtherTopSlot,
+  getLayerCount,
+  getActiveOutfitSlots,
+  normalizeLayering,
   getManualSelectorSlotPool,
   getOutfitDominantStyle,
   getOutfitKey,
@@ -1512,11 +1515,12 @@ function getAccessoryLabel(slot) {
   return labels[slot] ?? slot;
 }
 
-function getSlotLabel(slot) {
+function getSlotLabel(slot, layering) {
   const labels = {
     Headwear: "Headwear",
-    TopInner: "Top",
+    TopInner: layering === 3 ? "Base layer" : "Top",
     TopOuter: "Outer layer",
+    TopMid: "Mid layer",
     Bottom: "Bottom",
     Footwear: "Footwear"
   };
@@ -1572,9 +1576,7 @@ function syncOutfitItemUuids(outfit, outfitItemUuids, itemsById) {
 }
 
 function getSavedOutfitPreviewSlots(savedOutfit) {
-  return savedOutfit.layering
-    ? ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"]
-    : ["Headwear", "TopInner", "Bottom", "Footwear"];
+  return getActiveOutfitSlots(savedOutfit.layering);
 }
 
 function sanitizeOutfitForExistingItems(outfit, itemsById) {
@@ -2926,14 +2928,14 @@ export default function App() {
   const currentOutfitClimateChip = useMemo(
     () =>
       getCurrentOutfitClimateChip(
-        ["Headwear", "TopInner", "TopOuter", "Bottom", "Footwear"]
+        getActiveOutfitSlots(layering)
           .map((slot) => {
             const item = itemsById[outfit[slot]];
             return item ? { slot, item } : null;
           })
           .filter(Boolean)
       ),
-    [itemsById, outfit]
+    [itemsById, outfit, layering]
   );
   const currentOutfitDominantStyle = useMemo(
     () => getOutfitDominantStyle(outfit, itemsById),
@@ -5269,7 +5271,7 @@ export default function App() {
 
   function toggleLayering() {
     setLayering((current) => {
-      const nextValue = !current;
+      const nextValue = current === 3 ? false : current ? 3 : true;
 
       setOutfit((previous) => transitionLayering(previous, current, nextValue));
 
@@ -5279,6 +5281,16 @@ export default function App() {
 
   function transitionLayering(previous, currentLayering, nextLayering) {
     const nextOutfit = { ...previous };
+    setActiveOutfitSlot(null);
+    setPickerAnchorSlot(null);
+    if (nextLayering === 3) {
+      nextOutfit.TopMid = pickRandom(getEligibleSlotPool(
+        generationSourceItems, "TopMid", excluded, generationLists, 3,
+        outfitFilters, weatherData, nextOutfit, itemsById
+      ))?.id ?? null;
+    } else {
+      delete nextOutfit.TopMid;
+    }
 
     if (!currentLayering && nextLayering) {
       const visibleTop = itemsById[nextOutfit.TopInner];
@@ -7420,14 +7432,14 @@ export default function App() {
   function loadSavedOutfit(savedOutfit) {
     const sanitizedOutfit = sanitizeOutfitForExistingItems(savedOutfit.outfit, itemsById);
 
-    setLayering(Boolean(savedOutfit.layering));
+    setLayering(normalizeLayering(savedOutfit.layering));
     setAccessoriesEnabled(hasAccessoryItems(sanitizedOutfit));
     setOutfit(sanitizedOutfit);
     setRecentOutfits((current) =>
       rememberRecentOutfit(
         current,
         sanitizedOutfit,
-        Boolean(savedOutfit.layering),
+        normalizeLayering(savedOutfit.layering),
         {
           preserveLiked: true,
           liked: Boolean(likedOutfitKeys[getOutfitKey(savedOutfit.outfit, savedOutfit.layering)])
@@ -7443,7 +7455,7 @@ export default function App() {
     const previewSlots = getSavedOutfitPreviewSlots(savedOutfit);
 
     return (
-      <div className={`saved-preview ${savedOutfit.layering ? "is-layered" : ""}`} aria-hidden="true">
+      <div className={`saved-preview ${savedOutfit.layering ? "is-layered" : ""} ${savedOutfit.layering === 3 ? "is-three-layered" : ""}`} aria-hidden="true">
         {previewSlots.map((slot) => {
           const itemId = savedOutfit.outfit?.[slot];
           const item = itemId ? itemsById[itemId] : null;
@@ -8138,7 +8150,7 @@ export default function App() {
       <div className="slot-picker">
         <div className="slot-picker-toolbar">
           <div className="slot-picker-toolbar-row slot-picker-toolbar-row-main">
-            <strong className="slot-picker-title">{getSlotLabel(activeOutfitSlot)}</strong>
+            <strong className="slot-picker-title">{getSlotLabel(activeOutfitSlot, layering)}</strong>
             <div className="wardrobe-search-field slot-picker-search-field">
               <input
                 type="search"
@@ -11156,7 +11168,7 @@ export default function App() {
             className={`item-figure ${item ? "has-item" : "is-empty"}`}
             onClick={(event) => handleOutfitItemPreviewClick(item, () => selectOutfitItem(slot), () => openOutfitSlotPicker(slot), event)}
             onDoubleClick={(event) => handleOutfitItemPreviewDoubleClick(item, event)}
-            aria-label={`${getSlotLabel(slot)} options`}
+            aria-label={`${getSlotLabel(slot, layering)} options`}
           >
             {item ? <ManagedItemImage item={item} alt={item.name} dataItemId={item.id} useFrameScale normalizeToFrameScale useCrop usePresentation perfSlot={slot} renderTier="display" /> : <span aria-hidden="true" />}
           </button>
@@ -11194,7 +11206,7 @@ export default function App() {
                     toggleSlotActionsPopover(slot);
                   }}
                   aria-expanded={isActionsOpen}
-                  aria-label={`${getSlotLabel(slot)} actions`}
+                  aria-label={`${getSlotLabel(slot, layering)} actions`}
                   title="Actions"
                 >
                   Actions
@@ -11204,13 +11216,13 @@ export default function App() {
                     ref={slotActionsPopoverRef}
                     className="slot-actions-inline-tools"
                     role="group"
-                    aria-label={`${getSlotLabel(slot)} actions`}
+                    aria-label={`${getSlotLabel(slot, layering)} actions`}
                   >
                     <button
                       type="button"
                       className={`ghost-button slot-action-icon-button ${locked[slot] ? "is-active" : ""}`}
                       onClick={() => toggleLock(slot)}
-                      aria-label={locked[slot] ? `Unlock ${getSlotLabel(slot)}` : `Lock ${getSlotLabel(slot)}`}
+                      aria-label={locked[slot] ? `Unlock ${getSlotLabel(slot, layering)}` : `Lock ${getSlotLabel(slot, layering)}`}
                       title={locked[slot] ? "Unlock" : "Lock"}
                     >
                       <SlotActionIcon kind="lock" locked={locked[slot]} />
@@ -11219,7 +11231,7 @@ export default function App() {
                       type="button"
                       className="ghost-button slot-action-icon-button"
                       onClick={() => handleReroll(slot)}
-                      aria-label={`Reroll ${getSlotLabel(slot)}`}
+                      aria-label={`Reroll ${getSlotLabel(slot, layering)}`}
                       title="Reroll"
                       disabled={!item}
                     >
@@ -11229,7 +11241,7 @@ export default function App() {
                       type="button"
                       className="ghost-button slot-action-icon-button"
                       onClick={() => cycleOutfitSlot(slot, -1)}
-                      aria-label={`Previous item for ${getSlotLabel(slot)}`}
+                      aria-label={`Previous item for ${getSlotLabel(slot, layering)}`}
                       title="Previous"
                       disabled={!item}
                     >
@@ -11239,7 +11251,7 @@ export default function App() {
                       type="button"
                       className="ghost-button slot-action-icon-button"
                       onClick={() => cycleOutfitSlot(slot, 1)}
-                      aria-label={`Next item for ${getSlotLabel(slot)}`}
+                      aria-label={`Next item for ${getSlotLabel(slot, layering)}`}
                       title="Next"
                       disabled={!item}
                     >
@@ -11249,7 +11261,7 @@ export default function App() {
                       type="button"
                       className="ghost-button danger slot-action-icon-button"
                       onClick={() => removeOutfitSlot(slot)}
-                      aria-label={`Remove item from ${getSlotLabel(slot)}`}
+                      aria-label={`Remove item from ${getSlotLabel(slot, layering)}`}
                       title="Remove"
                       disabled={!item}
                     >
@@ -11362,8 +11374,9 @@ export default function App() {
                 if (entry === "TopGroup") {
                   if (layering) {
                     return (
-                      <div key={entry} className="top-layer-row">
+                      <div key={entry} className={`top-layer-row ${layering === 3 ? "has-three-layers" : ""}`}>
                         {renderOutfitSlot("TopInner")}
+                        {layering === 3 ? renderOutfitSlot("TopMid") : null}
                         {renderOutfitSlot("TopOuter")}
                       </div>
                     );
@@ -11393,7 +11406,7 @@ export default function App() {
                   <div className="controls-generation-settings-panel">
                     <button type="button" className={`controls-setting-row ${layering ? "is-active" : ""}`} onClick={toggleLayering}>
                       <span>Layering</span>
-                      <span>{layering ? "On" : "Off"}</span>
+                      <span>{getLayerCount(layering)}</span>
                     </button>
                     <button type="button" className={`controls-setting-row ${accessoriesEnabled ? "is-active" : ""}`} onClick={toggleAccessories}>
                       <span>Accessories</span>
